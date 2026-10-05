@@ -12,7 +12,7 @@ From `backend/`:
 uv sync --locked --extra dev
 source .venv/bin/activate
 cp .env.example .env
-docker compose up -d postgres
+docker compose -p benefits-checker up -d postgres
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
@@ -50,9 +50,9 @@ docker run --rm -e DATABASE_URL='postgresql+psycopg://...' -p 8000:8000 benefits
 
 ## Configuration
 
-| Variable | Required | Description |
-| --- | --- | --- |
-| `APP_ENV` | No | `development`, `test`, or `production` (default: `development`) |
-| `DATABASE_URL` | Yes | PostgreSQL SQLAlchemy URL using the psycopg 3 driver |
-| `LOG_LEVEL` | No | Standard log level (default: `INFO`) |
-| `SENTRY_DSN` | No | Enables Sentry when set; PII and local variables are disabled |
+| Variable       | Required | Description                                                     |
+| -------------- | -------- | --------------------------------------------------------------- |
+| `APP_ENV`      | No       | `development`, `test`, or `production` (default: `development`) |
+| `DATABASE_URL` | Yes      | PostgreSQL SQLAlchemy URL using the psycopg 3 driver            |
+| `LOG_LEVEL`    | No       | Standard log level (default: `INFO`)                            |
+| `SENTRY_DSN`   | No       | Enables Sentry when set; PII and local variables are disabled   |
