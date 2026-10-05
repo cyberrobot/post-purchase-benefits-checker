@@ -2,13 +2,18 @@ name: Backend
 
 on:
   push:
+    branches:
+      - main
     paths:
-      - "backend/**"
-      - ".github/workflows/backend.yml"
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+
   pull_request:
+    branches:
+      - main
     paths:
-      - "backend/**"
-      - ".github/workflows/backend.yml"
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
 
 jobs:
   test:
@@ -20,10 +25,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: '3.13'
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.12.23"
+          version: '0.12.23'
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
       - run: uv sync --locked --extra dev
