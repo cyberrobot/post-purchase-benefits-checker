@@ -8,7 +8,10 @@ from sqlalchemy.engine import Engine
 pytestmark = pytest.mark.integration
 
 
-def test_fresh_postgres_connectivity_and_migration_head(postgres_engine: Engine) -> None:
+def test_fresh_postgres_connectivity_and_migration_head(
+    postgres_engine: Engine,
+    migrated_test_database: None,
+) -> None:
     with postgres_engine.connect() as connection:
         assert connection.execute(text("SELECT 1")).scalar_one() == 1
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()

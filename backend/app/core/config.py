@@ -26,6 +26,13 @@ class Settings(BaseSettings):
             raise ValueError("LOG_LEVEL must be one of CRITICAL, ERROR, WARNING, INFO, DEBUG")
         return normalized
 
+    @field_validator("sentry_dsn", mode="before")
+    @classmethod
+    def blank_sentry_dsn_is_unset(cls, value: str | None) -> str | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:
