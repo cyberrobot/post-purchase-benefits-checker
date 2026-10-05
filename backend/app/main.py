@@ -23,8 +23,6 @@ def create_app(
 ) -> FastAPI:
     """Build an isolated FastAPI app and its database resources."""
     app_settings = settings or get_settings()
-    configure_logging(app_settings.log_level)
-    initialise_sentry(app_settings)
     engine = engine_factory(app_settings)
     session_factory = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
 
@@ -43,7 +41,7 @@ def create_app(
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-        logger.error(
+        logger.exception(
             "unhandled_request_error",
             http_method=request.method,
             http_path=request.url.path,
@@ -54,4 +52,7 @@ def create_app(
     return app
 
 
-app = create_app()
+settings = get_settings()
+configure_logging(settings.log_level)
+initialise_sentry(settings)
+app = create_app(settings)

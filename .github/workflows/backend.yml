@@ -2,13 +2,18 @@ name: Backend
 
 on:
   push:
+    branches:
+      - main
     paths:
-      - "backend/**"
-      - ".github/workflows/backend.yml"
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+
   pull_request:
+    branches:
+      - main
     paths:
-      - "backend/**"
-      - ".github/workflows/backend.yml"
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
 
 jobs:
   test:
@@ -20,13 +25,73 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: '3.13'
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.12.23"
+          version: '0.12.23'
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
       - run: uv sync --locked --extra dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest
+      - name: Build and smoke-test backend image
+        run: |
+          set -euo pipefail
+          compose_project="ppbc-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          network_name="${compose_project}-network"
+          postgres_name="${compose_project}-postgres"
+          image_name="${compose_project}:ci"
+          container_name="${compose_project}-api"
+          cleanup() {
+            docker rm -f "$container_name" >/dev/null 2>&1 || true
+            docker rm -f "$postgres_name" >/dev/null 2>&1 || true
+            docker network rm "$network_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create "$network_name"
+          docker run -d --name "$postgres_name" --network "$network_name" \
+            --network-alias postgres \
+            -e POSTGRES_DB=benefits \
+            -e POSTGRES_USER=benefits \
+            -e POSTGRES_PASSWORD=benefits \
+            --health-cmd='pg_isready -U benefits -d benefits' \
+            --health-interval=2s --health-timeout=3s --health-retries=15 \
+            postgres:16-alpine
+          for attempt in $(seq 1 30); do
+            postgres_health="$(docker inspect --format '{{.State.Health.Status}}' "$postgres_name")"
+            if [ "$postgres_health" = "healthy" ]; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs "$postgres_name"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          docker build -t "$image_name" .
+          docker run --rm --network "$network_name" \
+            -e DATABASE_URL='postgresql+psycopg://benefits:benefits@postgres:5432/benefits' \
+            "$image_name" alembic upgrade head
+          docker run -d --name "$container_name" --network "$network_name" \
+            -p 127.0.0.1::8000 \
+            -e DATABASE_URL='postgresql+psycopg://benefits:benefits@postgres:5432/benefits' \
+            "$image_name"
+          host_port="$(docker port "$container_name" 8000/tcp | awk -F: 'NR == 1 { print $NF }')"
+          health_url="http://127.0.0.1:${host_port}/health"
+          for attempt in $(seq 1 30); do
+            if response="$(curl --fail --silent "$health_url")"; then
+              if [ "$response" = '{"status":"ok"}' ]; then
+                exit 0
+              fi
+              echo "Unexpected health response: $response"
+              exit 1
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs "$container_name"
+              exit 1
+            fi
+            sleep 1
+          done
