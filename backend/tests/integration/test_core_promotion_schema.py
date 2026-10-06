@@ -89,7 +89,10 @@ def test_complete_graph_and_metadata(db_session: Session, graph: Promotion) -> N
     assert sum(v.retailer is None for v in promotion.variants) == 1
     for variant in promotion.variants:
         assert len(variant.product_links) == 2
-        assert variant.product_links[0].product.manufacturer == promotion.manufacturer
+        assert all(
+            link.product.manufacturer_id == promotion.manufacturer_id
+            for link in variant.product_links
+        )
         assert len(variant.benefits) == 3
         assert len(variant.requirements) == 6
     assert {link.role for link in promotion.source_links} == {
@@ -107,15 +110,15 @@ def test_complete_graph_and_metadata(db_session: Session, graph: Promotion) -> N
         for d in differences
         if not (d[0] == "remove_table" and d[1].name == "test_session_isolation_probe")
     ] == []
-    previous = promotion.updated_at
+    previous = datetime(2000, 1, 1, tzinfo=UTC)
+    promotion.updated_at = previous
+    db_session.flush()
     promotion.name = "Updated campaign"
     db_session.flush()
-    assert promotion.updated_at >= previous
+    assert promotion.updated_at > previous
 
 
-@pytest.mark.parametrize(
-    "status", ["discovered", "extracted", "review", "active", "expired", "archived"]
-)
+@pytest.mark.parametrize("status", ["discovered", "extracted", "review"])
 def test_lifecycle_can_retain_incomplete_records(db_session: Session, status: str) -> None:
     promotion = Promotion(
         manufacturer=Manufacturer(name="Example", slug="example"),
@@ -128,6 +131,16 @@ def test_lifecycle_can_retain_incomplete_records(db_session: Session, status: st
     assert promotion.status == status
     assert promotion.variants == []
     assert promotion.purchase_start_date is None
+
+
+@pytest.mark.parametrize("status", ["active", "expired", "archived"])
+def test_published_and_historical_status_values(
+    db_session: Session, graph: Promotion, status: str
+) -> None:
+    graph.status = status
+    db_session.flush()
+    db_session.refresh(graph)
+    assert graph.status == status
 
 
 @pytest.mark.parametrize(
