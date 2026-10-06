@@ -87,7 +87,10 @@ def test_retirement_preserves_entire_graph(db_session, graph, initial, target):
                 assert after["promotions"][0][index] == before["promotions"][0][index]
         repository = SqlAlchemyPromotionRepository(db_session)
         assert repository.get_promotion(identity).status == target
-        assert [p.id for p in repository.list_historical_promotions()] == [identity]
+        assert [p.id for p in repository.list_promotions([target])] == [identity]
+        assert [p.id for p in repository.list_historical_promotions()] == (
+            [identity] if target == S.EXPIRED else []
+        )
         assert repository.list_active_promotions() == []
         timestamp = loaded.updated_at
         assert not change_promotion_status(
@@ -128,10 +131,13 @@ def test_lookup_filters_order_and_no_read_time_expiration(db_session, graph):
     }
     assert repository.list_promotions([]) == []
     assert [p.status for p in repository.list_active_promotions()] == [S.ACTIVE]
-    assert {p.status for p in repository.list_historical_promotions()} == {S.EXPIRED, S.ARCHIVED}
+    assert {p.status for p in repository.list_historical_promotions()} == {S.EXPIRED}
     assert [p.status for p in repository.list_historical_promotions([S.EXPIRED])] == [S.EXPIRED]
-    with pytest.raises(ValueError):
-        repository.list_historical_promotions([S.REVIEW])
+    assert repository.list_historical_promotions([]) == []
+    assert [p.id for p in repository.list_promotions([S.ARCHIVED])] == [identities[S.ARCHIVED]]
+    for unsupported in (S.REVIEW, S.ARCHIVED):
+        with pytest.raises(ValueError, match="require expired"):
+            repository.list_historical_promotions([unsupported])
     with pytest.raises(ValueError):
         repository.list_promotions(["published"])
     db_session.expire_all()
@@ -255,3 +261,23 @@ def test_application_commit_is_visible_in_new_session(postgres_engine, migrated_
         with factory.begin() as session:
             session.delete(session.get(Promotion, identity))
             session.delete(session.get(Manufacturer, manufacturer_id))
+
+
+@pytest.mark.parametrize("initial", [S.DISCOVERED, S.EXTRACTED, S.REVIEW])
+def test_archived_candidate_is_retained_but_not_historical_published(db_session, initial):
+    candidate = Promotion(
+        manufacturer=Manufacturer(name="Candidate", slug="candidate"),
+        name="Abandoned candidate",
+        slug="abandoned",
+        status=initial,
+    )
+    db_session.add(candidate)
+    db_session.flush()
+    identity = candidate.id
+    assert change_promotion_status(partial(transaction, db_session), identity, S.ARCHIVED).changed
+    db_session.expunge_all()
+    repository = SqlAlchemyPromotionRepository(db_session)
+    assert repository.get_promotion(identity).status == S.ARCHIVED
+    assert [p.id for p in repository.list_promotions([S.ARCHIVED])] == [identity]
+    assert repository.list_historical_promotions() == []
+    assert repository.list_active_promotions() == []

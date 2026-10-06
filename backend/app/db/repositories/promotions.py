@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.application.promotions import PromotionPersistenceError, PromotionRecord
 from app.db.models import Promotion
-from app.domain.promotion_lifecycle import HISTORICAL_STATUSES, PromotionStatus
+from app.domain.promotion_lifecycle import HISTORICAL_PUBLISHED_STATUSES, PromotionStatus
 
 
 def _record(row: Promotion) -> PromotionRecord:
@@ -65,12 +65,12 @@ class SqlAlchemyPromotionRepository:
         self, statuses: Iterable[PromotionStatus] | None = None
     ) -> list[PromotionRecord]:
         selected = (
-            HISTORICAL_STATUSES
+            HISTORICAL_PUBLISHED_STATUSES
             if statuses is None
             else frozenset(PromotionStatus(s) for s in statuses)
         )
-        if not selected <= HISTORICAL_STATUSES:
-            raise ValueError("Historical queries require expired or archived states")
+        if not selected <= HISTORICAL_PUBLISHED_STATUSES:
+            raise ValueError("Historical published queries require expired states")
         return self.list_promotions(selected)
 
     def update_status(

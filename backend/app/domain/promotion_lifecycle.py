@@ -14,7 +14,8 @@ class PromotionStatus(StrEnum):
 
 
 S = PromotionStatus
-HISTORICAL_STATUSES = frozenset({S.EXPIRED, S.ARCHIVED})
+# Only expired establishes prior publication; archived may also be an abandoned candidate.
+HISTORICAL_PUBLISHED_STATUSES = frozenset({S.EXPIRED})
 ALLOWED_TRANSITIONS = MappingProxyType(
     {
         S.DISCOVERED: frozenset({S.EXTRACTED, S.ARCHIVED}),
