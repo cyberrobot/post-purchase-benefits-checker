@@ -1,0 +1,24 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+build
+coverage
+.next
+out
+
+# Python environments / caches
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+
+# Generated / lock files
+backend/uv.lock
+
+# Minified/generated assets
+*.min.js
+*.min.css
