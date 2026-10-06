@@ -8,6 +8,7 @@ from typing import Protocol
 from uuid import UUID
 
 from app.domain.promotion_lifecycle import PromotionStatus, validate_transition
+from app.domain.promotion_provenance import PromotionSourceRecord, validate_publication_provenance
 
 
 class PromotionNotFound(LookupError):
@@ -52,6 +53,7 @@ class PromotionRepository(Protocol):
     def list_historical_promotions(
         self, statuses: Iterable[PromotionStatus] | None = None
     ) -> list[PromotionRecord]: ...
+    def list_promotion_sources(self, promotion_id: UUID) -> list[PromotionSourceRecord]: ...
     def update_status(
         self, promotion_id: UUID, expected: PromotionStatus, target: PromotionStatus
     ) -> bool: ...
@@ -71,6 +73,8 @@ def change_promotion_status(
             raise PromotionNotFound(promotion_id)
         previous = promotion.status
         changed = validate_transition(previous, target)
+        if changed and target == PromotionStatus.ACTIVE:
+            validate_publication_provenance(repository.list_promotion_sources(promotion_id))
         if changed and not repository.update_status(promotion_id, previous, target):
             current = repository.get_promotion(promotion_id)
             if current is None or current.status != target:

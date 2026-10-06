@@ -14,7 +14,7 @@ from app.application.promotions import (
     PromotionPersistenceError,
     change_promotion_status,
 )
-from app.db.models import Manufacturer, Promotion
+from app.db.models import Manufacturer, Promotion, PromotionSource, Source
 from app.db.repositories.promotions import SqlAlchemyPromotionRepository, promotion_transaction
 from app.domain.promotion_lifecycle import InvalidPromotionTransition
 from app.domain.promotion_lifecycle import PromotionStatus as S
@@ -248,6 +248,20 @@ def test_application_commit_is_visible_in_new_session(postgres_engine, migrated_
                 status=S.REVIEW,
             )
         )
+    with factory.begin() as session:
+        for role in ("primary", "claim"):
+            session.add(
+                PromotionSource(
+                    promotion_id=identity,
+                    role=role,
+                    source=Source(
+                        url="https://example.test/promo",
+                        source_type="web_page",
+                        retrieved_at=datetime(2026, 10, 6, tzinfo=UTC),
+                        verified_at=datetime(2026, 10, 6, tzinfo=UTC),
+                    ),
+                )
+            )
     try:
         transaction_factory = partial(promotion_transaction, factory)
         assert change_promotion_status(transaction_factory, identity, S.ACTIVE).changed
@@ -259,7 +273,17 @@ def test_application_commit_is_visible_in_new_session(postgres_engine, migrated_
             assert repository.get_promotion(identity).status == S.ACTIVE
     finally:
         with factory.begin() as session:
+            source_rows = list(
+                session.scalars(
+                    select(Source)
+                    .join(PromotionSource)
+                    .where(PromotionSource.promotion_id == identity)
+                )
+            )
             session.delete(session.get(Promotion, identity))
+            session.flush()
+            for source in source_rows:
+                session.delete(source)
             session.delete(session.get(Manufacturer, manufacturer_id))
 
 

@@ -9,8 +9,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.application.promotions import PromotionPersistenceError, PromotionRecord
-from app.db.models import Promotion
+from app.db.models import Promotion, PromotionSource, Source
 from app.domain.promotion_lifecycle import HISTORICAL_PUBLISHED_STATUSES, PromotionStatus
+from app.domain.promotion_provenance import PromotionSourceRecord
 
 
 def _record(row: Promotion) -> PromotionRecord:
@@ -72,6 +73,24 @@ class SqlAlchemyPromotionRepository:
         if not selected <= HISTORICAL_PUBLISHED_STATUSES:
             raise ValueError("Historical published queries require expired states")
         return self.list_promotions(selected)
+
+    def list_promotion_sources(self, promotion_id: UUID) -> list[PromotionSourceRecord]:
+        try:
+            rows = self.session.execute(
+                select(
+                    Source.id,
+                    PromotionSource.role,
+                    Source.url,
+                    Source.source_type,
+                    Source.retrieved_at,
+                    Source.verified_at,
+                )
+                .join(PromotionSource, PromotionSource.source_id == Source.id)
+                .where(PromotionSource.promotion_id == promotion_id)
+            )
+            return [PromotionSourceRecord(*row) for row in rows]
+        except SQLAlchemyError:
+            raise PromotionPersistenceError("Promotion provenance query failed") from None
 
     def update_status(
         self, promotion_id: UUID, expected: PromotionStatus, target: PromotionStatus

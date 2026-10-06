@@ -96,8 +96,9 @@ archives from never-published archives requires future publication history/versi
 
 Retirement updates status and the normal update timestamp, preserving dates, graph,
 references, and provenance. No reads or startup paths expire promotions automatically.
-This internal lifecycle operation does not validate publication completeness; callers
-must establish that separately before requesting review → active. No transport API,
+The review → active transition validates source provenance in the same transaction
+before attempting the conditional status update. Broader publication completeness
+(product applicability, benefits, dates, and eligibility rules) remains future work. No transport API,
 new migration, audit log, or versioning workflow is introduced.
 
 ## Benefit domain model
@@ -114,3 +115,27 @@ compose with this common value. Adding a classification requires an explicit enu
 member, a new migration updating `ck_benefits_type`, and domain/PostgreSQL tests.
 The domain model is separate from `app.db.models.Benefit`; no schema or transport
 change is introduced. See the [PR 5 specification](../.codex/tasks/pr-5-benefit-model.md).
+
+
+## Publication source provenance
+
+`app.domain.promotion_provenance` defines canonical `SourceType` and `SourceRole`
+values, immutable `PromotionSourceRecord` evidence, and a derived `PublishedProvenance`
+view. `list_promotion_sources(id)` loads normalized evidence through the application
+repository boundary without returning ORM objects or duplicating persisted fields.
+
+Publication requires exactly one primary and one claim association. Both require
+an absolute HTTP(S) URL, a supported classification, and timezone-aware retrieval
+and verification timestamps with verification at or after retrieval. Multiple primary
+or claim associations are ambiguous, even when one is incomplete; terms/supporting
+sources never substitute. Repeated retrievals and equal URL values remain allowed.
+URLs are parsed locally without rewriting the stored evidence, fetching content,
+resolving DNS, or inferring manufacturer ownership. The curated role and recorded
+verification supply official provenance; this gate does not independently verify it.
+
+`PromotionProvenanceError.reason_code` identifies expected publication rejection.
+Missing, ambiguous, unverified, invalid URL, unsupported classification, and invalid
+timestamp failures remain distinct from lifecycle, conflict, and safe persistence
+errors. Rejection performs no lifecycle write, and correcting evidence allows retry.
+Other transitions and same-state requests do not load or revalidate provenance.
+Expiry and archival preserve evidence. No migration or transport change is required.
