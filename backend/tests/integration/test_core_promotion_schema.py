@@ -21,6 +21,8 @@ from app.db.models import (
     Retailer,
     Source,
 )
+from app.domain.benefits import Benefit as DomainBenefit
+from app.domain.benefits import BenefitType
 
 pytestmark = pytest.mark.integration
 NOW = datetime(2026, 10, 6, tzinfo=UTC)
@@ -116,6 +118,43 @@ def test_complete_graph_and_metadata(db_session: Session, graph: Promotion) -> N
     promotion.name = "Updated campaign"
     db_session.flush()
     assert promotion.updated_at > previous
+
+
+@pytest.mark.parametrize("benefit_type", list(BenefitType))
+def test_domain_benefit_round_trip(
+    db_session: Session, graph: Promotion, benefit_type: BenefitType
+) -> None:
+    benefit = DomainBenefit(benefit_type, "Benefit display name", "Benefit description")
+    variant_id = graph.variants[0].id
+    row = Benefit(
+        promotion_variant_id=variant_id,
+        benefit_type=benefit.benefit_type.value,
+        name=benefit.name,
+        description=benefit.description,
+    )
+    db_session.add(row)
+    db_session.flush()
+    identity = row.id
+    db_session.expire_all()
+    stored = db_session.get(Benefit, identity)
+    assert stored is not None
+    assert stored.promotion_variant_id == variant_id
+    assert stored.benefit_type == benefit_type.value
+    assert (
+        DomainBenefit(BenefitType(stored.benefit_type), stored.name, stored.description) == benefit
+    )
+
+
+@pytest.mark.parametrize("value", ["rebate", "gift", "warranty", "CASHBACK", "other", ""])
+def test_unsupported_benefit_classification_rejected(
+    db_session: Session, graph: Promotion, value: str
+) -> None:
+    with pytest.raises(IntegrityError) as error, db_session.begin_nested():
+        db_session.add(
+            Benefit(promotion_variant_id=graph.variants[0].id, benefit_type=value, name="Benefit")
+        )
+        db_session.flush()
+    assert error.value.orig.diag.constraint_name == "ck_benefits_type"
 
 
 @pytest.mark.parametrize("status", ["discovered", "extracted", "review"])

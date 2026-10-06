@@ -99,3 +99,18 @@ references, and provenance. No reads or startup paths expire promotions automati
 This internal lifecycle operation does not validate publication completeness; callers
 must establish that separately before requesting review → active. No transport API,
 new migration, audit log, or versioning workflow is introduced.
+
+## Benefit domain model
+
+`app.domain.benefits.Benefit` is an immutable value containing `benefit_type`, `name`,
+and optional `description`. `BenefitType` defines the stable, case-sensitive values
+`cashback`, `extended_warranty`, and `free_gift`, matching the existing persistence
+constraint. Construction validates classification and text types; unsupported
+classifications raise `ValueError` without a fallback.
+
+Names and descriptions are display text, not a source for calculating reward amounts,
+warranty durations, or eligibility. Future structured reward/value models should
+compose with this common value. Adding a classification requires an explicit enum
+member, a new migration updating `ck_benefits_type`, and domain/PostgreSQL tests.
+The domain model is separate from `app.db.models.Benefit`; no schema or transport
+change is introduced. See the [PR 5 specification](../.codex/tasks/pr-5-benefit-model.md).
