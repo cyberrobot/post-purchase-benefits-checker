@@ -19,6 +19,8 @@ from app.domain.promotion_lifecycle import (
 from app.domain.promotion_lifecycle import (
     PromotionStatus as S,
 )
+from app.domain.promotion_provenance import PromotionProvenanceError
+from tests.unit.test_promotion_provenance import sources
 
 ALLOWED = {
     (S.DISCOVERED, S.EXTRACTED),
@@ -65,6 +67,8 @@ class FakeRepository:
         self.status, self.stale, self.missing, self.failure = status, stale, missing, failure
         self.writes = 0
         self.committed = False
+        self.sources = sources()
+        self.source_reads = 0
 
     def get_promotion(self, identity):
         if self.missing:
@@ -73,6 +77,10 @@ class FakeRepository:
         return PromotionRecord(
             identity, uuid4(), "Campaign", "campaign", self.status, None, None, now, now
         )
+
+    def list_promotion_sources(self, identity):
+        self.source_reads += 1
+        return self.sources
 
     def update_status(self, identity, expected, target):
         self.writes += 1
@@ -100,6 +108,7 @@ def test_application_no_op(status):
     repository = FakeRepository(status)
     result = change_promotion_status(repository.transaction, uuid4(), status)
     assert not result.changed
+    assert repository.source_reads == 0
     assert repository.writes == 0
     assert repository.committed
 
@@ -141,3 +150,35 @@ def test_application_errors(case, error):
         )
     assert repository.status == S.ACTIVE
     assert not repository.committed
+
+
+def test_publication_rejection_precedes_write_and_retry_loads_current_sources():
+    repository = FakeRepository(S.REVIEW)
+    repository.sources = []
+    with pytest.raises(PromotionProvenanceError):
+        change_promotion_status(repository.transaction, uuid4(), S.ACTIVE)
+    assert repository.writes == 0
+    assert repository.status == S.REVIEW
+    assert not repository.committed
+    repository.sources = sources()
+    assert change_promotion_status(repository.transaction, uuid4(), S.ACTIVE).changed
+    assert repository.source_reads == 2
+
+
+@pytest.mark.parametrize("winner", [S.ACTIVE, S.ARCHIVED])
+def test_publication_stale_reconciliation(winner):
+    repository = FakeRepository(S.REVIEW, stale=winner)
+    if winner == S.ACTIVE:
+        assert not change_promotion_status(repository.transaction, uuid4(), S.ACTIVE).changed
+    else:
+        with pytest.raises(PromotionConflict):
+            change_promotion_status(repository.transaction, uuid4(), S.ACTIVE)
+    assert repository.source_reads == 1
+
+
+@pytest.mark.parametrize("previous,target", sorted(ALLOWED - {(S.REVIEW, S.ACTIVE)}))
+def test_other_transitions_do_not_read_incomplete_provenance(previous, target):
+    repository = FakeRepository(previous)
+    repository.sources = []
+    assert change_promotion_status(repository.transaction, uuid4(), target).changed
+    assert repository.source_reads == 0
