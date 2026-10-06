@@ -10,8 +10,24 @@ from app.db.models.core import (
     Retailer,
     Source,
 )
+from app.db.models.identity import (
+    ManufacturerAlias,
+    ProductModelAlias,
+    RetailerAlias,
+    RetailerGroup,
+    RetailerGroupAlias,
+    RetailerGroupMember,
+    RetailerProductSku,
+)
 
 __all__ = [
+    "ManufacturerAlias",
+    "ProductModelAlias",
+    "RetailerAlias",
+    "RetailerGroup",
+    "RetailerGroupAlias",
+    "RetailerGroupMember",
+    "RetailerProductSku",
     "Benefit",
     "Manufacturer",
     "Product",
