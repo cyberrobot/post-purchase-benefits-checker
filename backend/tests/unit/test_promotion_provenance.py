@@ -71,6 +71,8 @@ def test_required_roles(role, case):
         "https://[bad",
         "https://example.test:bad",
         "https://exa mple.test",
+        "https://user@example.com/promo",
+        "https://user:password@example.com/promo",
     ],
 )
 def test_invalid_urls(index, url):

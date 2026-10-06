@@ -74,6 +74,8 @@ def _validate_source(source: PromotionSourceRecord) -> None:
                 and not any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url)
                 and parsed.scheme in {"http", "https"}
                 and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
                 and parsed.port != 0
             )
         except ValueError:
