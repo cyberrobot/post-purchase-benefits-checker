@@ -56,3 +56,12 @@ docker run --rm -e DATABASE_URL='postgresql+psycopg://...' -p 8000:8000 benefits
 | `DATABASE_URL` | Yes      | PostgreSQL SQLAlchemy URL using the psycopg 3 driver            |
 | `LOG_LEVEL`    | No       | Standard log level (default: `INFO`)                            |
 | `SENTRY_DSN`   | No       | Enables Sentry when set; PII and local variables are disabled   |
+
+## Future publication validation
+
+Every product associated with a promotion variant must belong to the same manufacturer
+as the parent promotion. PR 3's foreign keys enforce reference existence, but do not
+enforce this cross-table invariant. A later domain/application publication boundary
+must enforce it before activation, together with promotion completeness validation.
+Candidate states (`discovered`, `extracted`, and `review`) may remain incomplete;
+`active` represents validated/published data. Publication validation is outside PR 3.
