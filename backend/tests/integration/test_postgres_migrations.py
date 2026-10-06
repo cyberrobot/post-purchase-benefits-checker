@@ -27,9 +27,29 @@ def test_fresh_postgres_connectivity_and_migration_head(
     with postgres_engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0001_initial_baseline"
+            == "0002_core_promotion_schema"
         )
-    assert not set(Base.metadata.tables) & set(inspect(postgres_engine).get_table_names())
+    tables = set(inspect(postgres_engine).get_table_names())
+    assert {
+        "manufacturers",
+        "products",
+        "retailers",
+        "promotions",
+        "sources",
+        "promotion_sources",
+    } <= tables
+    assert (
+        not {
+            "manufacturer_aliases",
+            "product_model_aliases",
+            "retailer_aliases",
+            "retailer_product_skus",
+            "retailer_groups",
+            "retailer_group_aliases",
+            "retailer_group_members",
+        }
+        & tables
+    )
     assert "test_session_isolation_probe" in inspect(postgres_engine).get_table_names()
     subprocess.run(["alembic", "upgrade", "head"], check=True, env=migration_environment)
     with postgres_engine.connect() as connection:
@@ -37,6 +57,22 @@ def test_fresh_postgres_connectivity_and_migration_head(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
 
-    assert revision == "0002_core_promotion_schema"
-    assert final_revision == "0002_core_promotion_schema"
+    assert revision == "0003_identity_normalisation"
+    assert final_revision == "0003_identity_normalisation"
+    assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())
+
+    # Retain the original core-schema downgrade coverage as well as the new -1 round trip.
+    subprocess.run(
+        ["alembic", "downgrade", "0001_initial_baseline"],
+        check=True,
+        env=migration_environment,
+    )
+    assert not set(Base.metadata.tables) & set(inspect(postgres_engine).get_table_names())
+    assert "test_session_isolation_probe" in inspect(postgres_engine).get_table_names()
+    subprocess.run(["alembic", "upgrade", "head"], check=True, env=migration_environment)
+    with postgres_engine.connect() as connection:
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0003_identity_normalisation"
+        )
     assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())

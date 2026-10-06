@@ -139,3 +139,55 @@ timestamp failures remain distinct from lifecycle, conflict, and safe persistenc
 errors. Rejection performs no lifecycle write, and correcting evidence allows retry.
 Other transitions and same-state requests do not load or revalidate provenance.
 Expiry and archival preserve evidence. No migration or transport change is required.
+
+## Canonical purchase identity resolution
+
+`app.domain.identity_normalisation` provides NFKC/case-fold normalisation: human
+text collapses whitespace, while model/SKU identifiers remove whitespace. Both
+preserve punctuation and reject non-string, empty, oversized, or unsupported
+control-character input. Raw and normalised inputs are bounded to 255 characters;
+Unicode expansion is checked after normalisation too.
+
+Use `IdentityResolver(SqlAlchemyIdentityRepository(session))` for internal
+read-only reference resolution. The caller owns the session/transaction; resolver
+queries suppress autoflush and never create aliases or other reference data.
+`resolve_manufacturer`, `resolve_retailer`, and `resolve_retailer_group` combine
+canonical names/slugs with curated aliases. `resolve_model` requires a canonical
+manufacturer UUID; `resolve_sku` requires a retailer UUID and may also constrain
+manufacturer. `resolve_product(value, manufacturer_id=..., retailer_id=...)`
+combines model and SKU candidates for a single model-or-SKU field, requiring at
+least one context. It excludes SKU candidates from another supplied manufacturer.
+
+`MatchResult` exposes `status` (`matched`, `not_found`, `ambiguous`), `canonical_id`
+(only for one distinct candidate), and sorted, deduplicated UUID `candidate_ids`.
+Results do not depend on database row order. Invalid input fails before queries;
+database failures or invalid persisted canonical text raise a safe
+`IdentityPersistenceError`, never a guessed match. Null/blank legacy model numbers
+remain persisted but do not supply an accepted identifier.
+
+`resolve_purchase_channel` is a domain-only operation. It resolves online/web/website
+and in_store/in-store/instore/store/shop, returning `ChannelMatchResult` with a
+canonical `PurchaseChannel` or `not_found`. Unsupported values have no fallback.
+
+Migration `0003_identity_normalisation` adds manufacturer, retailer, product-model,
+and retailer-group aliases, retailer product SKUs, retailer groups and memberships.
+Group aliases are consumed by raw group-name resolution. No canonical display-field
+normalised columns, seeded catalogue, or alias backfill is required. Existing
+canonical IDs, model numbers, promotion state/graph and provenance are retained.
+Apply the migration before using the new repository.
+
+Curated ORM alias/SKU writes derive their normalised key on insert/update using the
+domain functions, including when the raw value changes. Direct SQL and bulk writes
+bypass these hooks and must explicitly supply keys from those same functions. Such
+writes belong to trusted reference-data maintenance, not runtime matching. PostgreSQL
+bounds/non-empty checks, composite primary keys, foreign keys and lookup indexes
+protect integrity. A duplicate per-owner alias, identical SKU mapping, or membership
+fails with a uniqueness violation; the caller owns rollback/savepoint recovery.
+Collisions across distinct identities remain representable. Alias owners cascade
+owned aliases; SKU references restrict canonical retailer/product deletion;
+memberships cascade on parent deletion without deleting other canonical entities.
+
+`retailer_group_ids` returns zero/one/multiple current group UUIDs. Membership has
+no historical effective dates and supplies no promotion eligibility inference.
+All resolution remains separate from purchase transports, promotion selection,
+eligibility and ingestion. No external calls, configuration or dependencies are added.
