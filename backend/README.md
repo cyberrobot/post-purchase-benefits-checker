@@ -65,3 +65,30 @@ enforce this cross-table invariant. A later domain/application publication bound
 must enforce it before activation, together with promotion completeness validation.
 Candidate states (`discovered`, `extracted`, and `review`) may remain incomplete;
 `active` represents validated/published data. Publication validation is outside PR 3.
+
+## Promotion lifecycle and history
+
+`app.domain.promotion_lifecycle.PromotionStatus` defines the six existing persisted
+states. Candidate transitions are discovered → extracted → review; review may return
+to extracted or move to active. Active may expire; any non-archived state may archive.
+Historical states cannot reactivate. Same-state requests are no-ops.
+
+Call `change_promotion_status(partial(promotion_transaction, session_factory), id, status)`
+from the application layer. The operation owns a dedicated session and transaction,
+commits before returning, and rolls back on failure. The repository conditionally
+updates the expected state; a competing write is reconciled as an already-completed
+no-op or `PromotionConflict`. Not-found, invalid-transition, and persistence failures
+are distinct exceptions. Do not share a session containing pending ORM changes.
+
+`SqlAlchemyPromotionRepository` returns immutable application records rather than ORM
+objects. Identity lookup includes every state. General queries accept explicit state
+filters; active queries select only active, historical queries select expired/archived
+and optionally a narrower subset. Results order by `created_at DESC, id ASC`.
+The complete retained graph remains accessible through the existing persistence models.
+Archival can include discarded candidates, so archival alone does not prove publication.
+
+Retirement updates status and the normal update timestamp, preserving dates, graph,
+references, and provenance. No reads or startup paths expire promotions automatically.
+This internal lifecycle operation does not validate publication completeness; callers
+must establish that separately before requesting review → active. No transport API,
+new migration, audit log, or versioning workflow is introduced.
