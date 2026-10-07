@@ -2,14 +2,22 @@
 
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
+from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.application.promotion_candidate_matching import PromotionCandidate
 from app.application.promotions import PromotionPersistenceError, PromotionRecord
-from app.db.models import Promotion, PromotionSource, Source
+from app.db.models import (
+    Promotion,
+    PromotionSource,
+    PromotionVariant,
+    PromotionVariantProduct,
+    Source,
+)
 from app.domain.promotion_lifecycle import HISTORICAL_PUBLISHED_STATUSES, PromotionStatus
 from app.domain.promotion_provenance import PromotionSourceRecord
 
@@ -29,10 +37,63 @@ def _record(row: Promotion) -> PromotionRecord:
 
 
 class SqlAlchemyPromotionRepository:
-    """Use a dedicated, transaction-owned session; do not pass pending ORM changes."""
+    """Lifecycle methods need a dedicated session; candidate reads suppress autoflush."""
 
     def __init__(self, session: Session):
         self.session = session
+
+    def find_promotion_candidates(
+        self,
+        *,
+        manufacturer_id: UUID,
+        product_id: UUID,
+        retailer_id: UUID,
+        purchase_date: date,
+    ) -> tuple[PromotionCandidate, ...]:
+        """Caller-owned read transaction; only scalar candidate fields, with no autoflush."""
+        query = (
+            select(
+                Promotion.id,
+                PromotionVariant.id,
+                Promotion.status,
+                PromotionVariant.retailer_id,
+                Promotion.purchase_start_date,
+                Promotion.purchase_end_date,
+            )
+            .join(PromotionVariant, PromotionVariant.promotion_id == Promotion.id)
+            .join(
+                PromotionVariantProduct,
+                PromotionVariantProduct.promotion_variant_id == PromotionVariant.id,
+            )
+            .where(
+                Promotion.manufacturer_id == manufacturer_id,
+                Promotion.status.in_([PromotionStatus.ACTIVE, *HISTORICAL_PUBLISHED_STATUSES]),
+                PromotionVariantProduct.product_id == product_id,
+                or_(
+                    PromotionVariant.retailer_id.is_(None),
+                    PromotionVariant.retailer_id == retailer_id,
+                ),
+                or_(
+                    Promotion.purchase_start_date.is_(None),
+                    Promotion.purchase_start_date <= purchase_date,
+                ),
+                or_(
+                    Promotion.purchase_end_date.is_(None),
+                    Promotion.purchase_end_date >= purchase_date,
+                ),
+            )
+            .order_by(Promotion.created_at.desc(), Promotion.id, PromotionVariant.id)
+        )
+        try:
+            with self.session.no_autoflush:
+                return tuple(
+                    PromotionCandidate(
+                        row[0], row[1], PromotionStatus(row[2]), row[3], row[4], row[5]
+                    )
+                    for row in self.session.execute(query)
+                )
+        except SQLAlchemyError:
+            raise PromotionPersistenceError("Promotion candidate query failed") from None
 
     def get_promotion(self, promotion_id: UUID) -> PromotionRecord | None:
         try:

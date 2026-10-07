@@ -208,5 +208,32 @@ Wrong types raise `TypeError`; invalid values raise `ValueError`.
 
 Construction is pure and independent of persistence, network services, and transport
 frameworks. Future REST/MCP adapters should parse wire values (including ISO full-date
-`YYYY-MM-DD`) into this shared contract. Identity-resolution orchestration, eligibility,
-result contracts, and transport endpoints remain future work.
+`YYYY-MM-DD`) into this shared contract. Detailed eligibility and transport endpoints
+remain future work.
+
+## Promotion candidate matching
+
+Call `match_promotion_candidates(request, identity_resolver, repository)` from
+`app.application.promotion_candidate_matching`, using the existing `IdentityResolver`
+and `SqlAlchemyPromotionRepository(session)`. It resolves brand, retailer, then the
+model-or-SKU field with both canonical manufacturer and retailer contexts. Raw request
+fields remain unchanged. `UnresolvedPurchaseIdentity` identifies the failed request
+field, PR 7 match status, and deterministic candidate IDs; it stops later lookups.
+Identity/promotion persistence failures propagate as safe errors, never empty results.
+
+Successful `PromotionCandidateSet` results contain immutable `ResolvedPurchaseIdentity`
+UUIDs and a tuple of `PromotionCandidate` variant references. An empty tuple means all
+identities resolved but no published variant passed the broad filters. Candidates are
+potential applicability only, without an eligible/ineligible classification.
+
+The adapter filters in PostgreSQL by manufacturer, explicit product association,
+exact retailer or retailer-independent (`NULL`) variant, `active`/`expired` status,
+and inclusive known purchase-date bounds. Missing bounds remain open at this stage;
+no product links never means all products. Archived and unpublished records are excluded.
+All matching variants remain separate, ordered by promotion `created_at DESC`,
+promotion ID, then variant ID. Reads select only candidate fields and suppress autoflush;
+the caller owns the read session/transaction. No locks or writes are introduced.
+
+Price, claim windows, benefits, requirements, channels, and retailer groups do not
+affect candidate selection. Detailed eligibility evaluation is later work. No schema,
+public REST/MCP contract, dependency, or configuration changes are required.
