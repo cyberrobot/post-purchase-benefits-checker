@@ -34,6 +34,8 @@ class PromotionRecord:
     purchase_end_date: date | None
     created_at: datetime
     updated_at: datetime
+    claim_start_date: date | None = None
+    claim_end_date: date | None = None
 
 
 @dataclass(frozen=True)

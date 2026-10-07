@@ -33,6 +33,8 @@ def _record(row: Promotion) -> PromotionRecord:
         row.purchase_end_date,
         row.created_at,
         row.updated_at,
+        claim_start_date=row.claim_start_date,
+        claim_end_date=row.claim_end_date,
     )
 
 

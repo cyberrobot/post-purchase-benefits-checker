@@ -299,3 +299,28 @@ or raw purchase payloads. Wrong types raise `TypeError`; an empty result reason
 tuple raises `ValueError`. Candidate matching and application/transport contracts
 remain unchanged; purchase-check orchestration and claim-window evaluation are
 future work.
+
+
+## Fixed claim windows
+
+`app.domain.claim_windows.FixedClaimWindow(start_date, end_date)` holds a complete,
+immutable pair of calendar dates. Construction rejects timestamps, wrong types,
+and inverted bounds; a one-day window is valid. Call
+`evaluate_fixed_claim_window(window, evaluation_date)` with an explicit calendar date.
+Both bounds are inclusive: before opening returns PR 11 `not_yet_open`, opening
+through deadline returns `open`, and after deadline returns `expired`. The immutable
+`ClaimWindowEvaluation` retains canonical `ClaimWindowStatus`, `opens_on`, and
+`deadline_on`. No system clock, purchase date, or lifecycle state is used.
+
+Migration `0004_fixed_claim_windows` adds nullable PostgreSQL `DATE` columns
+`promotions.claim_start_date` and `promotions.claim_end_date`. The
+`ck_promotions_claim_dates_complete` and `ck_promotions_claim_dates` checks enforce
+both absent or both present, and ordered bounds. Existing rows retain `NULL`/`NULL`
+without backfill or defaults. Apply the migration before deploying code that reads
+the fields. Downgrade removes the checks and columns, discarding configured claim dates.
+
+`PromotionRecord` and promotion repository reads preserve both fields; absent dates
+represent no fixed definition and supply no claim status. Construct a domain window
+only when both dates exist. Relative/delayed windows, publication completeness,
+purchase-check orchestration, and transport contracts remain future work. Claim
+expiry never changes promotion lifecycle or candidate filtering.
