@@ -628,8 +628,21 @@ def test_upgrade_preserves_existing_graph_and_round_trip(postgres_engine):
         command.upgrade(config, "0003_identity_normalisation")
         for model, before in snapshot.items():
             assert connection.execute(select(historical_tables[model])).all() == before
-        old_tables = {model.__tablename__ for model, _ in records}
-        for table_name in set(Base.metadata.tables) - old_tables:
+        # This historical revision creates only identity tables. Later reward
+        # tables are absent here and belong to their own migration tests.
+        identity_tables = {
+            model.__tablename__
+            for model in (
+                ManufacturerAlias,
+                ProductModelAlias,
+                RetailerAlias,
+                RetailerProductSku,
+                RetailerGroup,
+                RetailerGroupAlias,
+                RetailerGroupMember,
+            )
+        }
+        for table_name in identity_tables:
             assert (
                 connection.scalar(
                     select(func.count()).select_from(Base.metadata.tables[table_name])

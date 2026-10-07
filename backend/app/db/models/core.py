@@ -1,6 +1,7 @@
 """Core promotion persistence mappings; no eligibility or publication behaviour."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -9,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -65,6 +67,9 @@ class Product(Identity, Timestamps, Base):
     slug: Mapped[str] = mapped_column(String(255))
     model_number: Mapped[str | None] = mapped_column(String(255))
     manufacturer: Mapped["Manufacturer"] = relationship(back_populates="products")
+    reward_values: Mapped[list["BenefitProductRewardValue"]] = relationship(
+        back_populates="product", passive_deletes="all"
+    )
     variant_links: Mapped[list["PromotionVariantProduct"]] = relationship(
         back_populates="product", passive_deletes="all"
     )
@@ -179,6 +184,64 @@ class Benefit(Identity, Timestamps, Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     variant: Mapped["PromotionVariant"] = relationship(back_populates="benefits")
+
+    reward: Mapped["BenefitReward | None"] = relationship(
+        back_populates="benefit", passive_deletes="all"
+    )
+
+
+class BenefitReward(Base):
+    __tablename__ = "benefit_rewards"
+    __table_args__ = (
+        CheckConstraint(
+            "reward_type IN ('fixed_amount','percentage','product_specific')",
+            name="ck_benefit_rewards_type",
+        ),
+        CheckConstraint(
+            "(reward_type = 'fixed_amount' AND fixed_amount IS NOT NULL AND percentage IS NULL) OR "
+            "(reward_type = 'percentage' AND fixed_amount IS NULL AND percentage IS NOT NULL) OR "
+            "(reward_type = 'product_specific' AND fixed_amount IS NULL AND percentage IS NULL)",
+            name="ck_benefit_rewards_shape",
+        ),
+        CheckConstraint(
+            "fixed_amount > 0 AND fixed_amount < 'Infinity'::numeric AND scale(fixed_amount) <= 2",
+            name="ck_benefit_rewards_amount",
+        ),
+        CheckConstraint(
+            "percentage > 0 AND percentage <= 100 AND scale(percentage) <= 4",
+            name="ck_benefit_rewards_percentage",
+        ),
+    )
+    benefit_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benefits.id", ondelete="CASCADE"), primary_key=True
+    )
+    reward_type: Mapped[str] = mapped_column(String(32))
+    # Unconstrained NUMERIC preserves supplied scale before CHECK validation.
+    fixed_amount: Mapped[Decimal | None] = mapped_column(Numeric())
+    percentage: Mapped[Decimal | None] = mapped_column(Numeric())
+    benefit: Mapped[Benefit] = relationship(back_populates="reward")
+    product_values: Mapped[list["BenefitProductRewardValue"]] = relationship(
+        back_populates="reward", passive_deletes="all"
+    )
+
+
+class BenefitProductRewardValue(Base):
+    __tablename__ = "benefit_product_reward_values"
+    __table_args__ = (
+        CheckConstraint(
+            "amount > 0 AND amount < 'Infinity'::numeric AND scale(amount) <= 2",
+            name="ck_benefit_product_reward_values_amount",
+        ),
+    )
+    benefit_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benefit_rewards.benefit_id", ondelete="CASCADE"), primary_key=True
+    )
+    product_id: Mapped[UUID] = mapped_column(
+        ForeignKey("products.id", ondelete="RESTRICT"), primary_key=True, index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric())
+    reward: Mapped[BenefitReward] = relationship(back_populates="product_values")
+    product: Mapped[Product] = relationship(back_populates="reward_values")
 
 
 class Requirement(Identity, Timestamps, Base):

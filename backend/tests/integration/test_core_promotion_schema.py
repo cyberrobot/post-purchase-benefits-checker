@@ -1,16 +1,20 @@
+import re
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.db.models import (
     Benefit,
+    BenefitProductRewardValue,
+    BenefitReward,
     Manufacturer,
     Product,
     Promotion,
@@ -25,6 +29,14 @@ from app.domain.benefits import Benefit as DomainBenefit
 from app.domain.benefits import BenefitType
 from app.domain.requirements import Requirement as DomainRequirement
 from app.domain.requirements import RequirementType
+from app.domain.rewards import (
+    FixedAmountReward,
+    PercentageReward,
+    ProductRewardValue,
+    ProductSpecificReward,
+    RewardType,
+    calculate_reward,
+)
 
 pytestmark = pytest.mark.integration
 NOW = datetime(2026, 10, 6, tzinfo=UTC)
@@ -398,3 +410,252 @@ def test_scoped_identifiers_can_repeat(db_session: Session, graph: Promotion) ->
         ]
     )
     db_session.flush()
+
+
+@pytest.mark.parametrize("reward_type", list(RewardType))
+def test_reward_round_trip(db_session: Session, graph: Promotion, reward_type: RewardType) -> None:
+    benefit = graph.variants[0].benefits[0]
+    products = [link.product for link in graph.variants[0].product_links]
+    assert benefit.reward is None
+    row = BenefitReward(reward_type=reward_type.value)
+    if reward_type is RewardType.FIXED_AMOUNT:
+        definition = FixedAmountReward(Decimal("123456789012345678901234567890.12"))
+        row.fixed_amount = definition.amount
+    elif reward_type is RewardType.PERCENTAGE:
+        definition = PercentageReward(Decimal("12.3456"))
+        row.percentage = definition.percentage
+    else:
+        definition = ProductSpecificReward(
+            tuple(ProductRewardValue(p.id, Decimal(f"{i + 1}.23")) for i, p in enumerate(products))
+        )
+        row.product_values = [
+            BenefitProductRewardValue(product_id=v.product_id, amount=v.amount)
+            for v in definition.values
+        ]
+    benefit.reward = row
+    db_session.flush()
+    benefit_id = benefit.id
+    product_id = products[0].id
+    db_session.expire_all()
+    stored = db_session.get(Benefit, benefit_id).reward
+    assert stored.reward_type == definition.reward_type.value
+    if reward_type is RewardType.FIXED_AMOUNT:
+        restored = FixedAmountReward(stored.fixed_amount)
+    elif reward_type is RewardType.PERCENTAGE:
+        restored = PercentageReward(stored.percentage)
+    else:
+        restored = ProductSpecificReward(
+            tuple(ProductRewardValue(v.product_id, v.amount) for v in stored.product_values)
+        )
+    assert restored == definition
+    assert calculate_reward(restored, product_id=product_id, purchase_price=Decimal("199.99")) == (
+        calculate_reward(definition, product_id=product_id, purchase_price=Decimal("199.99"))
+    )
+
+
+@pytest.mark.parametrize("value", ["basket", "conditional", "FIXED_AMOUNT", "other", ""])
+def test_reward_discriminator_constraint(db_session: Session, graph: Promotion, value: str) -> None:
+    with pytest.raises(IntegrityError) as error, db_session.begin_nested():
+        db_session.execute(
+            BenefitReward.__table__.insert().values(
+                benefit_id=graph.variants[0].benefits[0].id, reward_type=value
+            )
+        )
+    # Unknown types violate both classification and shape. PostgreSQL may report
+    # either check first; also prove the dedicated type check matches the domain.
+    assert error.value.orig.diag.constraint_name in {
+        "ck_benefit_rewards_type",
+        "ck_benefit_rewards_shape",
+    }
+    constraint = next(
+        check
+        for check in inspect(db_session.connection()).get_check_constraints("benefit_rewards")
+        if check["name"] == "ck_benefit_rewards_type"
+    )
+    assert set(re.findall(r"'([^']+)'", constraint["sqltext"])) == set(RewardType)
+
+
+@pytest.mark.parametrize(
+    "kind,amount,percentage",
+    [
+        ("fixed_amount", None, None),
+        ("fixed_amount", "1", "1"),
+        ("fixed_amount", None, "1"),
+        ("percentage", None, None),
+        ("percentage", "1", "1"),
+        ("percentage", "1", None),
+        ("product_specific", "1", None),
+        ("product_specific", None, "1"),
+        ("product_specific", "1", "1"),
+    ],
+)
+def test_reward_shape_constraint(
+    db_session: Session, graph: Promotion, kind: str, amount: str | None, percentage: str | None
+) -> None:
+    with pytest.raises(IntegrityError) as error, db_session.begin_nested():
+        db_session.execute(
+            BenefitReward.__table__.insert().values(
+                benefit_id=graph.variants[0].benefits[0].id,
+                reward_type=kind,
+                fixed_amount=Decimal(amount) if amount else None,
+                percentage=Decimal(percentage) if percentage else None,
+            )
+        )
+    assert error.value.orig.diag.constraint_name == "ck_benefit_rewards_shape"
+
+
+@pytest.mark.parametrize("target", ["fixed", "percentage", "product"])
+@pytest.mark.parametrize(
+    "value", ["0", "-1", "NaN", "Infinity", "-Infinity", "12.34567", "1.00000"]
+)
+def test_reward_numeric_constraints(
+    db_session: Session, graph: Promotion, target: str, value: str
+) -> None:
+    benefit_id = graph.variants[0].benefits[0].id
+    if target == "product":
+        db_session.execute(
+            BenefitReward.__table__.insert().values(
+                benefit_id=benefit_id, reward_type="product_specific"
+            )
+        )
+    with pytest.raises(IntegrityError) as error, db_session.begin_nested():
+        if target == "product":
+            db_session.execute(
+                BenefitProductRewardValue.__table__.insert().values(
+                    benefit_id=benefit_id,
+                    product_id=graph.variants[0].product_links[0].product_id,
+                    amount=Decimal(value),
+                )
+            )
+        else:
+            db_session.execute(
+                BenefitReward.__table__.insert().values(
+                    benefit_id=benefit_id,
+                    reward_type="fixed_amount" if target == "fixed" else "percentage",
+                    **{"fixed_amount" if target == "fixed" else "percentage": Decimal(value)},
+                )
+            )
+    expected = {
+        "fixed": "ck_benefit_rewards_amount",
+        "percentage": "ck_benefit_rewards_percentage",
+        "product": "ck_benefit_product_reward_values_amount",
+    }[target]
+    assert error.value.orig.diag.constraint_name == expected
+    if target != "product":
+        assert db_session.get(BenefitReward, benefit_id) is None
+
+
+@pytest.mark.parametrize("target,value", [("fixed_amount", "12.345"), ("percentage", "100.0001")])
+def test_reward_precision_and_percentage_upper_bound(
+    db_session: Session, graph: Promotion, target: str, value: str
+) -> None:
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        db_session.execute(
+            BenefitReward.__table__.insert().values(
+                benefit_id=graph.variants[0].benefits[0].id,
+                reward_type="fixed_amount" if target == "fixed_amount" else "percentage",
+                **{target: Decimal(value)},
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "case", ["benefit_fk", "reward_fk", "product_fk", "duplicate_reward", "duplicate_product"]
+)
+def test_reward_references_and_uniqueness(db_session: Session, graph: Promotion, case: str) -> None:
+    benefit_id = graph.variants[0].benefits[0].id
+    product_id = graph.variants[0].product_links[0].product_id
+    db_session.execute(
+        BenefitReward.__table__.insert().values(
+            benefit_id=benefit_id, reward_type="product_specific"
+        )
+    )
+    db_session.execute(
+        BenefitProductRewardValue.__table__.insert().values(
+            benefit_id=benefit_id, product_id=product_id, amount=Decimal("1")
+        )
+    )
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        if case in ("benefit_fk", "duplicate_reward"):
+            db_session.execute(
+                BenefitReward.__table__.insert().values(
+                    benefit_id=uuid4() if case == "benefit_fk" else benefit_id,
+                    reward_type="fixed_amount",
+                    fixed_amount=Decimal("1"),
+                )
+            )
+        else:
+            db_session.execute(
+                BenefitProductRewardValue.__table__.insert().values(
+                    benefit_id=uuid4() if case == "reward_fk" else benefit_id,
+                    product_id=uuid4() if case == "product_fk" else product_id,
+                    amount=Decimal("1"),
+                )
+            )
+
+
+@pytest.mark.parametrize("orm_delete", [True, False])
+def test_reward_deletion_semantics(db_session: Session, graph: Promotion, orm_delete: bool) -> None:
+    benefit = graph.variants[0].benefits[0]
+    # An otherwise unreferenced product isolates the reward FK restriction.
+    product = Product(manufacturer=graph.manufacturer, name="Reward only", slug="reward-only")
+    benefit.reward = BenefitReward(
+        reward_type="product_specific",
+        product_values=[BenefitProductRewardValue(product=product, amount=Decimal("1.23"))],
+    )
+    db_session.flush()
+    benefit_id, product_id = benefit.id, product.id
+    assert product.reward_values
+    assert benefit.reward.product_values
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        if orm_delete:
+            db_session.delete(product)
+        else:
+            db_session.execute(delete(Product).where(Product.id == product_id))
+        db_session.flush()
+    if orm_delete:
+        db_session.delete(benefit)
+    else:
+        db_session.execute(delete(Benefit).where(Benefit.id == benefit_id))
+    db_session.flush()
+    db_session.expire_all()
+    assert db_session.get(BenefitReward, benefit_id) is None
+    assert db_session.scalar(select(func.count()).select_from(BenefitProductRewardValue)) == 0
+    assert db_session.get(Product, product_id) is not None
+    db_session.delete(db_session.get(Product, product_id))
+    db_session.flush()
+
+
+def test_invalid_product_value_rolls_back_entire_reward_graph(
+    db_session: Session, graph: Promotion
+) -> None:
+    benefit_id = graph.variants[0].benefits[0].id
+    products = [link.product_id for link in graph.variants[0].product_links]
+    with pytest.raises(IntegrityError) as error, db_session.begin_nested():
+        db_session.execute(
+            BenefitReward.__table__.insert().values(
+                benefit_id=benefit_id, reward_type="product_specific"
+            )
+        )
+        for product_id, amount in zip(products, ["10.00", "12.345"], strict=True):
+            db_session.execute(
+                BenefitProductRewardValue.__table__.insert().values(
+                    benefit_id=benefit_id, product_id=product_id, amount=Decimal(amount)
+                )
+            )
+    assert error.value.orig.diag.constraint_name == "ck_benefit_product_reward_values_amount"
+    assert db_session.get(BenefitReward, benefit_id) is None
+    assert db_session.scalar(select(func.count()).select_from(BenefitProductRewardValue)) == 0
+
+
+@pytest.mark.parametrize("percentage", ["0.0001", "100"])
+def test_persisted_percentage_inclusive_valid_boundaries(
+    db_session: Session, graph: Promotion, percentage: str
+) -> None:
+    benefit_id = graph.variants[0].benefits[0].id
+    db_session.execute(
+        BenefitReward.__table__.insert().values(
+            benefit_id=benefit_id, reward_type="percentage", percentage=Decimal(percentage)
+        )
+    )
+    assert db_session.get(BenefitReward, benefit_id).percentage == Decimal(percentage)
