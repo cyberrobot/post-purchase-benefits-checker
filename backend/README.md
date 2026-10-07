@@ -237,3 +237,39 @@ the caller owns the read session/transaction. No locks or writes are introduced.
 Price, claim windows, benefits, requirements, channels, and retailer groups do not
 affect candidate selection. Detailed eligibility evaluation is later work. No schema,
 public REST/MCP contract, dependency, or configuration changes are required.
+
+## Core eligibility rules
+
+`app.domain.eligibility_rules` evaluates typed restrictions against immutable
+`PurchaseEligibilityFacts`: canonical manufacturer, product, and retailer UUIDs plus
+a required calendar purchase date. Model/SKU applicability uses the resolved
+`Product.id`, never raw identifiers. Price, channel, product condition, and purchase
+country are optional facts; no values are inferred from identities or other facts.
+`PurchaseChannel` is reused from identity normalisation; `PurchaseCondition` defines
+`new`, `refurbished`, and `used`. Country codes require exactly two ASCII uppercase
+letters, with exact matching and no alias conversion or country registry lookup.
+
+`PromotionEligibilityRules` holds optional `ManufacturerRule`, `ProductRule`,
+`RetailerRule`, `PurchaseChannelRule`, `PurchaseDateRule`, `PurchasePriceRule`,
+`PurchaseConditionRule`, and `CountryRule` values. Membership rules require a
+non-empty set of canonical values and freeze supplied mutable sets. Date and price
+rules require at least one bound, allow an open opposite bound, reject inverted
+ranges, and include both boundaries. Shared `app.domain.purchase_values` validation
+preserves `CheckPurchaseRequest` date/price semantics: no timestamps, parsing,
+rounding, non-finite/negative prices, floats, or more than two fractional places.
+Prices and thresholds are exact GBP `Decimal` values; zero is known information.
+Wrong types raise `TypeError`; invalid values raise `ValueError` at construction.
+
+Call `evaluate_eligibility_rules(facts, rules)` to get a tuple of immutable
+`RuleEvaluation` values in manufacturer, product, retailer, channel, date, price,
+condition, country order. Each contains a stable `RuleKind`, `RuleStatus`
+(`satisfied`, `not_satisfied`, `unknown`), and `RuleReasonCode`. A configured rule
+with a missing optional fact produces `unknown`; a known mismatch produces
+`not_satisfied`. An absent rule imposes no restriction and produces no result.
+Every configured rule is evaluated, including those after a failure.
+
+Evaluation uses no clock, database, network, configuration, logging, or model provider.
+These are per-rule outcomes only. Mapping published promotion records into rules,
+application orchestration, final eligibility classifications, claims, requirements,
+and reward calculation remain later work. PR 7–9 matching, the five-field
+`CheckPurchaseRequest`, persistence, migration head, and REST/MCP remain unchanged.
