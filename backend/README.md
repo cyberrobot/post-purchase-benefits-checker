@@ -359,3 +359,28 @@ claim dates. Missing definitions produce no implicit claim status. Wording
 normalization, publication completeness, mapping persisted definitions into the
 canonical evaluator, final purchase-check orchestration/classification, and REST/MCP
 contracts remain later work. `CheckPurchaseRequest` is unchanged.
+
+
+## Promotion claim requirements
+
+`app.domain.requirements.Requirement` is an immutable, slotted domain value with
+`requirement_type` and optional `description`. `RequirementType` defines the stable,
+case-sensitive values `receipt`, `serial_number`, `registration`, `invoice`,
+`barcode`, `imei`, and `installation_evidence`. Supported persisted strings are
+converted to the canonical classification; unsupported values raise `ValueError`.
+Descriptions must be strings or `None` and remain unparsed instruction text.
+
+Requirements define what a claimant must supply or do, independently of benefits,
+eligibility and claim windows. They contain no claimant evidence, completion state,
+verification or submission behaviour. The existing `app.db.models.Requirement`
+remains owned by its promotion variant, with unchanged cascade/FK behaviour.
+Multiple definitions of the same classification remain permitted.
+
+Migration `0006_promotion_requirements`, based on `0005_relative_claim_windows`,
+extends `ck_requirements_type` to accept `installation_evidence`. It changes no
+columns, defaults, indexes or existing rows. Apply it before writing installation
+requirements. Downgrade restores the legacy six classifications only if existing
+rows satisfy that constraint. If installation requirements exist, PostgreSQL rejects
+the downgrade and rolls back the schema and revision change, preserving every row.
+There is no automatic deletion or conversion. Future classifications require an
+explicit domain member, constraint migration and domain/PostgreSQL coverage.

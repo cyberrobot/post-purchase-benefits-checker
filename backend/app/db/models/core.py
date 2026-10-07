@@ -186,7 +186,7 @@ class Requirement(Identity, Timestamps, Base):
     __table_args__ = (
         CheckConstraint(
             "requirement_type IN ('receipt','serial_number','registration',"
-            "'invoice','barcode','imei')",
+            "'invoice','barcode','imei','installation_evidence')",
             name="ck_requirements_type",
         ),
     )

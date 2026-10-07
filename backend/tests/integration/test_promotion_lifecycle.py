@@ -18,6 +18,7 @@ from app.db.models import Manufacturer, Promotion, PromotionSource, Source
 from app.db.repositories.promotions import SqlAlchemyPromotionRepository, promotion_transaction
 from app.domain.promotion_lifecycle import InvalidPromotionTransition
 from app.domain.promotion_lifecycle import PromotionStatus as S
+from app.domain.requirements import RequirementType
 from tests.integration.test_core_promotion_schema import graph as complete_graph  # noqa: F401
 
 pytestmark = pytest.mark.integration
@@ -76,7 +77,8 @@ def test_retirement_preserves_entire_graph(db_session, graph, initial, target):
             assert variant.retailer is not None or variant.code == "variant-2"
             assert len(variant.product_links) == 2
             assert len(variant.benefits) == 3
-            assert len(variant.requirements) == 6
+            assert len(variant.requirements) == len(RequirementType)
+            assert {row.requirement_type for row in variant.requirements} == set(RequirementType)
         assert len(loaded.variants) == 3
         assert all(link.source.verified_at is not None for link in loaded.source_links)
         after = snapshot(db_session)
