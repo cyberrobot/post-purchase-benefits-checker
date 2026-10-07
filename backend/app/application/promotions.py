@@ -36,6 +36,8 @@ class PromotionRecord:
     updated_at: datetime
     claim_start_date: date | None = None
     claim_end_date: date | None = None
+    claim_start_offset_days: int | None = None
+    claim_end_offset_days: int | None = None
 
 
 @dataclass(frozen=True)

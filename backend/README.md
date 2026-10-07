@@ -321,6 +321,41 @@ the fields. Downgrade removes the checks and columns, discarding configured clai
 
 `PromotionRecord` and promotion repository reads preserve both fields; absent dates
 represent no fixed definition and supply no claim status. Construct a domain window
-only when both dates exist. Relative/delayed windows, publication completeness,
-purchase-check orchestration, and transport contracts remain future work. Claim
-expiry never changes promotion lifecycle or candidate filtering.
+only when both dates exist. Publication completeness, purchase-check orchestration,
+and transport contracts remain future work. Claim expiry never changes promotion
+lifecycle or candidate filtering.
+
+
+## Relative and delayed claim windows
+
+`RelativeClaimWindow(start_offset_days, end_offset_days)` stores immutable whole
+non-negative calendar-day offsets from the purchase date. Exact Python integers
+are required; booleans, strings, floats, decimals, negative or inverted bounds
+are rejected. Equal offsets define a one-day window, and zero means purchase day.
+
+Call `evaluate_relative_claim_window(window, purchase_date, evaluation_date)` with
+explicit calendar dates (timestamps are rejected). It derives opening and deadline
+dates using calendar-day arithmetic, then reuses fixed-window inclusive evaluation
+and the existing `ClaimWindowEvaluation`/`ClaimWindowStatus` contracts. For a
+2026-10-01 purchase, offsets 0..30 give 2026-10-01 through 2026-10-31; offsets
+30..60 give 2026-10-31 through 2026-11-30. Month/year boundaries and leap days follow
+Python date arithmetic. Unrepresentable derived dates raise a stable `ValueError`,
+without clamping or returning a claim status. No clock or lifecycle state is used.
+
+Migration `0005_relative_claim_windows` (file `0005_relative_delayed_claim_windows.py`)
+adds nullable PostgreSQL integers `promotions.claim_start_offset_days` and
+`promotions.claim_end_offset_days`. Its revision ID fits Alembic's 32-character
+version field. The checks `ck_promotions_claim_offset_days_complete`,
+`ck_promotions_claim_offset_days_nonnegative`, `ck_promotions_claim_offset_days`,
+and `ck_promotions_claim_window_single_type` require complete, non-negative, ordered
+offsets and prohibit configuring fixed and relative definitions together. Either
+form or neither is valid. Existing rows retain fixed data and receive NULL offsets
+without defaults or backfill. No offset indexes or type discriminator are added.
+Apply this migration before deploying code reading the new fields. Downgrade drops
+only the new constraints/columns, discarding relative offsets and preserving fixed dates.
+
+`PromotionRecord` and repository reads preserve exact offsets without calculating
+claim dates. Missing definitions produce no implicit claim status. Wording
+normalization, publication completeness, mapping persisted definitions into the
+canonical evaluator, final purchase-check orchestration/classification, and REST/MCP
+contracts remain later work. `CheckPurchaseRequest` is unchanged.

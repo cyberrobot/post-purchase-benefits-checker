@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import Date, inspect, text
+from sqlalchemy import Date, Integer, inspect, text
 from sqlalchemy.engine import Engine
 
 from app.db import models  # noqa: F401
@@ -22,12 +22,16 @@ def test_fresh_postgres_connectivity_and_migration_head(
         assert connection.execute(text("SELECT 1")).scalar_one() == 1
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
     assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())
-    assert revision == "0004_fixed_claim_windows"
+    assert revision == "0005_relative_claim_windows"
     migration_environment = os.environ.copy()
     migration_environment["DATABASE_URL"] = postgres_engine.url.render_as_string(
         hide_password=False
     )
-    subprocess.run(["alembic", "downgrade", "-1"], check=True, env=migration_environment)
+    subprocess.run(
+        ["alembic", "downgrade", "0003_identity_normalisation"],
+        check=True,
+        env=migration_environment,
+    )
     with postgres_engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
             "0003_identity_normalisation"
@@ -93,6 +97,8 @@ def test_fresh_postgres_connectivity_and_migration_head(
             .mappings()
             .one()
         )
+        assert after.pop("claim_start_offset_days") is None
+        assert after.pop("claim_end_offset_days") is None
         assert after.pop("claim_start_date") is None
         assert after.pop("claim_end_date") is None
         assert after == dict(before)
@@ -176,11 +182,11 @@ def test_fresh_postgres_connectivity_and_migration_head(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
 
-    assert revision == "0004_fixed_claim_windows"
-    assert final_revision == "0004_fixed_claim_windows"
+    assert revision == "0005_relative_claim_windows"
+    assert final_revision == "0005_relative_claim_windows"
     assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())
 
-    # Retain the original core-schema downgrade coverage as well as the new -1 round trip.
+    # Retain the original core-schema downgrade coverage as well as the relative-window round trip.
     subprocess.run(
         ["alembic", "downgrade", "0001_initial_baseline"],
         check=True,
@@ -192,6 +198,116 @@ def test_fresh_postgres_connectivity_and_migration_head(
     with postgres_engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0004_fixed_claim_windows"
+            == "0005_relative_claim_windows"
         )
     assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())
+
+
+def test_relative_upgrade_preserves_fixed_and_absent_windows(
+    postgres_engine: Engine, migrated_test_database: None
+) -> None:
+    migration_environment = os.environ.copy()
+    migration_environment["DATABASE_URL"] = postgres_engine.url.render_as_string(
+        hide_password=False
+    )
+    subprocess.run(["alembic", "downgrade", "-1"], check=True, env=migration_environment)
+    inspector = inspect(postgres_engine)
+    offsets = {"claim_start_offset_days", "claim_end_offset_days"}
+    fixed = {"claim_start_date", "claim_end_date"}
+    columns = {column["name"] for column in inspector.get_columns("promotions")}
+    assert not offsets & columns
+    assert fixed <= columns
+    manufacturer_id, absent_id, fixed_id = (uuid4() for _ in range(3))
+    with postgres_engine.begin() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+            "0004_fixed_claim_windows"
+        )
+        connection.execute(
+            text("INSERT INTO manufacturers (id, name, slug) VALUES (:id, 'Relative', 'relative')"),
+            {"id": manufacturer_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO promotions (id, manufacturer_id, name, slug, status, "
+                "claim_start_date, claim_end_date) VALUES "
+                "(:absent, :manufacturer, 'Absent', 'absent', 'review', NULL, NULL), "
+                "(:fixed, :manufacturer, 'Fixed', 'fixed', 'expired', '2026-11-01', '2026-11-30')"
+            ),
+            {"absent": absent_id, "fixed": fixed_id, "manufacturer": manufacturer_id},
+        )
+        before = [
+            dict(row)
+            for row in connection.execute(
+                text("SELECT * FROM promotions WHERE manufacturer_id = :id ORDER BY slug"),
+                {"id": manufacturer_id},
+            ).mappings()
+        ]
+    subprocess.run(["alembic", "upgrade", "head"], check=True, env=migration_environment)
+    with postgres_engine.connect() as connection:
+        after = [
+            dict(row)
+            for row in connection.execute(
+                text("SELECT * FROM promotions WHERE manufacturer_id = :id ORDER BY slug"),
+                {"id": manufacturer_id},
+            ).mappings()
+        ]
+        for row in after:
+            assert row.pop("claim_start_offset_days") is None
+            assert row.pop("claim_end_offset_days") is None
+        assert after == before
+        context = MigrationContext.configure(
+            connection,
+            opts={
+                "include_object": lambda obj, name, kind, reflected, other: (
+                    name != "test_session_isolation_probe"
+                )
+            },
+        )
+        assert compare_metadata(context, Base.metadata) == []
+    inspector = inspect(postgres_engine)
+    columns = {column["name"]: column for column in inspector.get_columns("promotions")}
+    for name in offsets:
+        assert isinstance(columns[name]["type"], Integer)
+        assert columns[name]["nullable"]
+        assert columns[name]["default"] is None
+    constraints = {
+        "ck_promotions_claim_offset_days_complete",
+        "ck_promotions_claim_offset_days_nonnegative",
+        "ck_promotions_claim_offset_days",
+        "ck_promotions_claim_window_single_type",
+    }
+    assert constraints <= {check["name"] for check in inspector.get_check_constraints("promotions")}
+    assert all(
+        not offsets & set(index["column_names"]) for index in inspector.get_indexes("promotions")
+    )
+    assert "claim_window_type" not in columns
+    subprocess.run(["alembic", "downgrade", "-1"], check=True, env=migration_environment)
+    inspector = inspect(postgres_engine)
+    columns = {column["name"] for column in inspector.get_columns("promotions")}
+    assert not offsets & columns
+    assert fixed <= columns
+    assert not constraints & {
+        check["name"] for check in inspector.get_check_constraints("promotions")
+    }
+    assert {"ck_promotions_claim_dates_complete", "ck_promotions_claim_dates"} <= {
+        check["name"] for check in inspector.get_check_constraints("promotions")
+    }
+    with postgres_engine.connect() as connection:
+        assert [
+            dict(row)
+            for row in connection.execute(
+                text("SELECT * FROM promotions WHERE manufacturer_id = :id ORDER BY slug"),
+                {"id": manufacturer_id},
+            ).mappings()
+        ] == before
+    subprocess.run(["alembic", "upgrade", "head"], check=True, env=migration_environment)
+    with postgres_engine.begin() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+            "0005_relative_claim_windows"
+        )
+        connection.execute(
+            text("DELETE FROM promotions WHERE manufacturer_id = :id"), {"id": manufacturer_id}
+        )
+        connection.execute(
+            text("DELETE FROM manufacturers WHERE id = :id"), {"id": manufacturer_id}
+        )
