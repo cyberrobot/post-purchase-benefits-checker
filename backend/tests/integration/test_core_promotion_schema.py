@@ -23,6 +23,8 @@ from app.db.models import (
 )
 from app.domain.benefits import Benefit as DomainBenefit
 from app.domain.benefits import BenefitType
+from app.domain.requirements import Requirement as DomainRequirement
+from app.domain.requirements import RequirementType
 
 pytestmark = pytest.mark.integration
 NOW = datetime(2026, 10, 6, tzinfo=UTC)
@@ -57,10 +59,7 @@ def graph(db_session: Session) -> Promotion:
         variant.benefits = [
             Benefit(benefit_type=t, name=t) for t in ("cashback", "free_gift", "extended_warranty")
         ]
-        variant.requirements = [
-            Requirement(requirement_type=t)
-            for t in ("receipt", "serial_number", "registration", "invoice", "barcode", "imei")
-        ]
+        variant.requirements = [Requirement(requirement_type=t) for t in RequirementType]
     promotion.source_links = [
         PromotionSource(
             role=role,
@@ -96,7 +95,7 @@ def test_complete_graph_and_metadata(db_session: Session, graph: Promotion) -> N
             for link in variant.product_links
         )
         assert len(variant.benefits) == 3
-        assert len(variant.requirements) == 6
+        assert {row.requirement_type for row in variant.requirements} == set(RequirementType)
     assert {link.role for link in promotion.source_links} == {
         "primary",
         "terms",
@@ -155,6 +154,60 @@ def test_unsupported_benefit_classification_rejected(
         )
         db_session.flush()
     assert error.value.orig.diag.constraint_name == "ck_benefits_type"
+
+
+@pytest.mark.parametrize("requirement_type", list(RequirementType))
+@pytest.mark.parametrize("description", [None, "Provide the original evidence."])
+def test_domain_requirement_round_trip(
+    db_session: Session,
+    graph: Promotion,
+    requirement_type: RequirementType,
+    description: str | None,
+) -> None:
+    requirement = DomainRequirement(requirement_type, description)
+    variant_id = graph.variants[0].id
+    # The graph already has this classification: separate instructions may repeat it.
+    row = Requirement(
+        promotion_variant_id=variant_id,
+        requirement_type=requirement.requirement_type.value,
+        description=requirement.description,
+    )
+    db_session.add(row)
+    db_session.flush()
+    identity = row.id
+    db_session.expire_all()
+    stored = db_session.get(Requirement, identity)
+    assert stored is not None
+    assert stored.promotion_variant_id == variant_id
+    assert stored.requirement_type == requirement_type.value
+    assert DomainRequirement(stored.requirement_type, stored.description) == requirement
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(Requirement)
+            .where(
+                Requirement.promotion_variant_id == variant_id,
+                Requirement.requirement_type == requirement_type.value,
+            )
+        )
+        == 2
+    )
+
+
+@pytest.mark.parametrize(
+    "value", ["proof", "document", "photo", "installer", "warranty_card", "other", "RECEIPT", ""]
+)
+def test_unsupported_requirement_classification_rejected(
+    db_session: Session, graph: Promotion, value: str
+) -> None:
+    before = db_session.scalar(select(func.count()).select_from(Requirement))
+    with pytest.raises(IntegrityError) as error, db_session.begin_nested():
+        db_session.add(
+            Requirement(promotion_variant_id=graph.variants[0].id, requirement_type=value)
+        )
+        db_session.flush()
+    assert error.value.orig.diag.constraint_name == "ck_requirements_type"
+    assert db_session.scalar(select(func.count()).select_from(Requirement)) == before
 
 
 @pytest.mark.parametrize("status", ["discovered", "extracted", "review"])
@@ -323,7 +376,7 @@ def test_owned_graph_cascades_preserve_references(
     for model, expected in [
         (PromotionVariant, remaining),
         (Benefit, remaining * 3),
-        (Requirement, remaining * 6),
+        (Requirement, remaining * len(RequirementType)),
         (PromotionVariantProduct, remaining * 2),
         (PromotionSource, 0 if scope == "promotion" else 4),
         (Manufacturer, 1),
