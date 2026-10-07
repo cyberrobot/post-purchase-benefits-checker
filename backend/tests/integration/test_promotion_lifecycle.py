@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from uuid import UUID, uuid4
 
@@ -54,6 +54,8 @@ def snapshot(session):
 )
 def test_retirement_preserves_entire_graph(db_session, graph, initial, target):
     graph.status = initial
+    graph.claim_start_date = date(2026, 11, 1)
+    graph.claim_end_date = date(2026, 11, 30)
     db_session.flush()
     identity = graph.id
     before = snapshot(db_session)

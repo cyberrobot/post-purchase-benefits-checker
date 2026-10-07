@@ -94,6 +94,12 @@ class Promotion(Identity, Timestamps, Base):
         CheckConstraint(
             "purchase_start_date <= purchase_end_date", name="ck_promotions_purchase_dates"
         ),
+        CheckConstraint(
+            "(claim_start_date IS NULL AND claim_end_date IS NULL) OR "
+            "(claim_start_date IS NOT NULL AND claim_end_date IS NOT NULL)",
+            name="ck_promotions_claim_dates_complete",
+        ),
+        CheckConstraint("claim_start_date <= claim_end_date", name="ck_promotions_claim_dates"),
         CheckConstraint("slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'", name="ck_promotions_slug"),
     )
     manufacturer_id: Mapped[UUID] = mapped_column(
@@ -104,6 +110,8 @@ class Promotion(Identity, Timestamps, Base):
     status: Mapped[str] = mapped_column(String(32))
     purchase_start_date: Mapped[date | None] = mapped_column(Date)
     purchase_end_date: Mapped[date | None] = mapped_column(Date)
+    claim_start_date: Mapped[date | None] = mapped_column(Date)
+    claim_end_date: Mapped[date | None] = mapped_column(Date)
     manufacturer: Mapped["Manufacturer"] = relationship(back_populates="promotions")
     variants: Mapped[list["PromotionVariant"]] = relationship(
         back_populates="promotion", passive_deletes="all"

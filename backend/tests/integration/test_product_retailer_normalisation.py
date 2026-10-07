@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import delete, event, func, select, text
+from sqlalchemy import MetaData, Table, delete, event, func, select, text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
@@ -613,14 +613,21 @@ def test_upgrade_preserves_existing_graph_and_round_trip(postgres_engine):
             ),
             (PromotionSource, {"promotion_id": promotion, "source_id": source, "role": "primary"}),
         ]
-        for model, values in records:
-            connection.execute(model.__table__.insert().values(**values))
-        snapshot = {
-            model: connection.execute(select(model.__table__)).all() for model, _ in records
+        # Reflect the historical schema rather than selecting later ORM additions.
+        historical_metadata = MetaData()
+        historical_tables = {
+            model: Table(model.__tablename__, historical_metadata, autoload_with=connection)
+            for model, _ in records
         }
-        command.upgrade(config, "head")
+        for model, values in records:
+            connection.execute(historical_tables[model].insert().values(**values))
+        snapshot = {
+            model: connection.execute(select(historical_tables[model])).all()
+            for model, _ in records
+        }
+        command.upgrade(config, "0003_identity_normalisation")
         for model, before in snapshot.items():
-            assert connection.execute(select(model.__table__)).all() == before
+            assert connection.execute(select(historical_tables[model])).all() == before
         old_tables = {model.__tablename__ for model, _ in records}
         for table_name in set(Base.metadata.tables) - old_tables:
             assert (
@@ -635,8 +642,8 @@ def test_upgrade_preserves_existing_graph_and_round_trip(postgres_engine):
             == "0002_core_promotion_schema"
         )
         for model, before in snapshot.items():
-            assert connection.execute(select(model.__table__)).all() == before
-        command.upgrade(config, "head")
+            assert connection.execute(select(historical_tables[model])).all() == before
+        command.upgrade(config, "0003_identity_normalisation")
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
             == "0003_identity_normalisation"
