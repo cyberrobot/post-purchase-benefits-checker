@@ -191,3 +191,22 @@ memberships cascade on parent deletion without deleting other canonical entities
 no historical effective dates and supplies no promotion eligibility inference.
 All resolution remains separate from purchase transports, promotion selection,
 eligibility and ingestion. No external calls, configuration or dependencies are added.
+
+## Purchase input contract
+
+`app.application.purchase_check.CheckPurchaseRequest` is an immutable application
+value with required `brand`, `model`, `retailer`, and `purchase_date`, plus optional
+`purchase_price` (default `None`). Identity fields reuse the bounded PR 7 normalisers
+for validation while retaining the caller's exact raw strings. Unknown or ambiguous
+canonical identities remain valid input; construction performs no reference lookup.
+
+`purchase_date` must be a Python calendar `date`; `datetime` and strings are rejected.
+No comparison with today occurs. `purchase_price` represents a UK/GBP amount and must
+be a finite, non-negative `Decimal` with at most two fractional decimal places.
+No coercion, rounding, or quantization occurs, and missing price differs from zero.
+Wrong types raise `TypeError`; invalid values raise `ValueError`.
+
+Construction is pure and independent of persistence, network services, and transport
+frameworks. Future REST/MCP adapters should parse wire values (including ISO full-date
+`YYYY-MM-DD`) into this shared contract. Identity-resolution orchestration, eligibility,
+result contracts, and transport endpoints remain future work.
