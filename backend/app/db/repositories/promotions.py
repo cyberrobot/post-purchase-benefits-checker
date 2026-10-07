@@ -35,6 +35,8 @@ def _record(row: Promotion) -> PromotionRecord:
         row.updated_at,
         claim_start_date=row.claim_start_date,
         claim_end_date=row.claim_end_date,
+        claim_start_offset_days=row.claim_start_offset_days,
+        claim_end_offset_days=row.claim_end_offset_days,
     )
 
 

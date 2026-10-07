@@ -1,9 +1,10 @@
-"""Fixed inclusive calendar claim windows, independent of purchase and lifecycle."""
+"""Inclusive calendar claim windows, independent of promotion lifecycle."""
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from app.domain.eligibility_result import ClaimWindowStatus
+from app.domain.purchase_values import validate_purchase_date
 
 
 def _calendar_date(value: date) -> None:
@@ -25,6 +26,21 @@ class FixedClaimWindow:
 
     def __post_init__(self) -> None:
         _bounds(self.start_date, self.end_date)
+
+
+@dataclass(frozen=True, slots=True)
+class RelativeClaimWindow:
+    start_offset_days: int
+    end_offset_days: int
+
+    def __post_init__(self) -> None:
+        for offset in (self.start_offset_days, self.end_offset_days):
+            if type(offset) is not int:
+                raise TypeError("Claim offset must be an integer number of calendar days")
+            if offset < 0:
+                raise ValueError("Claim offset must be non-negative")
+        if self.start_offset_days > self.end_offset_days:
+            raise ValueError("Claim start offset must not exceed end offset")
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,3 +69,19 @@ def evaluate_fixed_claim_window(
     else:
         status = ClaimWindowStatus.OPEN
     return ClaimWindowEvaluation(status, window.start_date, window.end_date)
+
+
+def evaluate_relative_claim_window(
+    window: RelativeClaimWindow, purchase_date: date, evaluation_date: date
+) -> ClaimWindowEvaluation:
+    """Derive inclusive bounds from purchase day; no clock or lifecycle input."""
+    if not isinstance(window, RelativeClaimWindow):
+        raise TypeError("Window must be a RelativeClaimWindow")
+    validate_purchase_date(purchase_date)
+    _calendar_date(evaluation_date)
+    try:
+        opens_on = purchase_date + timedelta(days=window.start_offset_days)
+        deadline_on = purchase_date + timedelta(days=window.end_offset_days)
+    except OverflowError:
+        raise ValueError("Relative claim dates exceed the supported calendar range") from None
+    return evaluate_fixed_claim_window(FixedClaimWindow(opens_on, deadline_on), evaluation_date)
