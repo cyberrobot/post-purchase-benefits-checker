@@ -491,3 +491,14 @@ def test_evaluation_contract_rejects_arbitrary_values(field, value):
 def test_evaluation_requires_domain_values(facts, rules):
     with pytest.raises(TypeError):
         evaluate_eligibility_rules(facts, rules)
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [getattr(ALL_RULES, field.name) for field in fields(ALL_RULES)],
+    ids=[field.name for field in fields(ALL_RULES)],
+)
+@pytest.mark.parametrize("facts", [None, {}, "invalid"])
+def test_direct_evaluation_requires_domain_facts(rule, facts):
+    with pytest.raises(TypeError, match="Facts must be PurchaseEligibilityFacts"):
+        rule.evaluate(facts)

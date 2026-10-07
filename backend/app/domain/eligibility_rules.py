@@ -121,6 +121,11 @@ class PurchaseEligibilityFacts:
             _country(self.country_code)
 
 
+def _validate_facts(facts: PurchaseEligibilityFacts) -> None:
+    if not isinstance(facts, PurchaseEligibilityFacts):
+        raise TypeError("Facts must be PurchaseEligibilityFacts")
+
+
 def _membership[T](kind: RuleKind, value: T | None, allowed: frozenset[T]) -> RuleEvaluation:
     if value is None:
         status, suffix = RuleStatus.UNKNOWN, "unknown"
@@ -139,6 +144,7 @@ class ManufacturerRule:
         object.__setattr__(self, "manufacturer_ids", _allowed(self.manufacturer_ids, UUID))
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         return _membership(RuleKind.MANUFACTURER, facts.manufacturer_id, self.manufacturer_ids)
 
 
@@ -152,6 +158,7 @@ class ProductRule:
         object.__setattr__(self, "product_ids", _allowed(self.product_ids, UUID))
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         return _membership(RuleKind.PRODUCT, facts.product_id, self.product_ids)
 
 
@@ -163,6 +170,7 @@ class RetailerRule:
         object.__setattr__(self, "retailer_ids", _allowed(self.retailer_ids, UUID))
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         return _membership(RuleKind.RETAILER, facts.retailer_id, self.retailer_ids)
 
 
@@ -174,6 +182,7 @@ class PurchaseChannelRule:
         object.__setattr__(self, "channels", _allowed(self.channels, PurchaseChannel))
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         return _membership(RuleKind.PURCHASE_CHANNEL, facts.purchase_channel, self.channels)
 
 
@@ -193,6 +202,7 @@ class PurchaseDateRule:
                 raise ValueError("Purchase start date must not follow end date")
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         if self.start_date is not None and facts.purchase_date < self.start_date:
             return RuleEvaluation(
                 RuleKind.PURCHASE_DATE,
@@ -227,6 +237,7 @@ class PurchasePriceRule:
                 raise ValueError("Minimum purchase price must not exceed maximum")
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         price = facts.purchase_price
         if price is None:
             return RuleEvaluation(
@@ -257,6 +268,7 @@ class PurchaseConditionRule:
         object.__setattr__(self, "conditions", _allowed(self.conditions, PurchaseCondition))
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         return _membership(RuleKind.CONDITION, facts.condition, self.conditions)
 
 
@@ -271,6 +283,7 @@ class CountryRule:
         object.__setattr__(self, "country_codes", codes)
 
     def evaluate(self, facts: PurchaseEligibilityFacts) -> RuleEvaluation:
+        _validate_facts(facts)
         return _membership(RuleKind.COUNTRY, facts.country_code, self.country_codes)
 
 
@@ -306,8 +319,7 @@ def evaluate_eligibility_rules(
     facts: PurchaseEligibilityFacts, rules: PromotionEligibilityRules
 ) -> tuple[RuleEvaluation, ...]:
     """Evaluate all configured dimensions in stable order, without classification."""
-    if not isinstance(facts, PurchaseEligibilityFacts):
-        raise TypeError("Facts must be PurchaseEligibilityFacts")
+    _validate_facts(facts)
     if not isinstance(rules, PromotionEligibilityRules):
         raise TypeError("Rules must be PromotionEligibilityRules")
     return tuple(
