@@ -270,6 +270,32 @@ Every configured rule is evaluated, including those after a failure.
 
 Evaluation uses no clock, database, network, configuration, logging, or model provider.
 These are per-rule outcomes only. Mapping published promotion records into rules,
-application orchestration, final eligibility classifications, claims, requirements,
+application orchestration, claim-window calculation, requirements,
 and reward calculation remain later work. PR 7–9 matching, the five-field
 `CheckPurchaseRequest`, persistence, migration head, and REST/MCP remain unchanged.
+
+## Eligibility result classification
+
+Call `app.domain.eligibility_result.classify_eligibility(rule_evaluations,
+claim_window_status)` for one promotion variant. It consumes the PR 10 tuple of
+`RuleEvaluation` values and a canonical `ClaimWindowStatus`: `open`, `not_yet_open`,
+or `expired`. Claim timing is supplied by the caller; no dates are calculated and
+no clock, persistence, network, or model provider is consulted.
+
+Any `not_satisfied` outcome produces `NOT_ELIGIBLE`, ahead of unknowns and claim
+timing. Otherwise, any `unknown` produces `POTENTIALLY_ELIGIBLE`, ahead of claim
+timing. With all configured rules satisfied (including an empty rule tuple), the
+claim state produces `ELIGIBLE`, `CLAIM_NOT_YET_OPEN`, or `EXPIRED`, respectively.
+`PromotionStatus.EXPIRED` denotes historical publication and is rejected as claim
+timing; it never directly determines the result.
+
+The immutable `EligibilityResult` retains classification, reasons, the complete
+original evaluations, and supplied claim state. Rule-driven decision reasons retain
+every decisive PR 10 reason code and rule kind in input order. For satisfied/empty
+rules, reasons always contain `all_configured_rules_satisfied` followed by the
+appropriate `claim_window_open`, `claim_window_not_yet_open`, or
+`claim_window_expired` code. Reasons contain predefined enums, not display prose
+or raw purchase payloads. Wrong types raise `TypeError`; an empty result reason
+tuple raises `ValueError`. Candidate matching and application/transport contracts
+remain unchanged; purchase-check orchestration and claim-window evaluation are
+future work.
