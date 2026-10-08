@@ -103,7 +103,10 @@ class SqlAlchemyPromotionRepository:
 
     def load_check_purchase_candidates(self, candidate_variant_ids):
         """Batch associations inside caller snapshot, refreshing stale identity-map rows."""
-        from app.application.purchase_check_details import PublishedPromotionDataError
+        from app.application.purchase_check_details import (
+            PublishedDataErrorCode,
+            PublishedPromotionDataError,
+        )
 
         if not candidate_variant_ids:
             return ()
@@ -125,10 +128,14 @@ class SqlAlchemyPromotionRepository:
         try:
             with self.session.no_autoflush:
                 return tuple(_check_details(row) for row in self.session.scalars(query))
-        except SQLAlchemyError:
-            raise PromotionPersistenceError("Promotion details query failed") from None
-        except (ValueError, TypeError):
-            raise PublishedPromotionDataError("Invalid published promotion data") from None
+        except SQLAlchemyError as error:
+            raise PromotionPersistenceError("Promotion details query failed") from error
+        except PublishedPromotionDataError:
+            raise
+        except (ValueError, TypeError) as error:
+            raise PublishedPromotionDataError(
+                code=PublishedDataErrorCode.INVALID_PROJECTION
+            ) from error
 
     def get_promotion(self, promotion_id: UUID) -> PromotionRecord | None:
         try:

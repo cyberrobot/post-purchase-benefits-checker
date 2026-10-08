@@ -33,6 +33,38 @@ class CheckPurchaseRequest:
         validate_purchase_price(self.purchase_price)
 
 
+def explain_unresolved_identity(identity: "UnresolvedPurchaseIdentity") -> str:
+    """Display copy derives only from the existing field and match status."""
+    from app.domain.identity_normalisation import MatchStatus
+
+    return {
+        ("brand", MatchStatus.NOT_FOUND): "The brand could not be found. Check the brand name.",
+        (
+            "brand",
+            MatchStatus.AMBIGUOUS,
+        ): "The brand matches more than one brand. Enter a more specific brand name.",
+        (
+            "retailer",
+            MatchStatus.NOT_FOUND,
+        ): "The retailer could not be found. Check the retailer name.",
+        (
+            "retailer",
+            MatchStatus.AMBIGUOUS,
+        ): "The retailer matches more than one retailer. Enter a more specific retailer name.",
+        (
+            "model",
+            MatchStatus.NOT_FOUND,
+        ): "The product model could not be found. Check the model number or SKU.",
+        (
+            "model",
+            MatchStatus.AMBIGUOUS,
+        ): (
+            "The product model matches more than one product. "
+            "Enter a more specific model number or SKU."
+        ),
+    }[(identity.field, identity.status)]
+
+
 def check_purchase(
     request: CheckPurchaseRequest,
     *,
@@ -55,6 +87,7 @@ def check_purchase(
     from app.application.purchase_check_details import (
         CheckPurchaseResult,
         NoMatchReason,
+        PublishedDataErrorCode,
         PublishedPromotionDataError,
         PublishedPromotionDetails,
     )
@@ -83,10 +116,10 @@ def check_purchase(
         if not isinstance(details, tuple) or any(
             not isinstance(detail, PublishedPromotionDetails) for detail in details
         ):
-            raise PublishedPromotionDataError("Invalid published candidate projection")
+            raise PublishedPromotionDataError(code=PublishedDataErrorCode.INVALID_PROJECTION)
         by_id = {detail.promotion_variant_id: detail for detail in details}
         if len(set(ids)) != len(ids) or len(by_id) != len(details) or set(by_id) != set(ids):
-            raise PublishedPromotionDataError("Published candidate details are inconsistent")
+            raise PublishedPromotionDataError(code=PublishedDataErrorCode.CANDIDATE_INCONSISTENT)
         results = tuple(
             _evaluate_candidate(request, evaluation_date, matched.identity, candidate, by_id[key])
             for candidate, key in zip(matched.candidates, ids, strict=True)
@@ -109,19 +142,27 @@ def check_purchase(
         )
         return CheckPurchaseResult(evaluation_date, matched.identity, results)
     except (IdentityPersistenceError, PromotionPersistenceError):
-        logger.error("check_purchase_failed", category="persistence")
+        logger.error(
+            "check_purchase_failed", category="persistence", error_code="persistence_failure"
+        )
         raise
     except (ValueError, TypeError) as error:
-        logger.error("check_purchase_failed", category="data_integrity")
+        code = (
+            error.code
+            if isinstance(error, PublishedPromotionDataError)
+            else PublishedDataErrorCode.INVALID_DATA
+        )
+        logger.error("check_purchase_failed", category="data_integrity", error_code=code.value)
         if isinstance(error, PublishedPromotionDataError):
             raise
-        raise PublishedPromotionDataError("Invalid published promotion data") from None
+        raise PublishedPromotionDataError(code=code) from error
 
 
 def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
     from app.application.purchase_check_details import (
         CheckPurchaseBenefit,
         CheckPurchasePromotionResult,
+        PublishedDataErrorCode,
         PublishedPromotionDataError,
         RewardUnavailableReason,
     )
@@ -158,7 +199,7 @@ def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
         or (detail.retailer_id is not None and detail.retailer_id != identity.retailer_id)
         or not detail.benefits
     ):
-        raise PublishedPromotionDataError("Published candidate details are inconsistent")
+        raise PublishedPromotionDataError(code=PublishedDataErrorCode.CANDIDATE_INCONSISTENT)
     facts = PurchaseEligibilityFacts(
         identity.manufacturer_id,
         identity.product_id,
@@ -185,14 +226,19 @@ def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
         or (has_fixed and None in fixed)
         or (has_relative and None in relative)
     ):
-        raise PublishedPromotionDataError("Invalid published claim window")
+        raise PublishedPromotionDataError(code=PublishedDataErrorCode.CLAIM_WINDOW_INVALID)
     window = None
-    if has_fixed:
-        window = evaluate_fixed_claim_window(FixedClaimWindow(*fixed), evaluation_date)
-    elif has_relative:
-        window = evaluate_relative_claim_window(
-            RelativeClaimWindow(*relative), request.purchase_date, evaluation_date
-        )
+    try:
+        if has_fixed:
+            window = evaluate_fixed_claim_window(FixedClaimWindow(*fixed), evaluation_date)
+        elif has_relative:
+            window = evaluate_relative_claim_window(
+                RelativeClaimWindow(*relative), request.purchase_date, evaluation_date
+            )
+    except (ValueError, TypeError) as error:
+        raise PublishedPromotionDataError(
+            code=PublishedDataErrorCode.CLAIM_WINDOW_INVALID
+        ) from error
     eligibility = classify_eligibility(
         evaluate_eligibility_rules(facts, rules), window.status if window else None
     )
@@ -201,7 +247,7 @@ def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
         amount, unavailable = None, None
         if entry.benefit.benefit_type != BenefitType.CASHBACK:
             if entry.reward is not None:
-                raise PublishedPromotionDataError("Non-cash benefit has a monetary reward")
+                raise PublishedPromotionDataError(code=PublishedDataErrorCode.REWARD_INVALID)
         elif entry.reward is None:
             unavailable = RewardUnavailableReason.NOT_CONFIGURED
         else:
@@ -213,8 +259,16 @@ def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
                 )
             except MissingPurchasePrice:
                 unavailable = RewardUnavailableReason.PURCHASE_PRICE_REQUIRED
+            except (ValueError, TypeError) as error:
+                raise PublishedPromotionDataError(
+                    code=PublishedDataErrorCode.REWARD_INVALID
+                ) from error
         benefits.append(CheckPurchaseBenefit(entry.benefit_id, entry.benefit, amount, unavailable))
     sources = tuple(sorted(detail.sources, key=lambda value: (value.role.value, value.source_id)))
+    try:
+        provenance = validate_publication_provenance(sources)
+    except (ValueError, TypeError) as error:
+        raise PublishedPromotionDataError(code=PublishedDataErrorCode.PROVENANCE_INVALID) from error
     return CheckPurchasePromotionResult(
         detail.promotion_id,
         detail.promotion_variant_id,
@@ -228,7 +282,7 @@ def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
             value.requirement
             for value in sorted(detail.requirements, key=lambda value: value.requirement_id)
         ),
-        validate_publication_provenance(sources),
+        provenance,
         sources,
         _explanations(eligibility, window),
     )

@@ -25,8 +25,21 @@ from app.domain.rewards import (
 )
 
 
+class PublishedDataErrorCode(StrEnum):
+    INVALID_PROJECTION = "invalid_published_projection"
+    CANDIDATE_INCONSISTENT = "published_candidate_inconsistent"
+    CLAIM_WINDOW_INVALID = "published_claim_window_invalid"
+    REWARD_INVALID = "published_reward_invalid"
+    PROVENANCE_INVALID = "published_provenance_invalid"
+    INVALID_DATA = "invalid_published_data"
+
+
 class PublishedPromotionDataError(ValueError):
     """Invalid or inconsistent published content; never a negative eligibility result."""
+
+    def __init__(self, message=None, *, code=PublishedDataErrorCode.INVALID_DATA):
+        self.code = PublishedDataErrorCode(code)
+        super().__init__("Invalid published promotion data")
 
 
 class RewardUnavailableReason(StrEnum):
@@ -130,6 +143,17 @@ class CheckPurchaseBenefit:
     benefit: Benefit
     cashback_reward_gbp: Decimal | None
     reward_unavailable_reason: RewardUnavailableReason | None
+
+    @property
+    def reward_unavailable_explanation(self) -> str | None:
+        return {
+            RewardUnavailableReason.PURCHASE_PRICE_REQUIRED: (
+                "Enter the purchase price to calculate this cashback reward."
+            ),
+            RewardUnavailableReason.NOT_CONFIGURED: (
+                "The cashback amount is not available for this promotion."
+            ),
+        }.get(self.reward_unavailable_reason)
 
 
 @dataclass(frozen=True, slots=True)

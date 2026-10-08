@@ -24,6 +24,12 @@ class UnresolvedPurchaseIdentity:
     status: MatchStatus
     candidate_ids: tuple[UUID, ...]
 
+    @property
+    def explanation(self) -> str:
+        from app.application.purchase_check import explain_unresolved_identity
+
+        return explain_unresolved_identity(self)
+
 
 @dataclass(frozen=True, slots=True)
 class PromotionCandidate:

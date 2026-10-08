@@ -384,3 +384,153 @@ def test_projection_requires_immutable_typed_associations():
     repository.details = ("raw ORM or payload",)
     with pytest.raises(PublishedPromotionDataError):
         run(repository=repository)
+
+
+@pytest.mark.parametrize(
+    "field,status,expected",
+    [
+        ("brand", MatchStatus.NOT_FOUND, "The brand could not be found. Check the brand name."),
+        (
+            "brand",
+            MatchStatus.AMBIGUOUS,
+            "The brand matches more than one brand. Enter a more specific brand name.",
+        ),
+        (
+            "retailer",
+            MatchStatus.NOT_FOUND,
+            "The retailer could not be found. Check the retailer name.",
+        ),
+        (
+            "retailer",
+            MatchStatus.AMBIGUOUS,
+            "The retailer matches more than one retailer. Enter a more specific retailer name.",
+        ),
+        (
+            "model",
+            MatchStatus.NOT_FOUND,
+            "The product model could not be found. Check the model number or SKU.",
+        ),
+        (
+            "model",
+            MatchStatus.AMBIGUOUS,
+            (
+                "The product model matches more than one product. "
+                "Enter a more specific model number or SKU."
+            ),
+        ),
+    ],
+)
+def test_unresolved_explanation(field, status, expected):
+    resolver = Resolver()
+    resolver.field = field
+    resolver.candidate_ids = () if status == MatchStatus.NOT_FOUND else (MAKER, SHOP)
+    result = run(resolver=resolver)
+    assert result.explanation == expected
+    assert run(resolver=resolver).explanation == expected
+    assert REQUEST.brand not in result.explanation
+
+
+@pytest.mark.parametrize(
+    "reward,price,expected",
+    [
+        (None, None, "The cashback amount is not available for this promotion."),
+        (
+            PercentageReward(Decimal("10")),
+            None,
+            "Enter the purchase price to calculate this cashback reward.",
+        ),
+        (PercentageReward(Decimal("10")), Decimal("199.99"), None),
+        (FixedAmountReward(Decimal("100")), None, None),
+        (ProductSpecificReward((ProductRewardValue(PRODUCT, Decimal("42")),)), None, None),
+    ],
+)
+def test_benefit_reward_explanation(reward, price, expected):
+    detail = replace(DETAIL, benefits=(replace(DETAIL.benefits[0], reward=reward),))
+    result = run(detail, request=replace(REQUEST, purchase_price=price)).promotions[0]
+    assert result.benefits[0].reward_unavailable_explanation == expected
+    assert result.eligibility.classification == Classification.ELIGIBLE
+    assert all("cashback" not in text for text in result.explanation)
+
+
+@pytest.mark.parametrize(
+    "changes,expected",
+    [
+        ({"benefits": ()}, "published_candidate_inconsistent"),
+        ({"claim_end_date": None}, "published_claim_window_invalid"),
+        ({"claim_start_date": date(2025, 1, 1)}, "published_claim_window_invalid"),
+        ({"sources": ()}, "published_provenance_invalid"),
+        (
+            {
+                "benefits": (
+                    replace(
+                        DETAIL.benefits[0],
+                        reward=ProductSpecificReward((ProductRewardValue(SHOP, Decimal("1")),)),
+                    ),
+                )
+            },
+            "published_reward_invalid",
+        ),
+    ],
+)
+def test_published_error_diagnostics_are_safe(changes, expected):
+    from structlog.testing import capture_logs
+
+    with capture_logs() as logs:
+        with pytest.raises(PublishedPromotionDataError) as caught:
+            run(replace(DETAIL, **changes))
+    assert caught.value.code == expected
+    assert str(caught.value) == "Invalid published promotion data"
+    failures = [entry for entry in logs if entry["event"] == "check_purchase_failed"]
+    assert len(failures) == 1
+    assert failures[0]["category"] == "data_integrity"
+    assert failures[0]["error_code"] == expected
+    for raw in (REQUEST.brand, REQUEST.model, REQUEST.retailer, str(REQUEST.purchase_price)):
+        assert raw not in str(logs)
+
+
+def test_unexpected_published_validation_preserves_cause_without_exposing_it():
+    repository = Repository()
+    failure = ValueError("SQL secret Maker Model Shop 199.99")
+
+    def fail(ids):
+        raise failure
+
+    repository.load_check_purchase_candidates = fail
+    with pytest.raises(PublishedPromotionDataError) as caught:
+        run(repository=repository)
+    assert caught.value.__cause__ is failure
+    assert caught.value.code == "invalid_published_data"
+    assert str(caught.value) == "Invalid published promotion data"
+
+
+@pytest.mark.parametrize("sql_failure", [False, True])
+def test_repository_projection_failure_is_classified_and_chained(sql_failure):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from sqlalchemy.exc import SQLAlchemyError
+    from structlog.testing import capture_logs
+
+    from app.db.repositories.promotions import SqlAlchemyPromotionRepository
+
+    failure = SQLAlchemyError("SQL credentials") if sql_failure else ValueError("raw data secret")
+
+    def scalars(query):
+        if sql_failure:
+            raise failure
+        return (object(),)
+
+    session = SimpleNamespace(no_autoflush=nullcontext(), scalars=scalars)
+    repository = SqlAlchemyPromotionRepository(session)
+    with capture_logs() as logs:
+        with patch("app.db.repositories.promotions._check_details", side_effect=failure):
+            expected = PromotionPersistenceError if sql_failure else PublishedPromotionDataError
+            with pytest.raises(expected) as caught:
+                repository.load_check_purchase_candidates((VARIANT,))
+    assert caught.value.__cause__ is failure
+    assert "secret" not in str(caught.value)
+    assert "credentials" not in str(caught.value)
+    if not sql_failure:
+        assert caught.value.code == "invalid_published_projection"
+    assert logs == []
