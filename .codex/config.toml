@@ -1,0 +1,26 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+model = "gpt-6-luna"
+model_reasoning_effort = "low"
+model_verbosity = "low"
+
+[agents]
+enabled = true
+default_subagent_model = "gpt-6-luna"
+default_subagent_reasoning_effort = "low"
+
+[agents.implementer]
+description = "Implements a well-defined PR specification. Use for normal feature implementation."
+config_file = "agents/implementer.toml"
+
+[agents.repairer]
+description = "Makes focused fixes for concrete findings from an independent code review."
+config_file = "agents/repairer.toml"
+
+[agents.reviewer]
+description = "Independently reviews a branch against its PR specification and reports only actionable findings."
+config_file = "agents/reviewer.toml"
+
+[agents.critical-reviewer]
+description = "Escalation reviewer for difficult, security-sensitive, architectural, or unresolved implementation problems."
+config_file = "agents/critical-reviewer.toml"
