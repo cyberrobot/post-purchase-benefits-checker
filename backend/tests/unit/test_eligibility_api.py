@@ -3,10 +3,12 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import eligibility as api
 from app.application.identity_matching import IdentityPersistenceError
@@ -89,6 +91,7 @@ def harness(monkeypatch):
             _env_file=None,
             DATABASE_URL="postgresql+psycopg://user:password@localhost/benefits",
             APP_ENV="test",
+            SENTRY_DSN="https://public@example.ingest.sentry.io/12345",
         )
     )
     app.dependency_overrides[api.uk_evaluation_date] = lambda: DAY
@@ -124,6 +127,13 @@ def harness(monkeypatch):
     monkeypatch.setattr(api, "check_purchase", check)
     with TestClient(app) as client:
         yield client, state
+
+
+@pytest.fixture(autouse=True)
+def sentry_capture(monkeypatch):
+    capture = Mock()
+    monkeypatch.setattr(api.sentry_sdk, "capture_exception", capture)
+    return capture
 
 
 @pytest.mark.parametrize("price", [None, "0", "0.00", "12.50", "999999999999.99"])
@@ -413,3 +423,131 @@ def test_openapi_response_examples_validate(harness):
     ]["application/json"]["examples"]
     for example in examples.values():
         TypeAdapter(CheckResponse).validate_python(example["value"])
+
+
+def test_unexpected_exception_reporting_preserves_context_and_safe_response(
+    harness, sentry_capture, monkeypatch
+):
+    client, state = harness
+    scope = Mock()
+
+    @contextmanager
+    def reporting_scope():
+        yield scope
+
+    monkeypatch.setattr(api.sentry_sdk, "new_scope", reporting_scope)
+    error = RuntimeError("private purchase and credentials")
+    state["error"] = error
+    response = client.post(PATH, json=BODY)
+
+    sentry_capture.assert_called_once_with(error)
+    assert error.__traceback__ is not None
+    assert response.status_code == 500
+    assert response.headers["content-type"] == "application/problem+json"
+    data = response.json()
+    assert data == {
+        "type": "about:blank",
+        "title": "Internal server error",
+        "status": 500,
+        "detail": "Unable to check this purchase.",
+        "code": "internal_server_error",
+        "request_id": response.headers["x-request-id"],
+    }
+    UUID(data["request_id"])
+    scope.set_tag.assert_called_once_with("request_id", data["request_id"])
+    scope.add_event_processor.assert_called_once_with(api._safe_exception_event)
+    assert "private" not in response.text
+
+
+def test_sentry_event_keeps_only_safe_exception_context():
+    event = {
+        "event_id": "event",
+        "request": {"data": BODY, "headers": {"Authorization": "private"}},
+        "breadcrumbs": {"values": [{"message": "private"}]},
+        "extra": {"database_url": "private"},
+        "tags": {"request_id": "correlation", "unsafe": "private"},
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "module": "builtins",
+                    "value": "private",
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "filename": "eligibility.py",
+                                "function": "check",
+                                "lineno": 12,
+                                "vars": {"purchase": BODY},
+                                "context_line": "private",
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+    }
+    assert api._safe_exception_event(event, {}) == {
+        "event_id": "event",
+        "tags": {"request_id": "correlation"},
+        "exception": {
+            "values": [
+                {
+                    "type": "RuntimeError",
+                    "module": "builtins",
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "filename": "eligibility.py",
+                                "function": "check",
+                                "lineno": 12,
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        PublishedPromotionDataError(),
+        IdentityPersistenceError("private"),
+        PromotionPersistenceError("private"),
+        SQLAlchemyError("private"),
+    ],
+)
+def test_expected_failures_are_not_reported(harness, sentry_capture, error):
+    client, state = harness
+    state["error"] = error
+    assert client.post(PATH, json=BODY).status_code in (500, 503)
+    sentry_capture.assert_not_called()
+
+
+def test_validation_and_success_are_not_reported(harness, sentry_capture):
+    client, _ = harness
+    assert client.post(PATH, json={**BODY, "purchase_date": "bad"}).status_code == 422
+    assert client.post(PATH, json=BODY).status_code == 200
+    sentry_capture.assert_not_called()
+
+
+def test_sentry_failure_preserves_safe_500(harness, sentry_capture):
+    client, state = harness
+    state["error"] = RuntimeError("private purchase")
+    sentry_capture.side_effect = RuntimeError("private Sentry credentials")
+    response = client.post(PATH, json=BODY)
+    assert response.status_code == 500
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["code"] == "internal_server_error"
+    assert response.json()["request_id"] == response.headers["x-request-id"]
+    assert "private" not in response.text
+
+
+def test_disabled_sentry_does_not_report(harness, sentry_capture):
+    client, state = harness
+    client.app.state.settings.sentry_dsn = None
+    state["error"] = RuntimeError("private")
+    assert client.post(PATH, json=BODY).status_code == 500
+    sentry_capture.assert_not_called()

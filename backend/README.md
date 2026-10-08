@@ -1,6 +1,6 @@
 # Post-Purchase Benefits Checker backend
 
-Python 3.13, FastAPI, SQLAlchemy 2, and PostgreSQL foundation. The service currently exposes only process health; product and eligibility behaviour will be added in later changes.
+Python 3.13, FastAPI, SQLAlchemy 2, and PostgreSQL service exposing process health through `GET /health` and purchase eligibility through `POST /api/v1/eligibility/check`.
 
 The full [PR 1 project foundation specification](../.codex/tasks/pr-1-project-foundation.md) is kept in this repository.
 

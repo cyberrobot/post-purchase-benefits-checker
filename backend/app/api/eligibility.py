@@ -8,6 +8,7 @@ from typing import Annotated
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import sentry_sdk
 import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.exceptions import RequestValidationError
@@ -34,6 +35,43 @@ ERRORS = {
     ),
     503: ("eligibility_unavailable", "Eligibility unavailable", "Try again later."),
 }
+
+
+def _safe_exception_event(event, hint):
+    """Retain diagnostic locations without messages or inherited request context."""
+    safe = {
+        key: event[key] for key in ("event_id", "timestamp", "platform", "level") if key in event
+    }
+    values = []
+    for exception in event.get("exception", {}).get("values", []):
+        value = {key: exception[key] for key in ("type", "module") if key in exception}
+        value["stacktrace"] = {
+            "frames": [
+                {
+                    key: frame[key]
+                    for key in ("filename", "module", "function", "lineno")
+                    if key in frame
+                }
+                for frame in exception.get("stacktrace", {}).get("frames", [])
+            ]
+        }
+        values.append(value)
+    safe["exception"] = {"values": values}
+    safe["tags"] = {"request_id": event.get("tags", {}).get("request_id")}
+    return safe
+
+
+def _report_unexpected_exception(request, exc, request_id):
+    if not request.app.state.settings.sentry_dsn:
+        return
+    try:
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("request_id", str(request_id))
+            scope.add_event_processor(_safe_exception_event)
+            sentry_sdk.capture_exception(exc)
+    except Exception:
+        # Reporting must never change the client response or log reporting credentials.
+        pass
 
 
 def uk_evaluation_date():
@@ -126,14 +164,15 @@ class EligibilityRoute(APIRoute):
                 )
                 return problem(503, request_id)
             except Exception as exc:
-                # Exception messages can contain raw purchase/SQL data; retain only type.
-                logger.error(
+                # Warning avoids a second Sentry event from its logging integration.
+                logger.warning(
                     "eligibility_http_check_failed",
                     category="unexpected",
                     error_type=type(exc).__name__,
                     request_id=str(request_id),
                     status=500,
                 )
+                _report_unexpected_exception(request, exc, request_id)
                 return problem(500, request_id)
 
         return bounded
