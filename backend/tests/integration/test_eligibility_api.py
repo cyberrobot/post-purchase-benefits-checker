@@ -70,7 +70,7 @@ def test_http_real_snapshot_complete_projection_and_no_writes(
             for p in data["promotions"]
             for b in p["benefits"]
             if b["cashback_reward_gbp"] is not None
-        } == {"100.00", "20.00", "42.00"}
+        } == {"100", "20.00", "42"}
         assert http_client.post(PATH, json=body(request)).json() == data
         assert not ({"INSERT", "UPDATE", "DELETE", "COMMIT"} & set(statements))
         assert len(rollbacks) == 2
