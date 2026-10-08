@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.api.eligibility import router as eligibility_router
 from app.api.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
@@ -38,6 +39,7 @@ def create_app(
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.include_router(health_router)
+    app.include_router(eligibility_router)
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:

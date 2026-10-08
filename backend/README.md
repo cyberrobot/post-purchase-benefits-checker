@@ -1,6 +1,6 @@
 # Post-Purchase Benefits Checker backend
 
-Python 3.13, FastAPI, SQLAlchemy 2, and PostgreSQL foundation. The service currently exposes only process health; product and eligibility behaviour will be added in later changes.
+Python 3.13, FastAPI, SQLAlchemy 2, and PostgreSQL service exposing process health through `GET /health` and purchase eligibility through `POST /api/v1/eligibility/check`.
 
 The full [PR 1 project foundation specification](../.codex/tasks/pr-1-project-foundation.md) is kept in this repository.
 
@@ -468,3 +468,57 @@ may not contain every manufacturer condition, and results do not guarantee claim
 acceptance. Publication completeness beyond provenance, historical reconstruction
 and public transports remain subsequent work. No schema, configuration or external
 provider changes accompany this operation.
+
+## Public eligibility HTTP API (v1)
+
+`POST /api/v1/eligibility/check` accepts `application/json` (including a charset parameter).
+It is a public, read-only query: no API key, customer session, or idempotency key is needed.
+OpenAPI is available at `/openapi.json`; `/docs` describes both discriminated response models.
+
+```sh
+curl -X POST http://localhost:8000/api/v1/eligibility/check \
+  -H 'Content-Type: application/json' \
+  -d '{"brand":"Example Brand","model":"MODEL-123","retailer":"Example Retailer","purchase_date":"2026-10-01","purchase_price":"799.99"}'
+```
+
+Identity fields are required strings, limited to 255 characters before and after the existing
+identity normalisation. Their original spelling is passed to the application service.
+`purchase_date` is a strict `YYYY-MM-DD` calendar date, including future purchases.
+Optional `purchase_price` is null or an exact non-negative GBP string with at most two pence
+digits and **12 integer digits** (an API wire limit). JSON numbers, exponent notation, currency
+symbols, additional keys and a client evaluation date are rejected. Missing/null price differs
+from `"0"` or `"0.00"`. No currency field exists in v1.
+
+A successful check returns `200` and either `outcome: "unresolved_identity"` with the unresolved
+field, status (`not_found` or `ambiguous`), candidate UUIDs and explanation, or `outcome: "resolved"`
+with canonical identity UUIDs, every matching published variant and the complete application
+result. Resolved no-match has `promotions: []` and
+`no_match_reason: "no_matching_published_promotions"`; neither uncertainty nor no-match implies
+ineligibility. The server chooses the Europe/London evaluation date once per check.
+Promotion classifications are `ELIGIBLE`, `POTENTIALLY_ELIGIBLE`, `NOT_ELIGIBLE`,
+`CLAIM_NOT_YET_OPEN` and `EXPIRED`. Published lifecycle `expired` remains distinct from an
+expired claim window. Requirements are claim instructions; eligibility is not a claim guarantee.
+
+Result arrays preserve application order. Missing claim windows and unavailable money are null;
+GBP amounts are exact decimal strings preserving scale. Dates, UUIDs and aware source timestamps
+use ISO/RFC 3339 strings. Supporting sources may have null verification timestamps. Source and
+claim URLs are passive data. Every call uses one fresh read-only repeatable-read PostgreSQL
+snapshot, rolled back and closed on both success and failure. There are no writes or outbound
+source/model-provider calls.
+
+Errors use `application/problem+json` with `type`, `title`, `status`, `detail`, `code`, and a generated
+`request_id`; the same ID is returned in `X-Request-ID`. Codes are `request_too_large` (413),
+`unsupported_media_type` (415), `invalid_purchase_request` (422), `published_data_invalid` (500),
+`internal_server_error` (500), and `eligibility_unavailable` (503). Errors never echo rejected input
+or database details. The 429 `rate_limited` response is reserved for the production gateway.
+
+The application enforces an **8192 byte body limit**, including streamed bodies without
+Content-Length. No cross-origin browser allowance is configured; same-origin and standalone HTTP
+clients work. Breaking contract changes require `/api/v2`; optional additive fields preserve
+existing meanings. No database migration or MCP contract is introduced.
+
+**Production exposure is blocked pending a separate ingress control change.** This repository has
+no verified gateway rate limiter or request timeout policy. Configure and verify a production
+edge rate limit (initial suggestion: 60 requests/minute/IP with a modest burst, 429 and Retry-After)
+and bounded request timeouts before public exposure. Align configurable gateway errors with the
+problem contract. An optional future browser UI must use exact-origin CORS without credentials.
