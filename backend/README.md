@@ -421,3 +421,50 @@ conditional, tier, cap and non-GBP rewards remain unsupported. Future support sh
 new explicit domain discriminator/value/calculator and additive typed migration, together
 with publication validation and tests; it must preserve current semantics and common benefit
 fields. See the [PR 15 specification](../.codex/tasks/pr-15-reward-calculation.md).
+
+## Canonical purchase check
+
+`app.application.purchase_check.check_purchase` composes exact canonical identity
+matching, published candidate discovery, structured rules, claim timing, rewards,
+requirements and verified provenance. Pass the existing `CheckPurchaseRequest` and
+an explicit calendar `evaluation_date`; the operation does not use a clock, make
+remote requests, interpret descriptions, or mutate data. Future REST/MCP adapters
+must call this same operation.
+
+For PostgreSQL wiring, use `purchase_check_snapshot` from the established promotion
+repository module with a factory creating a **fresh dedicated Session**:
+
+```python
+with purchase_check_snapshot(session_factory) as (resolver, promotions):
+    result = check_purchase(
+        request,
+        evaluation_date=evaluation_date,
+        identity_resolver=resolver,
+        promotion_repository=promotions,
+    )
+```
+
+This boundary shares a read-only repeatable-read transaction across identity,
+candidate and batched graph reads and always rolls it back before closing the
+session. Reused sessions with pending data or existing transactions are rejected.
+The injected application ports can also be implemented in memory; alternative
+persistence wiring must provide the same coherent snapshot guarantee. All returned
+values are immutable and fully materialised, usable after session close.
+
+A resolved empty result has `no_matching_published_promotions`; unresolved identities
+retain their field, match status and candidate UUIDs. Neither is an evaluated
+negative eligibility finding. Each active/expired candidate variant has a separate
+result in candidate order. Benefits and requirements sort by persisted UUID; sources
+sort by `(role.value, source_id)`. Malformed published data raises
+`PublishedPromotionDataError`, while infrastructure errors preserve the established
+safe persistence exceptions. A missing claim window means potential eligibility,
+with `claim_window_unspecified`. Percentage cashback without a known price remains
+uncalculated with `purchase_price_required_for_reward`; it does not change eligibility.
+
+Only persisted manufacturer/product/retailer/date applicability is checked. Price
+restrictions, country, channel and condition have no persisted rule/input plumbing
+yet. Requirements remain claim instructions, not satisfied evidence. Recorded terms
+may not contain every manufacturer condition, and results do not guarantee claim
+acceptance. Publication completeness beyond provenance, historical reconstruction
+and public transports remain subsequent work. No schema, configuration or external
+provider changes accompany this operation.

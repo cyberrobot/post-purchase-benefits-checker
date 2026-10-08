@@ -25,6 +25,7 @@ class EligibilityReasonCode(StrEnum):
     CLAIM_WINDOW_OPEN = "claim_window_open"
     CLAIM_WINDOW_NOT_YET_OPEN = "claim_window_not_yet_open"
     CLAIM_WINDOW_EXPIRED = "claim_window_expired"
+    CLAIM_WINDOW_UNSPECIFIED = "claim_window_unspecified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,13 +45,13 @@ class EligibilityReason:
 
 
 def _validate_inputs(
-    rule_evaluations: tuple[RuleEvaluation, ...], claim_window_status: ClaimWindowStatus
+    rule_evaluations: tuple[RuleEvaluation, ...], claim_window_status: ClaimWindowStatus | None
 ) -> None:
     if not isinstance(rule_evaluations, tuple):
         raise TypeError("Rule evaluations must be a tuple")
     if any(not isinstance(value, RuleEvaluation) for value in rule_evaluations):
         raise TypeError("Rule evaluations must contain RuleEvaluation values")
-    if not isinstance(claim_window_status, ClaimWindowStatus):
+    if claim_window_status is not None and not isinstance(claim_window_status, ClaimWindowStatus):
         raise TypeError("Claim window status must be a ClaimWindowStatus")
 
 
@@ -59,7 +60,7 @@ class EligibilityResult:
     classification: EligibilityClassification
     reasons: tuple[EligibilityReason, ...]
     rule_evaluations: tuple[RuleEvaluation, ...]
-    claim_window_status: ClaimWindowStatus
+    claim_window_status: ClaimWindowStatus | None
 
     def __post_init__(self) -> None:
         _validate_inputs(self.rule_evaluations, self.claim_window_status)
@@ -74,7 +75,7 @@ class EligibilityResult:
 
 
 def classify_eligibility(
-    rule_evaluations: tuple[RuleEvaluation, ...], claim_window_status: ClaimWindowStatus
+    rule_evaluations: tuple[RuleEvaluation, ...], claim_window_status: ClaimWindowStatus | None
 ) -> EligibilityResult:
     """Failures precede unknowns, then claim timing; empty rules impose no restriction.
 
@@ -93,9 +94,15 @@ def classify_eligibility(
             if evaluation.status == status
         )
         if reasons:
+            if status == RuleStatus.UNKNOWN and claim_window_status is None:
+                reasons += (EligibilityReason(EligibilityReasonCode.CLAIM_WINDOW_UNSPECIFIED),)
             return EligibilityResult(classification, reasons, rule_evaluations, claim_window_status)
 
     classification, claim_reason = {
+        None: (
+            EligibilityClassification.POTENTIALLY_ELIGIBLE,
+            EligibilityReasonCode.CLAIM_WINDOW_UNSPECIFIED,
+        ),
         ClaimWindowStatus.OPEN: (
             EligibilityClassification.ELIGIBLE,
             EligibilityReasonCode.CLAIM_WINDOW_OPEN,

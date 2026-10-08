@@ -93,6 +93,7 @@ def test_stable_enum_contracts():
         "claim_window_open",
         "claim_window_not_yet_open",
         "claim_window_expired",
+        "claim_window_unspecified",
     ]
 
 
@@ -218,7 +219,6 @@ def test_validates_all_tuple_members_even_after_known_failure(invalid):
         "open",
         "not_yet_open",
         "expired",
-        None,
         1,
         *list(PromotionStatus),
         EligibilityClassification.EXPIRED,
@@ -278,3 +278,32 @@ def test_result_construction_validates_domain_contract(field, value, error):
     assert isinstance(result, EligibilityResult)
     with pytest.raises(error):
         replace(result, **{field: value})
+
+
+@pytest.mark.parametrize("statuses", list(product(RuleStatus, repeat=3)))
+def test_unspecified_window_preserves_failure_unknown_precedence(statuses):
+    evaluations = tuple(
+        RuleEvaluation(kind, status, codes[list(RuleStatus).index(status)])
+        for status, (kind, codes) in zip(statuses, RULE_CASES, strict=True)
+    )
+    result = classify_eligibility(evaluations, None)
+    assert result.claim_window_status is None
+    assert result.rule_evaluations == evaluations
+    if RuleStatus.NOT_SATISFIED in statuses:
+        assert result.classification == EligibilityClassification.NOT_ELIGIBLE
+        assert result.reasons == tuple(
+            EligibilityReason(e.reason_code, e.kind)
+            for e in evaluations
+            if e.status == RuleStatus.NOT_SATISFIED
+        )
+    else:
+        assert result.classification == EligibilityClassification.POTENTIALLY_ELIGIBLE
+        assert result.reasons[-1].code == EligibilityReasonCode.CLAIM_WINDOW_UNSPECIFIED
+        if RuleStatus.UNKNOWN in statuses:
+            assert result.reasons[:-1] == tuple(
+                EligibilityReason(e.reason_code, e.kind)
+                for e in evaluations
+                if e.status == RuleStatus.UNKNOWN
+            )
+        else:
+            assert result.reasons[0].code == EligibilityReasonCode.ALL_CONFIGURED_RULES_SATISFIED
