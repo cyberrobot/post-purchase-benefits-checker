@@ -384,3 +384,40 @@ rows satisfy that constraint. If installation requirements exist, PostgreSQL rej
 the downgrade and rolls back the schema and revision change, preserving every row.
 There is no automatic deletion or conversion. Future classifications require an
 explicit domain member, constraint migration and domain/PostgreSQL coverage.
+
+## Structured GBP rewards
+
+`app.domain.rewards` provides frozen, slotted `FixedAmountReward`, `PercentageReward`,
+`ProductRewardValue`, and `ProductSpecificReward` values. `RewardType` has exactly
+`fixed_amount`, `percentage`, and `product_specific`. Definitions compose with benefits;
+common benefit display text is never parsed or changed.
+
+Call `calculate_reward(definition, purchase_price=..., product_id=...)` to return a GBP
+`Decimal`. Fixed and product-specific values return the exact configured amount.
+Percentages are percentage points (`10` means 10%) and use the exact qualifying price,
+rounding only the result to pence with `ROUND_HALF_UP`, independently of ambient Decimal
+precision, rounding, traps, and exponent limits. Missing price raises `MissingPurchasePrice`;
+an unmapped canonical product UUID raises `MissingProductReward`. Wrong input types raise
+`TypeError`; invalid values raise `ValueError`. Known zero purchase price remains valid.
+Configured amounts must be finite, positive Decimals with at most two fractional places;
+percentages must be in `(0, 100]` with at most four. No coercion or constructor rounding occurs.
+Product mappings are non-empty, unique by `Product.id`, copied and sorted for immutable,
+order-independent equality.
+
+Migration `0007_reward_calculation` adds `benefit_rewards` (zero/one definition per benefit)
+and `benefit_product_reward_values` (one exact amount per canonical product), with an index
+on `product_id`. Unscaled PostgreSQL NUMERIC columns retain precision for database checks
+rather than silently rounding invalid input. Checks enforce discriminator, field shape,
+finite positive amounts, percentage bounds and fractional places even for direct SQL.
+Benefit deletion cascades through rewards; product references restrict deletion. Writes
+use caller-owned transactions; write a definition and its product values atomically.
+Existing promotion graphs and benefits are unchanged, with no backfill. Apply the migration
+before using the new tables. Empty downgrade and re-upgrade are supported; populated
+downgrade explicitly refuses data loss while preserving tables, rows, checks and revision.
+
+Runtime eligibility, REST/MCP and purchase-check results are unchanged. Publication validation
+must later enforce compatible reward definitions and complete product coverage. Basket,
+conditional, tier, cap and non-GBP rewards remain unsupported. Future support should add a
+new explicit domain discriminator/value/calculator and additive typed migration, together
+with publication validation and tests; it must preserve current semantics and common benefit
+fields. See the [PR 15 specification](../.codex/tasks/pr-15-reward-calculation.md).

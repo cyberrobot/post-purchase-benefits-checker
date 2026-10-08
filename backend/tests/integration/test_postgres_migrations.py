@@ -1,6 +1,8 @@
 import os
 import re
 import subprocess
+from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -13,8 +15,22 @@ from sqlalchemy.orm import Session
 
 from app.db import models  # noqa: F401
 from app.db.base import Base
-from app.db.models import Manufacturer, Promotion, PromotionVariant, Requirement
+from app.db.models import (
+    Benefit,
+    BenefitProductRewardValue,
+    BenefitReward,
+    Manufacturer,
+    Product,
+    Promotion,
+    PromotionSource,
+    PromotionVariant,
+    PromotionVariantProduct,
+    Requirement,
+    Retailer,
+    Source,
+)
 from app.domain.requirements import RequirementType
+from app.domain.rewards import RewardType
 
 pytestmark = pytest.mark.integration
 
@@ -27,7 +43,7 @@ def test_fresh_postgres_connectivity_and_migration_head(
         assert connection.execute(text("SELECT 1")).scalar_one() == 1
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
     assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())
-    assert revision == "0006_promotion_requirements"
+    assert revision == "0007_reward_calculation"
     migration_environment = os.environ.copy()
     migration_environment["DATABASE_URL"] = postgres_engine.url.render_as_string(
         hide_password=False
@@ -187,8 +203,8 @@ def test_fresh_postgres_connectivity_and_migration_head(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
 
-    assert revision == "0006_promotion_requirements"
-    assert final_revision == "0006_promotion_requirements"
+    assert revision == "0007_reward_calculation"
+    assert final_revision == "0007_reward_calculation"
     assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())
 
     # Retain the original core-schema downgrade coverage as well as the relative-window round trip.
@@ -203,7 +219,7 @@ def test_fresh_postgres_connectivity_and_migration_head(
     with postgres_engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0006_promotion_requirements"
+            == "0007_reward_calculation"
         )
     assert set(Base.metadata.tables) <= set(inspect(postgres_engine).get_table_names())
 
@@ -312,7 +328,7 @@ def test_relative_upgrade_preserves_fixed_and_absent_windows(
     subprocess.run(["alembic", "upgrade", "head"], check=True, env=migration_environment)
     with postgres_engine.begin() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0006_promotion_requirements"
+            "0007_reward_calculation"
         )
         connection.execute(
             text("DELETE FROM promotions WHERE manufacturer_id = :id"), {"id": manufacturer_id}
@@ -380,7 +396,7 @@ def test_requirement_constraint_upgrade_and_safe_downgrade(
     before = persisted_rows()
     try:
         migrate("upgrade", "head")
-        assert revision() == "0006_promotion_requirements"
+        assert revision() == "0007_reward_calculation"
         assert persisted_rows() == before
         assert constraint_values() == canonical_types
         metadata_constraint = next(
@@ -409,7 +425,7 @@ def test_requirement_constraint_upgrade_and_safe_downgrade(
         assert error.value.orig.diag.constraint_name == "ck_requirements_type"
         assert persisted_rows() == before
 
-        migrate("downgrade", "-1")
+        migrate("downgrade", "0005_relative_claim_windows")
         assert revision() == "0005_relative_claim_windows"
         assert constraint_values() == legacy_types
         assert persisted_rows() == before
@@ -431,10 +447,10 @@ def test_requirement_constraint_upgrade_and_safe_downgrade(
                 )
             )
         with_installation = persisted_rows()
-        failed = migrate("downgrade", "-1", check=False)
+        failed = migrate("downgrade", "0005_relative_claim_windows", check=False)
         assert failed.returncode != 0
         assert "ck_requirements_type" in failed.stderr
-        assert revision() == "0006_promotion_requirements"
+        assert revision() == "0007_reward_calculation"
         assert constraint_values() == canonical_types
         assert persisted_rows() == with_installation
         # The restored constraint remains usable after failed transactional DDL.
@@ -451,3 +467,178 @@ def test_requirement_constraint_upgrade_and_safe_downgrade(
                 Manufacturer.__table__.delete().where(Manufacturer.id == manufacturer_id)
             )
         migrate("upgrade", "head")
+
+
+def test_reward_upgrade_preservation_and_safe_downgrade(
+    postgres_engine: Engine, migrated_test_database: None
+) -> None:
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = postgres_engine.url.render_as_string(hide_password=False)
+
+    def migrate(direction: str, target: str, *, check: bool = True):
+        return subprocess.run(
+            ["alembic", direction, target],
+            env=environment,
+            check=check,
+            capture_output=True,
+            text=True,
+        )
+
+    def revision():
+        with postgres_engine.connect() as connection:
+            return connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+
+    reward_tables = {"benefit_rewards", "benefit_product_reward_values"}
+    legacy_tables = [
+        table for name, table in Base.metadata.tables.items() if name not in reward_tables
+    ]
+
+    def snapshot(tables):
+        with postgres_engine.connect() as connection:
+            return {
+                table.name: connection.execute(select(table).order_by(*table.primary_key)).all()
+                for table in tables
+            }
+
+    migrate("downgrade", "0006_promotion_requirements")
+    assert revision() == "0006_promotion_requirements"
+    assert not reward_tables & set(inspect(postgres_engine).get_table_names())
+    with Session(postgres_engine) as session, session.begin():
+        manufacturer = Manufacturer(name="Rewards", slug="rewards")
+        product = Product(manufacturer=manufacturer, name="Reward product", slug="reward-product")
+        retailer = Retailer(name="Reward retailer", slug="reward-retailer")
+        source = Source(
+            url="https://example.test/rewards",
+            source_type="web_page",
+            retrieved_at=datetime(2026, 10, 1, tzinfo=UTC),
+            verified_at=datetime(2026, 10, 2, tzinfo=UTC),
+        )
+        promotion = Promotion(
+            manufacturer=manufacturer,
+            name="Rewards",
+            slug="rewards",
+            status="active",
+            source_links=[PromotionSource(source=source, role="primary")],
+        )
+        variant = PromotionVariant(
+            promotion=promotion,
+            retailer=retailer,
+            code="rewards",
+            benefits=[Benefit(benefit_type="cashback", name=f"£999 display {i}") for i in range(3)],
+            requirements=[Requirement(requirement_type="installation_evidence")],
+            product_links=[PromotionVariantProduct(product=product)],
+        )
+        session.add(promotion)
+        session.flush()
+        manufacturer_id, promotion_id = manufacturer.id, promotion.id
+        product_id, retailer_id, source_id = product.id, retailer.id, source.id
+        benefit_ids = [benefit.id for benefit in variant.benefits]
+    before = snapshot(legacy_tables)
+    try:
+        migrate("upgrade", "head")
+        assert revision() == "0007_reward_calculation"
+        assert snapshot(legacy_tables) == before
+        assert snapshot([BenefitReward.__table__, BenefitProductRewardValue.__table__]) == {
+            "benefit_rewards": [],
+            "benefit_product_reward_values": [],
+        }
+        # An empty downgrade removes only the new tables, and can be reversed.
+        migrate("downgrade", "-1")
+        assert revision() == "0006_promotion_requirements"
+        assert snapshot(legacy_tables) == before
+        assert not reward_tables & set(inspect(postgres_engine).get_table_names())
+        migrate("upgrade", "head")
+        with postgres_engine.begin() as connection:
+            connection.execute(
+                BenefitReward.__table__.insert(),
+                [
+                    {
+                        "benefit_id": benefit_ids[0],
+                        "reward_type": "fixed_amount",
+                        "fixed_amount": Decimal("100.00"),
+                        "percentage": None,
+                    },
+                    {
+                        "benefit_id": benefit_ids[1],
+                        "reward_type": "percentage",
+                        "fixed_amount": None,
+                        "percentage": Decimal("12.3456"),
+                    },
+                    {
+                        "benefit_id": benefit_ids[2],
+                        "reward_type": "product_specific",
+                        "fixed_amount": None,
+                        "percentage": None,
+                    },
+                ],
+            )
+            connection.execute(
+                BenefitProductRewardValue.__table__.insert().values(
+                    benefit_id=benefit_ids[2],
+                    product_id=product_id,
+                    amount=Decimal("150.01"),
+                )
+            )
+        populated = snapshot([BenefitReward.__table__, BenefitProductRewardValue.__table__])
+        assert {row.reward_type for row in populated["benefit_rewards"]} == set(RewardType)
+        constraints = {
+            table: inspect(postgres_engine).get_check_constraints(table) for table in reward_tables
+        }
+        for table in reward_tables:
+            assert {check["name"] for check in constraints[table]} == {
+                check.name
+                for check in Base.metadata.tables[table].constraints
+                if isinstance(check, CheckConstraint)
+            }
+        failed = migrate("downgrade", "-1", check=False)
+        assert failed.returncode != 0
+        assert "Cannot downgrade reward calculation while reward definitions exist" in failed.stderr
+        assert revision() == "0007_reward_calculation"
+        assert reward_tables <= set(inspect(postgres_engine).get_table_names())
+        assert snapshot([BenefitReward.__table__, BenefitProductRewardValue.__table__]) == populated
+        assert snapshot(legacy_tables) == before
+        assert constraints == {
+            table: inspect(postgres_engine).get_check_constraints(table) for table in reward_tables
+        }
+        # Refusal leaves constraints active and the database usable; prove direct SQL checks.
+        for value, kind in [("12.345", "fixed_amount"), ("100.0001", "percentage")]:
+            with pytest.raises(IntegrityError), postgres_engine.begin() as connection:
+                connection.execute(
+                    BenefitReward.__table__.update()
+                    .where(
+                        BenefitReward.benefit_id
+                        == (benefit_ids[0] if kind == "fixed_amount" else benefit_ids[1])
+                    )
+                    .values(**{kind if kind == "fixed_amount" else "percentage": Decimal(value)})
+                )
+        with pytest.raises(IntegrityError), postgres_engine.begin() as connection:
+            connection.execute(
+                BenefitReward.__table__.update()
+                .where(BenefitReward.benefit_id == benefit_ids[2])
+                .values(reward_type="basket")
+            )
+        with postgres_engine.begin() as connection:
+            connection.execute(
+                BenefitReward.__table__.update()
+                .where(BenefitReward.benefit_id == benefit_ids[0])
+                .values(fixed_amount=Decimal("101.01"))
+            )
+        with postgres_engine.connect() as connection:
+            context = MigrationContext.configure(
+                connection,
+                opts={
+                    "include_object": lambda obj, name, kind, reflected, other: (
+                        name != "test_session_isolation_probe"
+                    ),
+                },
+            )
+            assert compare_metadata(context, Base.metadata) == []
+    finally:
+        with postgres_engine.begin() as connection:
+            connection.execute(Promotion.__table__.delete().where(Promotion.id == promotion_id))
+            connection.execute(Product.__table__.delete().where(Product.id == product_id))
+            connection.execute(
+                Manufacturer.__table__.delete().where(Manufacturer.id == manufacturer_id)
+            )
+            connection.execute(Retailer.__table__.delete().where(Retailer.id == retailer_id))
+            connection.execute(Source.__table__.delete().where(Source.id == source_id))

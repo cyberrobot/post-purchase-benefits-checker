@@ -1,5 +1,7 @@
 from app.db.models.core import (
     Benefit,
+    BenefitProductRewardValue,
+    BenefitReward,
     Manufacturer,
     Product,
     Promotion,
@@ -29,6 +31,8 @@ __all__ = [
     "RetailerGroupMember",
     "RetailerProductSku",
     "Benefit",
+    "BenefitProductRewardValue",
+    "BenefitReward",
     "Manufacturer",
     "Product",
     "Promotion",
