@@ -307,3 +307,90 @@ def test_ambiguous_or_mislabelled_product_identity_is_rejected(db_session, case)
     with pytest.raises(ValueError, match="identity"), db_session.begin_nested():
         construct_reference(db_session)
     assert snapshot(db_session) == before
+
+
+def test_persisted_reward_and_claim_offsets_match_verified_manifest(db_session):
+    f = reference_manifest()
+    promotion = construct_reference(db_session)
+    identity = promotion.id
+    db_session.expire_all()
+    persisted = db_session.get(Promotion, identity)
+    assert persisted.claim_start_offset_days == int(f["claim_window"]["start_offset_days"])
+    assert persisted.claim_end_offset_days == int(f["claim_window"]["end_offset_days"])
+    benefit = persisted.variants[0].benefits[0]
+    assert benefit.benefit_type == f["benefit"]["type"]
+    assert benefit.reward.reward_type == f["benefit"]["reward"]["type"]
+    assert benefit.reward.fixed_amount == Decimal(f["benefit"]["reward"]["amount_gbp"])
+
+
+@pytest.mark.parametrize("missing", ["retailer", "product"])
+def test_conflicting_existing_reference_cannot_leave_new_rows_after_commit(db_session, missing):
+    f = reference_manifest()
+    maker = Manufacturer(name="Samsung", slug="samsung")
+    caller = Manufacturer(name="Caller maker", slug="caller-maker")
+    conflict = Promotion(
+        manufacturer=maker,
+        name="Conflicting existing reference",
+        slug=f["promotion_slug"],
+        status=S.REVIEW,
+    )
+    db_session.add_all([maker, caller, conflict])
+    if missing == "product":
+        db_session.add(Retailer(name="Samsung.com", slug="samsung-com"))
+    db_session.flush()
+    caller.name = "Caller change retained"
+    db_session.flush()
+    before = snapshot(db_session)
+    with pytest.raises(ValueError, match="Conflicting existing reference graph"):
+        construct_reference(db_session)
+    db_session.commit()
+    assert snapshot(db_session) == before
+    assert db_session.get(Manufacturer, caller.id).name == "Caller change retained"
+
+
+def test_candidate_failure_cannot_leave_partial_graph_after_caller_commit(db_session, monkeypatch):
+    from tests import samsung_reference as helper
+
+    caller = Manufacturer(name="Caller maker", slug="caller-maker")
+    db_session.add(caller)
+    db_session.flush()
+    before = snapshot(db_session)
+
+    def fail(candidate):
+        # Confirm preflight is reached after a real graph has been flushed.
+        assert db_session.scalar(
+            select(Promotion).where(Promotion.slug == candidate.promotion.slug)
+        )
+        raise ValueError("simulated candidate validation failure")
+
+    monkeypatch.setattr(helper, "validate_candidate_promotion", fail)
+    with pytest.raises(ValueError, match="simulated"):
+        construct_reference(db_session)
+    db_session.commit()
+    assert snapshot(db_session) == before
+    assert db_session.get(Manufacturer, caller.id).name == "Caller maker"
+
+
+@pytest.mark.parametrize("pending", ["new", "dirty", "deleted"])
+def test_pending_caller_changes_are_not_flushed_by_constructor(db_session, pending):
+    caller = Manufacturer(name="Caller maker", slug="caller-maker")
+    if pending != "new":
+        db_session.add(caller)
+        db_session.flush()
+    before = snapshot(db_session)
+    if pending == "new":
+        db_session.add(caller)
+    elif pending == "dirty":
+        caller.name = "Caller changed maker"
+    else:
+        db_session.delete(caller)
+    with pytest.raises(ValueError, match="without pending changes"):
+        construct_reference(db_session)
+    assert caller in getattr(db_session, pending)
+    with db_session.no_autoflush:
+        assert snapshot(db_session) == before
+    # The caller remains free to commit its own pending work after rejection.
+    db_session.commit()
+    after = snapshot(db_session)
+    assert after != before
+    assert all(before[t] == after[t] for t in before.keys() - {"manufacturers"})

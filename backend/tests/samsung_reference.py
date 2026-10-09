@@ -51,7 +51,7 @@ def reference_manifest():
     return validate_manifest(json.loads(MANIFEST.read_text()))
 
 
-def _resolve(session, match, kind, attributes):
+def _resolve(session, match, kind, attributes, *, allow_create=True):
     if match.status == MatchStatus.AMBIGUOUS:
         raise ValueError("Ambiguous reference identity")
     if match.status == MatchStatus.MATCHED:
@@ -61,6 +61,8 @@ def _resolve(session, match, kind, attributes):
         if kind is Product and row.name != attributes["name"]:
             raise ValueError("Conflicting reference product identity")
         return row
+    if not allow_create:
+        raise ValueError("Conflicting existing reference graph: missing identity")
     row = kind(**attributes)
     session.add(row)
     session.flush()
@@ -120,8 +122,20 @@ def _fingerprint(promotion):
 
 
 def construct_reference(session):
-    """Caller owns atomic graph transaction; existing conflicting data is never repaired."""
+    """Construct atomically inside the caller's transaction, without committing it.
+
+    Require callers to flush their own changes first: begin_nested() unconditionally
+    flushes even with autoflush disabled. Refusing pending changes keeps their flush
+    and failure handling under caller control. Only this helper's writes roll back.
+    """
+    if session.new or session.dirty or session.deleted:
+        raise ValueError("Reference construction requires a session without pending changes")
     f = reference_manifest()
+    with session.begin_nested():
+        return _construct_reference(session, f)
+
+
+def _construct_reference(session, f):
     resolver = IdentityResolver(SqlAlchemyIdentityRepository(session))
     maker = _resolve(
         session,
@@ -129,11 +143,17 @@ def construct_reference(session):
         Manufacturer,
         {"name": f["manufacturer"], "slug": "samsung"},
     )
+    existing = session.scalar(
+        select(Promotion)
+        .where(Promotion.manufacturer_id == maker.id, Promotion.slug == f["promotion_slug"])
+        .with_for_update()
+    )
     shop = _resolve(
         session,
         resolver.resolve_retailer(f["retailer"]),
         Retailer,
         {"name": f["retailer"], "slug": "samsung-com"},
+        allow_create=existing is None,
     )
     product = _resolve(
         session,
@@ -147,11 +167,7 @@ def construct_reference(session):
             "slug": "galaxy-buds4-pro",
             "model_number": f["product"]["model_or_sku"],
         },
-    )
-    existing = session.scalar(
-        select(Promotion)
-        .where(Promotion.manufacturer_id == maker.id, Promotion.slug == f["promotion_slug"])
-        .with_for_update()
+        allow_create=existing is None,
     )
     expected = Promotion(
         manufacturer_id=maker.id,
@@ -160,8 +176,8 @@ def construct_reference(session):
         status=S.REVIEW,
         purchase_start_date=date.fromisoformat(f["purchase_start_date"]),
         purchase_end_date=date.fromisoformat(f["purchase_end_date"]),
-        claim_start_offset_days=0,
-        claim_end_offset_days=29,
+        claim_start_offset_days=int(f["claim_window"]["start_offset_days"]),
+        claim_end_offset_days=int(f["claim_window"]["end_offset_days"]),
     )
     expected.variants = [
         PromotionVariant(
@@ -171,10 +187,13 @@ def construct_reference(session):
             product_links=[PromotionVariantProduct(product_id=product.id)],
             benefits=[
                 Benefit(
-                    benefit_type="cashback",
+                    benefit_type=f["benefit"]["type"],
                     name="GBP 50 cashback",
                     description=" ".join(f["limitations"]),
-                    reward=BenefitReward(reward_type="fixed_amount", fixed_amount=Decimal("50.00")),
+                    reward=BenefitReward(
+                        reward_type=f["benefit"]["reward"]["type"],
+                        fixed_amount=Decimal(f["benefit"]["reward"]["amount_gbp"]),
+                    ),
                 )
             ],
             requirements=[
