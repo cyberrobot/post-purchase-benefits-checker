@@ -5,8 +5,12 @@ from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
-from app.domain.benefits import Benefit
-from app.domain.claim_windows import FixedClaimWindow, RelativeClaimWindow
+from app.domain.benefits import Benefit, BenefitType
+from app.domain.claim_windows import (
+    FixedClaimWindow,
+    RelativeClaimWindow,
+    evaluate_relative_claim_window,
+)
 from app.domain.promotion_provenance import (
     PromotionProvenanceError,
     PromotionSourceRecord,
@@ -40,8 +44,17 @@ class ValidationReport:
 
 
 @dataclass(frozen=True)
+class DraftBenefit:
+    """Partial display data; never a runtime Benefit or a guessed display name."""
+
+    benefit_type: BenefitType
+    name: str | None
+    description: str | None = None
+
+
+@dataclass(frozen=True)
 class ValidationBenefit:
-    benefit: Benefit
+    benefit: Benefit | DraftBenefit
     reward: RewardDefinition | None = None
     invalid_reward: bool = False
 
@@ -111,6 +124,14 @@ def validate_definition(
         add("missing_claim_window", "/claim_window")
     elif not isinstance(snapshot.claim_window, (FixedClaimWindow, RelativeClaimWindow)):
         add("invalid_claim_window", "/claim_window")
+    elif isinstance(snapshot.claim_window, RelativeClaimWindow):
+        # Non-negative offsets grow monotonically with purchase date. An open-ended
+        # purchase period includes date.max; do not silently shorten that period.
+        latest_purchase = snapshot.purchase_end_date or date.max
+        try:
+            evaluate_relative_claim_window(snapshot.claim_window, latest_purchase, latest_purchase)
+        except (ValueError, TypeError):
+            add("invalid_claim_window", "/claim_window")
     if not snapshot.variants:
         add("missing_variant", "/variants")
     codes = set()
@@ -139,7 +160,11 @@ def validate_definition(
             add("missing_benefit", path + "/benefits")
         for j, value in enumerate(variant.benefits):
             bp = path + f"/benefits/{j}"
-            if not value.benefit.name.strip() or len(value.benefit.name) > 255:
+            if (
+                not value.benefit.name
+                or not value.benefit.name.strip()
+                or len(value.benefit.name) > 255
+            ):
                 add("missing_benefit_name", bp + "/name")
             if value.invalid_reward or (
                 value.reward is not None

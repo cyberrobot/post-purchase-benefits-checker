@@ -8,12 +8,20 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_serializer,
+)
 
-from app.domain.benefits import Benefit, BenefitType
+from app.domain.benefits import BenefitType
 from app.domain.claim_windows import FixedClaimWindow, RelativeClaimWindow
 from app.domain.promotion_provenance import SourceRole
 from app.domain.promotion_validation import (
+    DraftBenefit,
     PromotionValidationSnapshot,
     ValidationBenefit,
     ValidationIssue,
@@ -134,9 +142,16 @@ def _error_path(loc: tuple[object, ...]) -> str:
 
 class CandidateBenefit(CandidateModel):
     type: BenefitType
-    name: Name
+    name: Name | None = None
     description: Text | None = None
     reward: Reward | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler):
+        data = handler(self)
+        if "name" not in self.model_fields_set:
+            data.pop("name", None)
+        return data
 
 
 class CandidateRequirement(CandidateModel):
@@ -303,7 +318,7 @@ def validate_candidate_promotion(candidate: CandidatePromotionV1) -> ValidationR
                 invalid = True
             benefits.append(
                 ValidationBenefit(
-                    Benefit(benefit.type, benefit.name, benefit.description), reward, invalid
+                    DraftBenefit(benefit.type, benefit.name, benefit.description), reward, invalid
                 )
             )
         variants.append(

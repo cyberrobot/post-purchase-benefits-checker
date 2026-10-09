@@ -18,6 +18,7 @@ def document():
             "name": "Campaign",
             "slug": "campaign",
             "purchase_start_date": "2026-10-01",
+            "purchase_end_date": "2026-10-31",
             "claim_window": {"type": "relative", "start_offset_days": 0, "end_offset_days": 30},
             "variants": [
                 {
@@ -246,3 +247,72 @@ def test_unsupported_enum_and_array_and_depth_limits():
         value = {"nested": value}
     with pytest.raises(CandidateInputError):
         parse_candidate_promotion(value)
+
+
+@pytest.mark.parametrize("name", [None, "", "   ", "Cashback"])
+def test_partial_benefit_names_round_trip(name):
+    raw = document()
+    raw["promotion"]["variants"][0]["benefits"][0]["name"] = name
+    candidate = parse_candidate_promotion(raw)
+    serialized = candidate.model_dump(mode="json", exclude_unset=True)
+    assert serialized == raw
+    reparsed = parse_candidate_promotion(serialized)
+    assert reparsed == candidate
+    default_reparsed = parse_candidate_promotion(candidate.model_dump(mode="json"))
+    assert default_reparsed.promotion.variants[0].benefits[0].name == name
+    assert "name" in default_reparsed.promotion.variants[0].benefits[0].model_fields_set
+    issues = validate_candidate_promotion(reparsed).issues
+    names = [i for i in issues if i.code == "missing_benefit_name"]
+    assert bool(names) is (name != "Cashback")
+    if names:
+        assert names[0].path == "/promotion/variants/0/benefits/0/name"
+
+
+def test_missing_benefit_name_preserves_absence():
+    raw = document()
+    del raw["promotion"]["variants"][0]["benefits"][0]["name"]
+    candidate = parse_candidate_promotion(raw)
+    serialized = candidate.model_dump(mode="json", exclude_unset=True)
+    assert serialized == raw
+    default_serialized = candidate.model_dump(mode="json")
+    assert "name" not in default_serialized["promotion"]["variants"][0]["benefits"][0]
+    reparsed = parse_candidate_promotion(default_serialized)
+    benefit = reparsed.promotion.variants[0].benefits[0]
+    assert "name" not in benefit.model_fields_set
+    assert benefit.name is None
+    assert "missing_benefit_name" in {i.code for i in validate_candidate_promotion(reparsed).issues}
+
+
+@pytest.mark.parametrize("name", [123, True, [], "x" * 256])
+def test_invalid_provided_benefit_name(name):
+    raw = document()
+    raw["promotion"]["variants"][0]["benefits"][0]["name"] = name
+    with pytest.raises(CandidateInputError) as error:
+        parse_candidate_promotion(raw)
+    assert error.value.report.issues[0].path == "/promotion/variants/0/benefits/0/name"
+
+
+@pytest.mark.parametrize(
+    "end,offsets,invalid",
+    [
+        ("2026-10-31", (0, 3652058), True),
+        ("9999-12-31", (0, 1), True),
+        ("9999-12-30", (0, 1), False),
+        ("2026-10-31", (30, 60), False),
+        (None, (0, 30), True),
+        (None, (0, 0), False),
+    ],
+)
+def test_relative_preflight_representability(end, offsets, invalid):
+    raw = document()
+    raw["promotion"]["purchase_end_date"] = end
+    raw["promotion"]["claim_window"] = {
+        "type": "relative",
+        "start_offset_days": offsets[0],
+        "end_offset_days": offsets[1],
+    }
+    issues = validate_candidate_promotion(parse_candidate_promotion(raw)).issues
+    found = [i for i in issues if i.code == "invalid_claim_window"]
+    assert bool(found) is invalid
+    if found:
+        assert found[0].path == "/promotion/claim_window"

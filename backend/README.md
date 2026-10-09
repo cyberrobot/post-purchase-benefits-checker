@@ -544,6 +544,15 @@ cashback/extended_warranty/free_gift types. Cashback rewards discriminate on `ty
 Requirements use existing requirement types and optional plain text descriptions.
 Sources contain only curated `source_id` and primary/terms/claim/supporting `role`.
 
+Relative claim offsets must remain representable as calendar dates for every purchase date
+allowed by the promotion. Validation checks this with the existing relative-window domain
+evaluator at the latest allowed purchase date. When `purchase_end_date` is open-ended, the
+latest supported date is `date.max`, so only zero-offset relative windows are representable;
+fixed claim windows and open-ended purchase ranges remain supported. An unrepresentable
+window is rejected with `invalid_claim_window` at `/promotion/claim_window`. Runtime
+evaluation maps legacy invalid relative windows to a published-data integrity error rather
+than classifying them as ineligible.
+
 Parsing bounds each document to 256 KiB and 12 levels, 50 variants, 200 product references,
 20 benefits/30 requirements per variant, 30 sources, 255 character names/codes and 2,000
 character descriptions. Money uses positive decimal strings with at most two decimal places;

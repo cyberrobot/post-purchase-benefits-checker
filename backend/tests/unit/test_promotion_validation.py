@@ -6,8 +6,9 @@ from uuid import UUID
 import pytest
 
 from app.domain.benefits import Benefit
-from app.domain.claim_windows import RelativeClaimWindow
+from app.domain.claim_windows import FixedClaimWindow, RelativeClaimWindow
 from app.domain.promotion_validation import (
+    DraftBenefit,
     PromotionValidationSnapshot,
     ValidationBenefit,
     ValidationSource,
@@ -134,3 +135,39 @@ def test_provenance_reason_preserved_and_multiple_errors():
         i.code for i in report.issues
     }
     assert report == validate_promotion_for_publication(snapshot)
+
+
+@pytest.mark.parametrize(
+    "end,window,valid",
+    [
+        (date(2026, 10, 31), RelativeClaimWindow(0, 3652058), False),
+        (date.max, RelativeClaimWindow(0, 1), False),
+        (date(9999, 12, 30), RelativeClaimWindow(0, 1), True),
+        (date(2026, 10, 31), RelativeClaimWindow(0, 30), True),
+        (date(2026, 10, 31), RelativeClaimWindow(30, 60), True),
+        (None, RelativeClaimWindow(0, 30), False),
+        (None, RelativeClaimWindow(0, 0), True),
+        (None, FixedClaimWindow(date(2026, 11, 1), date.max), True),
+    ],
+)
+def test_claim_window_representable_for_entire_purchase_range(end, window, valid):
+    candidate = replace(valid_snapshot(), purchase_end_date=end, claim_window=window)
+    report = validate_promotion_for_publication(candidate)
+    assert report.can_publish is valid
+    if not valid:
+        assert [(i.code, i.path) for i in report.issues] == [
+            ("invalid_claim_window", "/promotion/claim_window")
+        ]
+
+
+@pytest.mark.parametrize("name", [None, "", "   "])
+def test_incomplete_benefit_name_cannot_publish(name):
+    candidate = valid_snapshot()
+    variant = candidate.variants[0]
+    benefit = replace(variant.benefits[0], benefit=DraftBenefit("cashback", name))
+    candidate = replace(candidate, variants=(replace(variant, benefits=(benefit,)),))
+    report = validate_promotion_for_publication(candidate)
+    assert not report.can_publish
+    assert [(i.code, i.path) for i in report.issues] == [
+        ("missing_benefit_name", "/promotion/variants/0/benefits/0/name")
+    ]

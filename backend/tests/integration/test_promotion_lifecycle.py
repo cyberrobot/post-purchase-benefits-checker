@@ -251,6 +251,7 @@ def test_application_commit_is_visible_in_new_session(postgres_engine, migrated_
                 slug=str(identity),
                 status=S.REVIEW,
                 purchase_start_date=date(2026, 10, 1),
+                purchase_end_date=date(2026, 10, 31),
                 claim_start_offset_days=0,
                 claim_end_offset_days=30,
             )

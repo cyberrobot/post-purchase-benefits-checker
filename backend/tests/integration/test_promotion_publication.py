@@ -5,7 +5,7 @@ from functools import partial
 
 import pytest
 from sqlalchemy import event
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.application.promotions import (
@@ -13,7 +13,15 @@ from app.application.promotions import (
     PromotionPublicationError,
     change_promotion_status,
 )
-from app.db.models import BenefitReward, Manufacturer, Product, PromotionVariantProduct
+from app.db.models import (
+    BenefitProductRewardValue,
+    BenefitReward,
+    Manufacturer,
+    Product,
+    PromotionSource,
+    PromotionVariantProduct,
+    Source,
+)
 from app.db.repositories.promotions import SqlAlchemyPromotionRepository, promotion_transaction
 from app.domain.promotion_lifecycle import PromotionStatus as S
 from tests.integration.test_core_promotion_schema import graph as complete_graph  # noqa: F401
@@ -182,6 +190,7 @@ def committed_graph(postgres_engine, migrated_test_database):
             slug="campaign",
             status=S.REVIEW,
             purchase_start_date=date(2026, 10, 1),
+            purchase_end_date=date(2026, 10, 31),
             claim_start_offset_days=0,
             claim_end_offset_days=30,
         )
@@ -282,3 +291,219 @@ def test_concurrent_activation_has_one_change(committed_graph):
         ]
         results = [future.result(timeout=10) for future in futures]
     assert sorted(result.changed for result in results) == [False, True]
+
+
+def assert_rejected_without_changes(session, graph, code):
+    session.flush()
+    session.expire_all()
+    before = snapshot(session)
+    with pytest.raises(PromotionPublicationError) as error:
+        change_promotion_status(partial(transaction, session), graph.id, S.ACTIVE)
+    assert code in {issue.code for issue in error.value.report.issues}
+    assert snapshot(session) == before
+    assert session.get(type(graph), graph.id).status == S.REVIEW
+    return error.value.report
+
+
+@pytest.mark.parametrize("mapping", ["complete", "missing", "extra"])
+def test_product_specific_reward_publication(db_session, graph, mapping):
+    variant = graph.variants[0]
+    reward = next(b.reward for b in variant.benefits if b.benefit_type == "cashback")
+    reward.reward_type, reward.fixed_amount = "product_specific", None
+    products = [link.product for link in variant.product_links]
+    if mapping == "missing":
+        products = products[:-1]
+    if mapping == "extra":
+        products.append(Product(manufacturer=graph.manufacturer, name="Extra", slug="extra"))
+    reward.product_values = [
+        BenefitProductRewardValue(product=p, amount=Decimal("25.00")) for p in products
+    ]
+    db_session.flush()
+    if mapping == "complete":
+        assert change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE).changed
+        db_session.expire_all()
+        assert db_session.get(type(graph), graph.id).status == S.ACTIVE
+    else:
+        assert_rejected_without_changes(db_session, graph, "product_reward_coverage_mismatch")
+        # Correcting the existing rows preserves candidate identity and allows retry.
+        if mapping == "missing":
+            reward.product_values.append(
+                BenefitProductRewardValue(
+                    product=variant.product_links[-1].product, amount=Decimal("25.00")
+                )
+            )
+        else:
+            db_session.delete(next(v for v in reward.product_values if v.product.slug == "extra"))
+        db_session.flush()
+        if mapping == "extra":
+            # The deleted row may remain in this already-loaded collection until expired.
+            db_session.expire(reward, ["product_values"])
+        assert change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE).changed
+
+
+def test_duplicate_product_reward_rejected_by_postgres(db_session, graph):
+    variant = graph.variants[0]
+    reward = next(b.reward for b in variant.benefits if b.benefit_type == "cashback")
+    reward.reward_type, reward.fixed_amount = "product_specific", None
+    reward.product_values = [
+        BenefitProductRewardValue(product=link.product, amount=Decimal("25.00"))
+        for link in variant.product_links
+    ]
+    db_session.flush()
+    before = snapshot(db_session)
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        db_session.add(
+            BenefitProductRewardValue(
+                benefit_id=reward.benefit_id,
+                product_id=variant.product_links[0].product_id,
+                amount=Decimal("99.00"),
+            )
+        )
+        db_session.flush()
+    assert snapshot(db_session) == before
+    assert graph.status == S.REVIEW
+    assert change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE).changed
+
+
+@pytest.mark.parametrize("role", ["primary", "claim"])
+def test_duplicate_source_role_blocks_publication(db_session, graph, role):
+    source = next(link.source for link in graph.source_links if link.role == role)
+    graph.source_links.append(
+        PromotionSource(
+            role=role,
+            source=Source(
+                url=source.url,
+                source_type=source.source_type,
+                retrieved_at=source.retrieved_at,
+                verified_at=source.verified_at,
+            ),
+        )
+    )
+    assert_rejected_without_changes(db_session, graph, f"ambiguous_{role}_source")
+
+
+@pytest.mark.parametrize("role", ["primary", "claim"])
+def test_source_verification_correction_allows_retry(db_session, graph, role):
+    source = next(link.source for link in graph.source_links if link.role == role)
+    verified = source.verified_at
+    source.verified_at = None
+    assert_rejected_without_changes(db_session, graph, f"{role}_source_unverified")
+    source.verified_at = verified
+    db_session.flush()
+    assert change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE).changed
+    db_session.expire_all()
+    assert db_session.get(type(graph), graph.id).status == S.ACTIVE
+
+
+@pytest.mark.parametrize("kind", ["fixed", "relative", "delayed", "open_fixed", "open_zero"])
+def test_supported_claim_windows_publish(db_session, graph, kind):
+    if kind in {"fixed", "open_fixed"}:
+        graph.claim_start_offset_days = graph.claim_end_offset_days = None
+        graph.claim_start_date, graph.claim_end_date = date(2026, 11, 1), date(2026, 11, 30)
+    if kind == "delayed":
+        graph.claim_start_offset_days, graph.claim_end_offset_days = 30, 60
+    if kind in {"open_fixed", "open_zero"}:
+        graph.purchase_end_date = None
+    if kind == "open_zero":
+        graph.claim_start_offset_days = graph.claim_end_offset_days = 0
+    db_session.flush()
+    assert change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE).changed
+    db_session.expire_all()
+    assert db_session.get(type(graph), graph.id).status == S.ACTIVE
+
+
+@pytest.mark.parametrize("kind", ["missing", "huge", "near_max", "open_positive"])
+def test_unrepresentable_or_incomplete_claim_window_rejects_and_retries(db_session, graph, kind):
+    if kind == "missing":
+        graph.claim_start_offset_days = graph.claim_end_offset_days = None
+    elif kind == "huge":
+        graph.claim_end_offset_days = 3652058
+    elif kind == "near_max":
+        graph.purchase_end_date = date.max
+        graph.claim_end_offset_days = 1
+    else:
+        graph.purchase_end_date = None
+    code = "missing_claim_window" if kind == "missing" else "invalid_claim_window"
+    report = assert_rejected_without_changes(db_session, graph, code)
+    assert any(i.code == code and i.path == "/promotion/claim_window" for i in report.issues)
+    graph.claim_start_offset_days = graph.claim_end_offset_days = None
+    graph.claim_start_date, graph.claim_end_date = date(2026, 11, 1), date(2026, 11, 30)
+    db_session.flush()
+    assert change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE).changed
+
+
+@pytest.mark.parametrize("kind", ["partial_fixed", "partial_relative", "reversed", "mixed"])
+def test_invalid_claim_shapes_rejected_by_postgres(db_session, graph, kind):
+    before = snapshot(db_session)
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        if kind == "partial_fixed":
+            graph.claim_start_offset_days = graph.claim_end_offset_days = None
+            graph.claim_start_date = date(2026, 11, 1)
+        elif kind == "partial_relative":
+            graph.claim_end_offset_days = None
+        elif kind == "reversed":
+            graph.claim_start_offset_days = 31
+        else:
+            graph.claim_start_date, graph.claim_end_date = date(2026, 11, 1), date(2026, 11, 30)
+        db_session.flush()
+    assert snapshot(db_session) == before
+    assert graph.status == S.REVIEW
+
+
+def test_publication_visibility_and_historical_retirement(db_session, graph):
+    variant = graph.variants[0]
+    product_id = variant.product_links[0].product_id
+    repository = SqlAlchemyPromotionRepository(db_session)
+
+    def matches():
+        return repository.find_promotion_candidates(
+            manufacturer_id=graph.manufacturer_id,
+            retailer_id=variant.retailer_id,
+            product_id=product_id,
+            purchase_date=date(2026, 10, 1),
+        )
+
+    graph.claim_start_offset_days = graph.claim_end_offset_days = None
+    assert_rejected_without_changes(db_session, graph, "missing_claim_window")
+    assert matches() == ()
+    graph.claim_start_offset_days, graph.claim_end_offset_days = 0, 30
+    db_session.flush()
+    assert change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE).changed
+    assert {c.promotion_id for c in matches()} == {graph.id}
+    assert change_promotion_status(partial(transaction, db_session), graph.id, S.EXPIRED).changed
+    assert {c.promotion_id for c in matches()} == {graph.id}
+    assert change_promotion_status(partial(transaction, db_session), graph.id, S.ARCHIVED).changed
+    assert matches() == ()
+
+
+@pytest.mark.parametrize("status", [S.DISCOVERED, S.EXTRACTED, S.REVIEW, S.ARCHIVED])
+def test_unpublished_states_remain_excluded(db_session, graph, status):
+    graph.status = status
+    db_session.flush()
+    variant = graph.variants[0]
+    assert (
+        SqlAlchemyPromotionRepository(db_session).find_promotion_candidates(
+            manufacturer_id=graph.manufacturer_id,
+            retailer_id=variant.retailer_id,
+            product_id=variant.product_links[0].product_id,
+            purchase_date=date(2026, 10, 1),
+        )
+        == ()
+    )
+
+
+@pytest.mark.parametrize("status", [S.ACTIVE, S.EXPIRED])
+def test_existing_published_graph_is_queryable_without_revalidation(db_session, graph, status):
+    graph.status = status
+    graph.claim_start_offset_days = graph.claim_end_offset_days = None
+    db_session.flush()
+    before = snapshot(db_session)
+    variant = graph.variants[0]
+    candidates = SqlAlchemyPromotionRepository(db_session).find_promotion_candidates(
+        manufacturer_id=graph.manufacturer_id,
+        retailer_id=variant.retailer_id,
+        product_id=variant.product_links[0].product_id,
+        purchase_date=date(2026, 10, 1),
+    )
+    assert {candidate.promotion_id for candidate in candidates} == {graph.id}
+    assert snapshot(db_session) == before

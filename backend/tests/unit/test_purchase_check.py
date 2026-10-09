@@ -14,6 +14,7 @@ from app.application.purchase_check import CheckPurchaseRequest, check_purchase
 from app.application.purchase_check_details import (
     NoMatchReason,
     PublishedBenefit,
+    PublishedDataErrorCode,
     PublishedPromotionDataError,
     PublishedPromotionDetails,
     PublishedRequirement,
@@ -344,8 +345,9 @@ def test_relative_overflow_is_data_error():
         claim_start_offset_days=0,
         claim_end_offset_days=30,
     )
-    with pytest.raises(PublishedPromotionDataError):
+    with pytest.raises(PublishedPromotionDataError) as error:
         run(detail, request=replace(REQUEST, purchase_date=date.max))
+    assert error.value.code == PublishedDataErrorCode.CLAIM_WINDOW_INVALID
 
 
 @pytest.mark.parametrize(
