@@ -581,3 +581,27 @@ application transactions. Direct out-of-band SQL writes are operationally prohib
 are not protected by this lock discipline. Database immutability/permissions, candidate
 write idempotency, curator authentication/audit, source curation/content versioning and
 unsupported eligibility dimensions require separate designs.
+
+## Samsung historical reference data
+
+The reviewed [Samsung reference manifest and evidence map](tests/fixtures/promotions/README.md)
+covers only Galaxy Buds4 Pro `SM-R640` bought directly at Samsung.com in the
+3–23 June 2026 Summer Wallet campaign, with GBP 50 cashback and inclusive relative
+claim offsets 0..29. It is a historical, bounded reference, not the full campaign.
+Its test-only constructor uses canonical identities, candidate preflight and the
+existing persisted publication gate, then retains the published graph as `expired`.
+No operator loader, startup seed or automatic production write is provided.
+
+From this directory, with Docker available, reproduce it using:
+
+```sh
+uv run pytest tests/unit/test_samsung_reference_promotion.py
+uv run pytest tests/integration/test_samsung_reference_promotion.py
+```
+
+The PostgreSQL regression runs the real purchase-check snapshot and existing HTTP
+route without live Samsung requests. Matching configured rules does not establish
+all official conditions or guarantee Samsung approval: v1 input cannot check new
+condition, territory, age, seller status, previous claims, caps or account steps.
+The historical claim URL is retained as evidence; current portal availability and
+claim acceptance are unknown. Further products/retailers require separate review.
