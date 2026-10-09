@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from itertools import product
 from uuid import uuid4
@@ -9,6 +10,7 @@ from app.application.promotions import (
     PromotionConflict,
     PromotionNotFound,
     PromotionPersistenceError,
+    PromotionPublicationError,
     PromotionRecord,
     change_promotion_status,
 )
@@ -19,8 +21,9 @@ from app.domain.promotion_lifecycle import (
 from app.domain.promotion_lifecycle import (
     PromotionStatus as S,
 )
-from app.domain.promotion_provenance import PromotionProvenanceError
+from app.domain.promotion_validation import ValidationSource
 from tests.unit.test_promotion_provenance import sources
+from tests.unit.test_promotion_validation import valid_snapshot
 
 ALLOWED = {
     (S.DISCOVERED, S.EXTRACTED),
@@ -76,6 +79,13 @@ class FakeRepository:
         now = datetime(2026, 10, 6, tzinfo=UTC)
         return PromotionRecord(
             identity, uuid4(), "Campaign", "campaign", self.status, None, None, now, now
+        )
+
+    def get_publication_snapshot_for_update(self, identity):
+        self.source_reads += 1
+        return replace(
+            valid_snapshot(),
+            sources=tuple(ValidationSource(s.source_id, s.role, s) for s in self.sources),
         )
 
     def list_promotion_sources(self, identity):
@@ -155,7 +165,7 @@ def test_application_errors(case, error):
 def test_publication_rejection_precedes_write_and_retry_loads_current_sources():
     repository = FakeRepository(S.REVIEW)
     repository.sources = []
-    with pytest.raises(PromotionProvenanceError):
+    with pytest.raises(PromotionPublicationError):
         change_promotion_status(repository.transaction, uuid4(), S.ACTIVE)
     assert repository.writes == 0
     assert repository.status == S.REVIEW
