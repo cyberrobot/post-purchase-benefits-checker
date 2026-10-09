@@ -13,9 +13,9 @@ from app.domain.claim_windows import (
 from tests.hisense_reference import reference_manifest, validate_manifest
 
 
-def test_candidate_records_exact_proposed_facts_and_evidence_gap():
+def test_review_records_exact_facts_and_full_authority():
     f = reference_manifest()
-    assert f["evidence_status"] == "unverified_review_candidate"
+    assert f["evidence_status"] == "verified_reference"
     assert f["product"]["model_or_sku"] == "WF7I1248BBR"
     assert f["retailer"] == "Currys"
     assert Decimal(f["benefit"]["reward"]["amount_gbp"]) == Decimal("100.00")
@@ -25,11 +25,15 @@ def test_candidate_records_exact_proposed_facts_and_evidence_gap():
         "end_date": "2026-12-24",
     }
     terms = f["evidence"]["observations"][0]
-    assert terms["retrieval_status"] == "blocked_by_javascript_bot_challenge"
-    assert terms["verified_at"] is None
-    assert "No facts are verified" in terms["outcome"]
-    assert not f["requirements"]
-    assert any("UNVERIFIED" in item for item in f["limitations"])
+    assert terms["verified_at"] == "2026-10-09T14:53:52Z"
+    assert {"Annex 1", "Annex 2"} <= set(terms["sections_reviewed"])
+    assert {r["type"] for r in f["requirements"]} == {"receipt", "serial_number"}
+    receipt = next(r["description"] for r in f["requirements"] if r["type"] == "receipt")
+    assert all(
+        field in receipt.lower()
+        for field in ("product/model", "purchase date", "purchase price", "participating retailer")
+    )
+    assert f["evidence"]["historical_observations"][0]["verified_at"] is None
 
 
 @pytest.mark.parametrize(
@@ -74,3 +78,50 @@ def test_fixed_claim_window_inclusive_boundaries(as_of, status):
     assert result.status == status
     assert result.opens_on == date(2026, 11, 27)
     assert result.deadline_on == date(2026, 12, 24)
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("reference_version",), 2),
+        (("purchase_start_date",), "2026-13-01"),
+        (("purchase_end_date",), "2026-09-08"),
+        (("claim_window", "type"), "relative"),
+        (("claim_window", "end_date"), "2026-11-26"),
+        (("benefit", "reward", "amount_gbp"), 100.0),
+        (("claim_url",), "javascript:alert(1)"),
+        (("requirements",), []),
+        (("limitations",), []),
+    ],
+)
+def test_unreviewed_rule_and_evidence_changes_rejected(path, value):
+    manifest = deepcopy(reference_manifest())
+    target = manifest
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(ValueError, match="pinned"):
+        validate_manifest(manifest)
+
+
+@pytest.mark.parametrize("change", ["missing", "extra", "verification", "timestamp"])
+def test_manifest_schema_and_evidence_are_pinned(change):
+    manifest = deepcopy(reference_manifest())
+    if change == "missing":
+        del manifest["product"]["model_or_sku"]
+    elif change == "extra":
+        manifest["benefit"]["reward"]["currency"] = "GBP"
+    elif change == "verification":
+        manifest["evidence"]["observations"][0]["verified_at"] = None
+    else:
+        manifest["evidence"]["observations"][2]["retrieved_at"] = "2026-10-10T12:00:00Z"
+    with pytest.raises(ValueError, match="pinned"):
+        validate_manifest(manifest)
+
+
+@pytest.mark.parametrize("price", [None, Decimal("0.00"), Decimal("1.00"), Decimal("2000.00")])
+def test_proposed_fixed_reward_is_exact_and_independent_of_price(price):
+    from app.domain.rewards import FixedAmountReward, calculate_reward
+
+    amount = Decimal(reference_manifest()["benefit"]["reward"]["amount_gbp"])
+    assert calculate_reward(FixedAmountReward(amount), purchase_price=price) == Decimal("100.00")

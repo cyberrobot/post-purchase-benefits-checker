@@ -1,4 +1,4 @@
-"""Offline test-only constructor for an explicitly unverified Hisense candidate."""
+"""Offline test-only constructor for the reviewed bounded Hisense reference."""
 
 import hashlib
 import json
@@ -22,24 +22,25 @@ from app.db.models import (
     PromotionSource,
     PromotionVariant,
     PromotionVariantProduct,
+    Requirement,
     Retailer,
     Source,
 )
 from app.db.repositories.identity_matching import SqlAlchemyIdentityRepository
-from app.domain.identity_normalisation import MatchStatus
+from app.domain.identity_normalisation import MatchStatus, normalise_identifier
 from app.domain.promotion_lifecycle import PromotionStatus
 
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/hisense-autumn-cashback-2026-wf7i1248bbr.json"
 )
-REVIEWED_SHA256 = "05a90a76de90cd27674a0c9f3751c79f9a98386a03c9c0806111748a70fed254"
+REVIEWED_SHA256 = "307d6254ee0faa09d3425a513cdd7da5b4be499cddba8ea4c8e86dc90a8364fc"
 
 
 def validate_manifest(value):
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     if not REVIEWED_SHA256 or hashlib.sha256(encoded).hexdigest() != REVIEWED_SHA256:
-        raise ValueError("Hisense manifest differs from its pinned unverified review candidate")
-    if value.get("evidence_status") != "unverified_review_candidate":
+        raise ValueError("Hisense manifest differs from its pinned reviewed reference")
+    if value.get("evidence_status") != "verified_reference":
         raise ValueError("Hisense evidence has not passed the required full terms review")
     for key in (
         "official_terms_url",
@@ -50,8 +51,8 @@ def validate_manifest(value):
         url = value.get(key)
         if not isinstance(url, str) or not url.startswith("https://"):
             raise ValueError("Reference source URLs must use HTTPS")
-    if value["evidence"]["observations"][0]["verified_at"] is not None:
-        raise ValueError("Challenged terms cannot be marked verified")
+    if any(item["verified_at"] is None for item in value["evidence"]["observations"]):
+        raise ValueError("Reviewed authority requires verified source observations")
     return value
 
 
@@ -66,7 +67,8 @@ def _resolve(session, match, kind, attributes, *, allow_create=True):
         row = session.get(kind, match.canonical_id)
         if kind is Product and (
             row.manufacturer_id != attributes["manufacturer_id"]
-            or row.model_number != attributes["model_number"]
+            or normalise_identifier(row.model_number or "")
+            != normalise_identifier(attributes["model_number"])
         ):
             raise ValueError("Conflicting reference product identity")
         return row
@@ -141,7 +143,7 @@ def _fingerprint(promotion):
 
 
 def construct_reference(session):
-    """Build only a review graph; publication must fail until evidence is re-reviewed."""
+    """Construct in review; callers publish through the persisted publication gate."""
     if session.new or session.dirty or session.deleted:
         raise ValueError("Reference construction requires a session without pending changes")
     f = reference_manifest()
@@ -186,7 +188,7 @@ def construct_reference(session):
         )
         expected = Promotion(
             manufacturer_id=maker.id,
-            name=f["campaign"] + " — WF7I1248BBR at Currys unverified candidate",
+            name=f["campaign"] + " — WF7I1248BBR at Currys reviewed reference",
             slug=f["promotion_slug"],
             status=PromotionStatus.REVIEW,
             purchase_start_date=date.fromisoformat(f["purchase_start_date"]),
@@ -200,10 +202,14 @@ def construct_reference(session):
                 name=f["coverage"],
                 retailer_id=shop.id,
                 product_links=[PromotionVariantProduct(product_id=product.id)],
+                requirements=[
+                    Requirement(requirement_type=r["type"], description=r["description"])
+                    for r in f["requirements"]
+                ],
                 benefits=[
                     Benefit(
                         benefit_type="cashback",
-                        name="Proposed GBP 100.00 cashback (unverified)",
+                        name="GBP 100.00 cashback",
                         description=" ".join(f["limitations"]),
                         reward=BenefitReward(
                             reward_type="fixed_amount", fixed_amount=Decimal("100.00")
@@ -212,32 +218,37 @@ def construct_reference(session):
                 ],
             )
         ]
-        retrieved = datetime.fromisoformat("2026-10-09T12:29:00+00:00")
-        # Only the Currys page was actually retrieved. Challenged terms and the
-        # proposed claim destination remain in the evidence ledger, not Sources.
+        roles = {
+            "primary_terms": "primary",
+            "claim_destination": "claim",
+            "retailer_corroboration": "supporting",
+        }
         expected.source_links = [
             PromotionSource(
-                role="supporting",
+                role=roles[item["role"]],
                 source=Source(
-                    url=f["retailer_corroboration_url"],
-                    source_type="web_page",
-                    title="Currys product page partially reviewed; campaign facts unverified",
-                    retrieved_at=retrieved,
-                    verified_at=None,
+                    url=item["url"],
+                    source_type="pdf" if item["role"] == "retailer_corroboration" else "web_page",
+                    title=item["title_or_version"],
+                    retrieved_at=datetime.fromisoformat(item["retrieved_at"]),
+                    verified_at=datetime.fromisoformat(item["verified_at"]),
                 ),
             )
+            for item in f["evidence"]["observations"]
         ]
         if existing:
-            if existing.status != PromotionStatus.REVIEW:
-                raise ValueError(
-                    "Unverified Hisense candidate cannot be replayed after publication"
-                )
+            if existing.status not in (
+                PromotionStatus.REVIEW,
+                PromotionStatus.ACTIVE,
+                PromotionStatus.EXPIRED,
+            ):
+                raise ValueError("Incompatible reference lifecycle")
             try:
                 same = _fingerprint(existing) == _fingerprint(expected)
             except (AttributeError, TypeError):
                 same = False
             if not same:
-                raise ValueError("Conflicting existing unverified reference candidate")
+                raise ValueError("Conflicting existing reviewed reference")
             return existing
         session.add(expected)
         session.flush()
@@ -260,11 +271,11 @@ def construct_reference(session):
                             "benefits": [
                                 {
                                     "type": "cashback",
-                                    "name": "Proposed GBP 100.00 cashback (unverified)",
+                                    "name": "GBP 100.00 cashback",
                                     "reward": f["benefit"]["reward"],
                                 }
                             ],
-                            "requirements": [],
+                            "requirements": f["requirements"],
                         }
                     ],
                     "sources": [
@@ -276,5 +287,5 @@ def construct_reference(session):
         )
         issues = validate_candidate_promotion(candidate).issues
         if any(issue.code != "unresolved_references" for issue in issues):
-            raise ValueError("Unverified reference candidate preflight failed")
+            raise ValueError("Reviewed reference candidate preflight failed")
         return expected
