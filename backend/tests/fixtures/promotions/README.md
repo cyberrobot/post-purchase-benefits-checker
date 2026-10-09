@@ -173,3 +173,64 @@ domain test checks refurbished/unknown condition without claiming that the
 public request enforces condition. LG alone approves claims; no approval or
 payment guarantee, minute-level cutoff enforcement, production data deployment,
 startup seeding, schema migration, new configuration or API/MCP change is added.
+changes are introduced. Normal startup does not load this historical reference.
+
+---
+
+# Hisense Autumn 2026 unverified review candidate
+
+`hisense-autumn-cashback-2026-wf7i1248bbr.json` is an **unverified review candidate**
+for only Hisense
+`WF7I1248BBR` purchased directly from Currys, with fixed GBP 100 cashback.
+Purchase dates are 9 September–27 October 2026 inclusive; the separate fixed
+claim window is 27 November–24 December 2026 inclusive. It is not a full campaign
+catalogue. Other products and retailers absent from this slice have no matching
+configured offer, which does not establish campaign-wide ineligibility.
+
+## Evidence status
+
+The original challenged-page investigation is preserved as historical observations.
+Local HTML/PDF captures are not approved provenance for this task, so complete
+applicable terms remain **unverified for publication**. No timestamps are assigned
+to unobserved terms or claim portal.
+
+| Source | Verified observation | Outcome |
+| --- | --- | --- |
+| [Complete official Autumn terms](https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2) | None accepted | Full terms and Annexes 1/2 are unverified for publication. |
+| [Currys-hosted terms PDF](https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys) | None accepted | No approved review record; cannot substitute for complete applicable terms. |
+| [Claim destination](https://autumncashback2026.hisensepromotions.co.uk/) | Not independently retrieved | Availability and current claim acceptance are unknown. |
+| [Manufacturer campaign page](https://uk.hisense.com/promotions-giveaways/energy-efficiency-cashback) | Not independently verified | No verified source is persisted. |
+
+The proposed retailer, model/reward, dates, requirements and claim URL remain
+unverified. The separate May–June A-Rated campaign's GBP 150 reward is excluded
+from this candidate.
+
+The fixture pins semantic facts and evidence status. The offline test-only
+constructor creates only a review graph in a caller-owned savepoint. It persists
+only the historically observed Currys product page as an unverified supporting
+source. The primary terms and claim URLs remain in the evidence ledger and are
+not persisted as `Source` rows until actually retrieved. The persisted publication
+gate must reject activation because verified primary and claim sources are absent.
+No production seeding is provided.
+
+The proposed receipt and serial-number requirements are not verified campaign
+facts and are not proof of submission.
+The five-field public request cannot establish age/residency, consumer status,
+condition, direct seller, returns, prior claims or payment details. Terms exclude
+graded/ex-display/seconds/imperfect/replacement products but do not explicitly
+establish a blanket NEW-only rule; no such unaudited domain condition is added.
+Hisense alone determines claim acceptance. No guarantee of approval or payment
+is made. Claim portal availability and manufacturer campaign page remain
+unverified. Published-eligibility acceptance is blocked pending approved review
+of the complete applicable terms.
+
+Normal tests consume local pinned observations and never fetch Hisense/Currys.
+The fixed-window boundary tests are domain-only examples using proposed dates;
+they do not prove a published promotion. Real persisted publication and HTTP
+eligibility matrices are blocked until complete terms are accepted and reviewed.
+Run from `backend/` with Docker/Testcontainers available:
+
+```sh
+uv run pytest tests/unit/test_hisense_reference_promotion.py
+uv run pytest tests/integration/test_hisense_reference_promotion.py
+```

@@ -1,0 +1,123 @@
+{
+  "reference_version": 1,
+  "evidence_status": "unverified_review_candidate",
+  "campaign": "Hisense Autumn Cashback 2026 Promotion (UK)",
+  "promotion_slug": "hisense-autumn-cashback-2026-wf7i1248bbr-currys-reference",
+  "coverage": "WF7I1248BBR purchased directly from Currys only; not the full campaign",
+  "manufacturer": "Hisense",
+  "product": {
+    "name": "KitchenFit 7i Series WF7I1248BBR washing machine",
+    "model_or_sku": "WF7I1248BBR"
+  },
+  "retailer": "Currys",
+  "purchase_start_date": "2026-09-09",
+  "purchase_end_date": "2026-10-27",
+  "claim_window": {
+    "type": "fixed",
+    "start_date": "2026-11-27",
+    "end_date": "2026-12-24"
+  },
+  "benefit": {
+    "type": "cashback",
+    "reward": {
+      "type": "fixed_amount",
+      "amount_gbp": "100.00"
+    }
+  },
+  "official_terms_url": "https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2",
+  "manufacturer_campaign_url": "https://uk.hisense.com/promotions-giveaways/energy-efficiency-cashback",
+  "retailer_corroboration_url": "https://www.currys.co.uk/products/hisense-kitchenfit-7i-series-wf7i1248bbr-wifienabled-12-kg-1400-spin-washing-machine-black-10304682.html",
+  "claim_url": "https://autumncashback2026.hisensepromotions.co.uk/",
+  "evidence": {
+    "reviewed_on": "2026-10-09",
+    "observations": [],
+    "access_outcomes": [
+      {
+        "url": "https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2",
+        "role": "primary_terms",
+        "status": "not_available_as_approved_evidence",
+        "verified_at": null,
+        "outcome": "The attached instructions identify the full applicable terms as unverified; local captures alone do not establish approved source provenance. Do not use for publication."
+      },
+      {
+        "url": "https://autumncashback2026.hisensepromotions.co.uk/",
+        "role": "claim_destination",
+        "status": "not_independently_retrieved",
+        "verified_at": null,
+        "outcome": "URL appears in candidate source material, but portal availability was not independently observed."
+      },
+      {
+        "url": "https://www.currys.co.uk/products/hisense-kitchenfit-7i-series-wf7i1248bbr-wifienabled-12-kg-1400-spin-washing-machine-black-10304682.html",
+        "role": "retailer_corroboration",
+        "status": "historical_partial_observation_only",
+        "retrieved_at": "2026-10-09T12:29:00Z",
+        "verified_at": null,
+        "outcome": "Product identity and campaign summary were observed; campaign participation, dates and amount were not established."
+      }
+    ],
+    "unverified_facts": [
+      "Complete current official Autumn terms, including Annex 1 and Annex 2",
+      "Currys participation and exact model/reward under the applicable terms",
+      "Purchase and claim dates, claim URL availability, requirements and restrictions"
+    ],
+    "excluded_cross_campaign_evidence": "The separate May-June 2026 A-Rated Appliances promotion reportedly lists this model at GBP 150. It is not evidence for this Autumn candidate.",
+    "historical_observations": [
+      {
+        "url": "https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2",
+        "role": "primary_terms",
+        "retrieval_status": "blocked_by_javascript_bot_challenge",
+        "retrieved_at": null,
+        "verified_at": null,
+        "title_or_version": null,
+        "sections_reviewed": [],
+        "outcome": "The complete Autumn 2026 terms and Annexes 1 and 2 could not be read. No facts are verified from this source."
+      },
+      {
+        "url": "https://uk.hisense.com/promotions-giveaways/energy-efficiency-cashback",
+        "role": "manufacturer_campaign",
+        "retrieval_status": "inaccessible_in_review_environment",
+        "retrieved_at": null,
+        "verified_at": null,
+        "title_or_version": null,
+        "sections_reviewed": [],
+        "outcome": "The manufacturer campaign page was not accessible for direct review. Draft values are not treated as verified."
+      },
+      {
+        "url": "https://www.currys.co.uk/products/hisense-kitchenfit-7i-series-wf7i1248bbr-wifienabled-12-kg-1400-spin-washing-machine-black-10304682.html",
+        "role": "retailer_corroboration",
+        "retrieval_status": "accessible_partial_product_page",
+        "retrieved_at": "2026-10-09T12:29:00Z",
+        "verified_at": null,
+        "title_or_version": "HISENSE KitchenFit 7i Series WF7I1248BBR WiFi-enabled 12 kg 1400 Spin Washing Machine - Black",
+        "sections_reviewed": [
+          "product identity",
+          "promotion carousel summary"
+        ],
+        "outcome": "Confirms the product identity and advertises up to GBP 300 on selected appliances; does not verify this campaign's retailer annex, amount, or dates."
+      },
+      {
+        "url": "https://autumncashback2026.hisensepromotions.co.uk/",
+        "role": "claim_destination",
+        "retrieval_status": "not_independently_verified",
+        "retrieved_at": null,
+        "verified_at": null,
+        "title_or_version": null,
+        "sections_reviewed": [],
+        "outcome": "Destination is proposed from the specification; portal availability and claim acceptance were not established."
+      }
+    ],
+    "manufacturer_page_status": "Not independently verified in this task",
+    "date_reconciliation": "Conflicting Currys 27 October claim-opening snippet rejected in favor of complete official terms \u00a7\u00a73.5, 5.1 and retailer PDF \u00a73.5: 27 November 2026.",
+    "condition_limitation": "Section 4.4 excludes graded/ex-display/seconds/imperfect/replacement products but does not explicitly define all purchases as NEW or exclude every refurbished item; no unverified general NEW-only domain rule is asserted."
+  },
+  "requirements": [],
+  "limitations": [
+    "Bounded reference covers only this exact model and direct Currys purchases; other products or retailers are not assessed.",
+    "Claimants must be UK residents aged 18 or over purchasing for consumer use (\u00a7\u00a72, 4).",
+    "Graded, ex-display, seconds, imperfect and replacement products are excluded; cancelled or returned purchases do not qualify (\u00a74).",
+    "Purchase must be directly from the participating retailer own stores or website, excluding marketplace sellers (\u00a73.2).",
+    "No concurrent promoter offers; one claim per model and maximum five per household (\u00a7\u00a74, 5).",
+    "The five-field request cannot check claimant identity, residency, age, product condition, seller, serial, proof submission, previous claims or payment details.",
+    "Do not infer receipt or serial-number requirement types until full terms are verified. Hisense determines claim acceptance."
+  ]
+}
