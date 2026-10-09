@@ -13,9 +13,9 @@ from app.domain.claim_windows import (
 from tests.hisense_reference import reference_manifest, validate_manifest
 
 
-def test_review_records_exact_facts_and_full_authority():
+def test_candidate_records_proposed_facts_and_unverified_authority():
     f = reference_manifest()
-    assert f["evidence_status"] == "verified_reference"
+    assert f["evidence_status"] == "unverified_review_candidate"
     assert f["product"]["model_or_sku"] == "WF7I1248BBR"
     assert f["retailer"] == "Currys"
     assert Decimal(f["benefit"]["reward"]["amount_gbp"]) == Decimal("100.00")
@@ -24,16 +24,21 @@ def test_review_records_exact_facts_and_full_authority():
         "start_date": "2026-11-27",
         "end_date": "2026-12-24",
     }
-    terms = f["evidence"]["observations"][0]
-    assert terms["verified_at"] == "2026-10-09T14:53:52Z"
-    assert {"Annex 1", "Annex 2"} <= set(terms["sections_reviewed"])
-    assert {r["type"] for r in f["requirements"]} == {"receipt", "serial_number"}
-    receipt = next(r["description"] for r in f["requirements"] if r["type"] == "receipt")
-    assert all(
-        field in receipt.lower()
-        for field in ("product/model", "purchase date", "purchase price", "participating retailer")
+    assert not f["evidence"]["observations"]
+    terms = next(
+        item for item in f["evidence"]["access_outcomes"] if item["role"] == "primary_terms"
     )
+    assert terms["status"] == "not_available_as_approved_evidence"
+    assert terms["verified_at"] is None
+    assert f["requirements"] == []
     assert f["evidence"]["historical_observations"][0]["verified_at"] is None
+
+
+def test_candidate_manifest_rejects_falsified_verified_status():
+    f = deepcopy(reference_manifest())
+    f["evidence_status"] = "verified_reference"
+    with pytest.raises(ValueError, match="pinned|remain unverified"):
+        validate_manifest(f)
 
 
 @pytest.mark.parametrize(
@@ -71,7 +76,8 @@ def test_manifest_json_formatting_and_key_order_do_not_change_pin():
         (date(2026, 12, 25), ClaimWindowStatus.EXPIRED),
     ],
 )
-def test_fixed_claim_window_inclusive_boundaries(as_of, status):
+def test_proposed_fixed_claim_window_inclusive_boundaries(as_of, status):
+    """Pure domain behavior only; these dates are unverified campaign proposals."""
     result = evaluate_fixed_claim_window(
         FixedClaimWindow(date(2026, 11, 27), date(2026, 12, 24)), as_of
     )
@@ -90,7 +96,7 @@ def test_fixed_claim_window_inclusive_boundaries(as_of, status):
         (("claim_window", "end_date"), "2026-11-26"),
         (("benefit", "reward", "amount_gbp"), 100.0),
         (("claim_url",), "javascript:alert(1)"),
-        (("requirements",), []),
+        (("requirements",), [{"type": "receipt", "description": "unverified"}]),
         (("limitations",), []),
     ],
 )
@@ -112,9 +118,9 @@ def test_manifest_schema_and_evidence_are_pinned(change):
     elif change == "extra":
         manifest["benefit"]["reward"]["currency"] = "GBP"
     elif change == "verification":
-        manifest["evidence"]["observations"][0]["verified_at"] = None
+        manifest["evidence"]["access_outcomes"][0]["verified_at"] = "2026-10-09T14:53:52Z"
     else:
-        manifest["evidence"]["observations"][2]["retrieved_at"] = "2026-10-10T12:00:00Z"
+        manifest["evidence"]["access_outcomes"][2]["retrieved_at"] = "2026-10-10T12:00:00Z"
     with pytest.raises(ValueError, match="pinned"):
         validate_manifest(manifest)
 

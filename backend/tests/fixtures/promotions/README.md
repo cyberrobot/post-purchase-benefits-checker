@@ -177,57 +177,57 @@ changes are introduced. Normal startup does not load this historical reference.
 
 ---
 
-# Hisense Autumn 2026 reviewed reference
+# Hisense Autumn 2026 unverified review candidate
 
-`hisense-autumn-cashback-2026-wf7i1248bbr.json` represents only Hisense
+`hisense-autumn-cashback-2026-wf7i1248bbr.json` is an **unverified review candidate**
+for only Hisense
 `WF7I1248BBR` purchased directly from Currys, with fixed GBP 100 cashback.
 Purchase dates are 9 September–27 October 2026 inclusive; the separate fixed
 claim window is 27 November–24 December 2026 inclusive. It is not a full campaign
 catalogue. Other products and retailers absent from this slice have no matching
 configured offer, which does not establish campaign-wide ineligibility.
 
-## Evidence audit on 9 October 2026
+## Evidence status
 
-The original challenged-page investigation is preserved as historical observations,
-without fabricated verification timestamps. A subsequent ordinary retrieval of the
-complete current official HTML succeeded; Sections 1–8, Annex 1, Annex 1.1 and
-Annex 2 were directly reviewed before upgrading the semantic pin.
+The original challenged-page investigation is preserved as historical observations.
+Local HTML/PDF captures are not approved provenance for this task, so complete
+applicable terms remain **unverified for publication**. No timestamps are assigned
+to unobserved terms or claim portal.
 
-| Source | Review completed UTC | Observation |
+| Source | Verified observation | Outcome |
 | --- | --- | --- |
-| [Complete official Autumn terms](https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2) | 2026-10-09 14:53:52 | Currys in Annex 1, exact WF7I1248BBR GBP 100 in Annex 2, purchase dates §3.1, claim dates §§3.5/5.1, receipt and serial §§3.6/5.2–5.5; full exclusions and limits reviewed |
-| [Currys-hosted official PDF](https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys) | 2026-10-09 14:54:03 | Eight-page PDF linked by Currys; corroborates bounded model, reward and dates; omits Annex 1 and differs on unrelated models, so current complete official HTML prevails |
-| [Claim destination](https://autumncashback2026.hisensepromotions.co.uk/) | 2026-10-09 14:53:52 | URL verified from official terms §§5.1/5.12; portal not independently visited and current acceptance not established |
-| [Manufacturer campaign page](https://uk.hisense.com/promotions-giveaways/energy-efficiency-cashback) | Not verified | HTTP 403; no verified persisted source created |
+| [Complete official Autumn terms](https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2) | None accepted | Full terms and Annexes 1/2 are unverified for publication. |
+| [Currys-hosted terms PDF](https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys) | None accepted | No approved review record; cannot substitute for complete applicable terms. |
+| [Claim destination](https://autumncashback2026.hisensepromotions.co.uk/) | Not independently retrieved | Availability and current claim acceptance are unknown. |
+| [Manufacturer campaign page](https://uk.hisense.com/promotions-giveaways/energy-efficiency-cashback) | Not independently verified | No verified source is persisted. |
 
-The primary page reports “Updated on 5:38 AM / 01-Sep-2026”, with legal footer
-“last updated 07.08.2026”. Reviewed HTML SHA-256:
-`2f554d5266baec55c9cc3fae4734cca65f25d2ac14977137ab192fb0a85298dc`.
-PDF SHA-256:
-`2c276d16e0419843a90132a85ab36e590bb95a23d769eb48dcb1b5a366aa94e8`.
-Observation times record completed review, without inventing earlier retrieval
-precision. The conflicting Currys snippet's 27 October opening was rejected in
-favour of complete official §§3.5/5.1 and PDF §3.5: **27 November**. The separate
-May–June A-Rated campaign's GBP 150 reward is excluded from this reference.
+The proposed retailer, model/reward, dates, requirements and claim URL remain
+unverified. The separate May–June A-Rated campaign's GBP 150 reward is excluded
+from this candidate.
 
-The fixture pins every semantic fact and observation. The offline test-only
-constructor creates a review graph in a caller-owned savepoint; tests publish only
-through the existing persisted gate. Exact replay preserves active/expired status,
-and any graph conflict rejects. Explicit retirement preserves historical provenance;
-read-only eligibility never changes lifecycle. No production seeding is provided.
+The fixture pins semantic facts and evidence status. The offline test-only
+constructor creates only a review graph in a caller-owned savepoint. It persists
+only the historically observed Currys product page as an unverified supporting
+source. The primary terms and claim URLs remain in the evidence ledger and are
+not persisted as `Source` rows until actually retrieved. The persisted publication
+gate must reject activation because verified primary and claim sources are absent.
+No production seeding is provided.
 
-The receipt requirement records the verified fields: product/model, purchase date,
-purchase price and participating retailer (§§3.6, 5.2–5.5). Receipt and
-serial-number requirements are claim advice, not proof of submission.
+The proposed receipt and serial-number requirements are not verified campaign
+facts and are not proof of submission.
 The five-field public request cannot establish age/residency, consumer status,
 condition, direct seller, returns, prior claims or payment details. Terms exclude
 graded/ex-display/seconds/imperfect/replacement products but do not explicitly
 establish a blanket NEW-only rule; no such unaudited domain condition is added.
 Hisense alone determines claim acceptance. No guarantee of approval or payment
-is made. Claim portal availability and the manufacturer campaign page remain
-unverified, without blocking the complete reviewed terms authority.
+is made. Claim portal availability and manufacturer campaign page remain
+unverified. Published-eligibility acceptance is blocked pending approved review
+of the complete applicable terms.
 
 Normal tests consume local pinned observations and never fetch Hisense/Currys.
+The fixed-window boundary tests are domain-only examples using proposed dates;
+they do not prove a published promotion. Real persisted publication and HTTP
+eligibility matrices are blocked until complete terms are accepted and reviewed.
 Run from `backend/` with Docker/Testcontainers available:
 
 ```sh

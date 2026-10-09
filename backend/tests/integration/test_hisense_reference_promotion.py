@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from functools import partial
 
@@ -26,35 +26,23 @@ pytestmark = pytest.mark.integration
 def reference(postgres_engine, migrated_test_database):
     factory = sessionmaker(postgres_engine)
     with factory.begin() as session:
-        before_ids = {
-            "manufacturers": set(session.scalars(select(Manufacturer.id))),
-            "products": set(session.scalars(select(Product.id))),
-            "retailers": set(session.scalars(select(Retailer.id))),
-            "sources": set(session.scalars(select(Source.id))),
-        }
+        owned_types = (Promotion, Source, Product, Retailer, Manufacturer)
+        before = {kind: set(session.scalars(select(kind.id))) for kind in owned_types}
         promotion = construct_reference(session)
         promotion_id = promotion.id
-        maker_id = promotion.manufacturer_id
-        product_id = promotion.variants[0].product_links[0].product_id
-        retailer_id = promotion.variants[0].retailer_id
-        source_ids = [link.source_id for link in promotion.source_links]
-        created_maker = maker_id if maker_id not in before_ids["manufacturers"] else None
-        created_retailer = retailer_id if retailer_id not in before_ids["retailers"] else None
-        created_product = product_id if product_id not in before_ids["products"] else None
-        created_sources = set(source_ids) - before_ids["sources"]
+        owned = {kind: set(session.scalars(select(kind.id))) - before[kind] for kind in owned_types}
     try:
         yield factory, promotion_id
     finally:
         with factory.begin() as session:
-            session.execute(delete(Promotion).where(Promotion.id == promotion_id))
-            if created_sources:
-                session.execute(delete(Source).where(Source.id.in_(created_sources)))
-            if created_product is not None:
-                session.execute(delete(Product).where(Product.id == created_product))
-            if created_retailer is not None:
-                session.execute(delete(Retailer).where(Retailer.id == created_retailer))
-            if created_maker is not None:
-                session.execute(delete(Manufacturer).where(Manufacturer.id == created_maker))
+            delete_owned_rows(session, owned)
+
+
+def delete_owned_rows(session, owned):
+    """Delete only fixture-owned graph/identity rows in FK-safe order."""
+    for kind in (Promotion, Source, Product, Retailer, Manufacturer):
+        if owned[kind]:
+            session.execute(delete(kind).where(kind.id.in_(owned[kind])))
 
 
 def test_constructor_replay_preserves_review_graph(db_session):
@@ -64,6 +52,48 @@ def test_constructor_replay_preserves_review_graph(db_session):
     second = construct_reference(db_session)
     assert second.id == first_id
     assert second.status == PromotionStatus.REVIEW
+
+
+def test_unverified_candidate_cannot_publish_and_is_invisible(reference):
+    factory, promotion_id = reference
+    with factory() as session:
+        candidate = session.get(Promotion, promotion_id)
+        assert candidate.status == PromotionStatus.REVIEW
+        assert [link.role for link in candidate.source_links] == ["supporting"]
+        assert all(link.source.verified_at is None for link in candidate.source_links)
+        manifest = reference_manifest()
+        assert {link.source.url for link in candidate.source_links} == {
+            item["url"]
+            for item in manifest["evidence"]["historical_observations"]
+            if item["url"] == manifest["retailer_corroboration_url"] and item["retrieved_at"]
+        }
+        assert all(item.role not in {"primary", "claim"} for item in candidate.source_links)
+    with pytest.raises(PromotionPublicationError) as error:
+        publish(factory, promotion_id)
+    assert {issue.code for issue in error.value.report.issues} >= {
+        "missing_primary_source",
+        "missing_claim_source",
+    }
+    assert "unverified_primary_source" not in {issue.code for issue in error.value.report.issues}
+    assert "unverified_claim_source" not in {issue.code for issue in error.value.report.issues}
+    with factory() as session:
+        assert session.get(Promotion, promotion_id).status == PromotionStatus.REVIEW
+    result = check(factory, date(2026, 10, 1), date(2026, 11, 27))
+    assert result.promotions == ()
+    assert result.no_match_reason == "no_matching_published_promotions"
+
+
+def test_candidate_replay_reuses_unverified_supporting_source(reference):
+    factory, promotion_id = reference
+    with factory.begin() as session:
+        first = session.get(Promotion, promotion_id)
+        first_source_ids = {link.source_id for link in first.source_links}
+    with factory.begin() as session:
+        replay = construct_reference(session)
+        assert replay.id == promotion_id
+        assert {link.source_id for link in replay.source_links} == first_source_ids
+    with factory() as session:
+        assert session.get(Promotion, promotion_id).status == PromotionStatus.REVIEW
 
 
 def test_constructor_preflight_failure_rolls_back_savepoint_and_preserves_caller_state(
@@ -196,6 +226,103 @@ def test_canonical_aliases_reuse_existing_owned_product(db_session):
         assert after[table] == before[table]
 
 
+def test_exact_model_reuses_product_with_different_display_name(db_session):
+    from app.db.models import ManufacturerAlias, RetailerAlias
+
+    maker = Manufacturer(name="Hisense UK", slug="hisense-uk")
+    shop = Retailer(name="Currys UK", slug="currys-uk")
+    product = Product(
+        manufacturer=maker,
+        name="Different approved product display name",
+        slug="different-product-display-name",
+        model_number="WF7I1248BBR",
+    )
+    db_session.add_all([maker, shop, product])
+    db_session.flush()
+    db_session.add_all(
+        [
+            ManufacturerAlias(manufacturer_id=maker.id, alias="Hisense"),
+            RetailerAlias(retailer_id=shop.id, alias="Currys"),
+        ]
+    )
+    db_session.flush()
+    candidate = construct_reference(db_session)
+    assert candidate.variants[0].product_links[0].product_id == product.id
+
+
+def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
+    from app.db.models import ManufacturerAlias, RetailerAlias
+
+    maker = Manufacturer(name="Hisense Shared", slug="hisense-shared")
+    shop = Retailer(name="Currys Shared", slug="currys-shared")
+    product = Product(
+        manufacturer=maker,
+        name="Shared different display",
+        slug="shared-hisense-product",
+        model_number="WF7I1248BBR",
+    )
+    source = Source(
+        url=reference_manifest()["retailer_corroboration_url"],
+        source_type="web_page",
+        title="Observed Currys product summary; campaign rules unverified",
+        retrieved_at=datetime.fromisoformat("2026-10-09T12:29:00+00:00"),
+        verified_at=None,
+    )
+    db_session.add_all([maker, shop, product, source])
+    db_session.flush()
+    db_session.add_all(
+        [
+            ManufacturerAlias(manufacturer_id=maker.id, alias="Hisense"),
+            RetailerAlias(retailer_id=shop.id, alias="Currys"),
+        ]
+    )
+    db_session.flush()
+    shared = (maker.id, shop.id, product.id, source.id)
+    before = {
+        kind: set(db_session.scalars(select(kind.id)))
+        for kind in (Promotion, Source, Product, Retailer, Manufacturer)
+    }
+    candidate = construct_reference(db_session)
+    owned = {
+        kind: set(db_session.scalars(select(kind.id))) - before[kind]
+        for kind in (Promotion, Source, Product, Retailer, Manufacturer)
+    }
+    delete_owned_rows(db_session, owned)
+    assert candidate.variants[0].product_links[0].product_id == shared[2]
+    assert candidate.source_links[0].source_id == shared[3]
+    assert db_session.get(Manufacturer, shared[0]) is not None
+    assert db_session.get(Retailer, shared[1]) is not None
+    assert db_session.get(Product, shared[2]) is not None
+    assert db_session.get(Source, shared[3]) is not None
+
+
+def test_same_display_name_with_wrong_canonical_model_is_rejected(db_session):
+    maker = Manufacturer(name="Hisense UK", slug="hisense-uk")
+    shop = Retailer(name="Currys UK", slug="currys-uk")
+    product = Product(
+        manufacturer=maker,
+        name=reference_manifest()["product"]["name"],
+        slug="wrong-model-same-display-name",
+        model_number="WF7I1248BBA",
+    )
+    db_session.add_all([maker, shop, product])
+    db_session.flush()
+    from app.db.models import ManufacturerAlias, ProductModelAlias, RetailerAlias
+
+    db_session.add_all(
+        [
+            ManufacturerAlias(manufacturer_id=maker.id, alias="Hisense"),
+            RetailerAlias(retailer_id=shop.id, alias="Currys"),
+            ProductModelAlias(product_id=product.id, alias="WF7I1248BBR"),
+        ]
+    )
+    db_session.flush()
+    before = _graph_ids(db_session)
+    with pytest.raises(ValueError, match="Conflicting reference product identity"):
+        construct_reference(db_session)
+    assert _graph_ids(db_session) == before
+
+
 @pytest.mark.parametrize("field", ["source", "window", "limitation", "link", "requirements"])
 def test_replay_rejects_changed_graph_without_replacement(db_session, field):
     candidate = construct_reference(db_session)
@@ -257,231 +384,18 @@ def check(factory, purchase, evaluation, *, price=None, model="WF7I1248BBR", ret
         )
 
 
-@pytest.mark.parametrize(
-    "purchase,evaluation,classification",
-    [
-        (date(2026, 9, 9), date(2026, 9, 9), "CLAIM_NOT_YET_OPEN"),
-        (date(2026, 9, 9), date(2026, 10, 9), "CLAIM_NOT_YET_OPEN"),
-        (date(2026, 10, 27), date(2026, 10, 27), "CLAIM_NOT_YET_OPEN"),
-        (date(2026, 10, 27), date(2026, 11, 26), "CLAIM_NOT_YET_OPEN"),
-        (date(2026, 9, 9), date(2026, 11, 27), "ELIGIBLE"),
-        (date(2026, 10, 27), date(2026, 11, 27), "ELIGIBLE"),
-        (date(2026, 10, 27), date(2026, 12, 23), "ELIGIBLE"),
-        (date(2026, 10, 27), date(2026, 12, 24), "ELIGIBLE"),
-        (date(2026, 9, 9), date(2026, 12, 25), "EXPIRED"),
-        (date(2026, 10, 27), date(2027, 1, 1), "EXPIRED"),
-    ],
-)
-def test_persisted_fixed_window_matrix(reference, purchase, evaluation, classification):
+def test_persisted_gate_rejects_unverified_candidate(reference):
     factory, promotion_id = reference
-    publish(factory, promotion_id)
-    result = check(factory, purchase, evaluation)
-    assert len(result.promotions) == 1
-    offer = result.promotions[0]
-    assert offer.eligibility.classification == classification
-    assert offer.promotion_id == promotion_id
-    assert offer.promotion_status == PromotionStatus.ACTIVE
-    assert [reason.code for reason in offer.eligibility.reasons] == [
-        "all_configured_rules_satisfied",
-        {
-            "CLAIM_NOT_YET_OPEN": "claim_window_not_yet_open",
-            "ELIGIBLE": "claim_window_open",
-            "EXPIRED": "claim_window_expired",
-        }[classification],
-    ]
-    assert offer.provenance.official_source_url == reference_manifest()["official_terms_url"]
-    assert {source.role for source in offer.sources} == {"primary", "claim", "supporting"}
-    assert {source.url for source in offer.sources} == {
-        item["url"] for item in reference_manifest()["evidence"]["observations"]
-    }
-    assert all(
-        source.verified_at >= source.retrieved_at and source.retrieved_at.tzinfo
-        for source in offer.sources
-    )
-    assert offer.explanation == (
-        "The recorded eligibility rules match this purchase.",
-        {
-            "CLAIM_NOT_YET_OPEN": "Claiming opens on 2026-11-27.",
-            "ELIGIBLE": "The claim window is open.",
-            "EXPIRED": "The claim deadline has passed.",
-        }[classification],
-    )
-    assert offer.claim_window.opens_on == date(2026, 11, 27)
-    assert offer.claim_window.deadline_on == date(2026, 12, 24)
-    assert offer.benefits[0].cashback_reward_gbp == Decimal("100.00")
-    assert {r.requirement_type for r in offer.requirements} == {"receipt", "serial_number"}
-    assert offer.provenance.claim_url == reference_manifest()["claim_url"]
-    with factory() as session:
-        assert session.get(Promotion, promotion_id).status == PromotionStatus.ACTIVE
-
-
-@pytest.mark.parametrize("purchase", [date(2026, 9, 8), date(2026, 10, 28)])
-def test_outside_purchase_window_has_no_matching_offer(reference, purchase):
-    factory, promotion_id = reference
-    publish(factory, promotion_id)
-    result = check(factory, purchase, max(purchase, date(2026, 9, 9)))
-    assert result.promotions == ()
-    assert result.no_match_reason == "no_matching_published_promotions"
-
-
-@pytest.mark.parametrize("price", [None, Decimal("1.00"), Decimal("2000.00")])
-def test_reward_is_fixed_independent_of_purchase_price(reference, price):
-    factory, promotion_id = reference
-    publish(factory, promotion_id)
-    assert check(factory, date(2026, 10, 1), date(2026, 11, 27), price=price).promotions[
-        0
-    ].benefits[0].cashback_reward_gbp == Decimal("100.00")
-
-
-def test_review_candidate_invisible_then_explicit_retirement_preserves_history(reference):
-    factory, promotion_id = reference
-    assert check(factory, date(2026, 10, 1), date(2026, 11, 27)).promotions == ()
-    publish(factory, promotion_id)
-    first = check(factory, date(2026, 10, 1), date(2026, 11, 27)).promotions[0]
-    with factory.begin() as session:
-        assert construct_reference(session).status == PromotionStatus.ACTIVE
-    change_promotion_status(
-        partial(promotion_transaction, factory), promotion_id, PromotionStatus.EXPIRED
-    )
-    after = check(factory, date(2026, 10, 1), date(2026, 11, 27)).promotions[0]
-    assert after.eligibility == first.eligibility
-    assert after.sources == first.sources
-    assert after.provenance == first.provenance
-    assert after.promotion_status == PromotionStatus.EXPIRED
-    assert (
-        check(factory, date(2026, 10, 1), date(2026, 12, 25))
-        .promotions[0]
-        .eligibility.classification
-        == "EXPIRED"
-    )
-    with factory.begin() as session:
-        assert construct_reference(session).status == PromotionStatus.EXPIRED
-
-
-@pytest.mark.parametrize(
-    "failure", ["missing_primary", "unverified_primary", "missing_claim", "unverified_claim"]
-)
-def test_persisted_gate_rejects_invalid_source_authority(reference, failure):
-    factory, promotion_id = reference
-    with factory.begin() as session:
-        candidate = session.get(Promotion, promotion_id)
-        role = "primary" if "primary" in failure else "claim"
-        link = next(link for link in candidate.source_links if link.role == role)
-        if failure.startswith("missing"):
-            session.delete(link)
-        else:
-            link.source.verified_at = None
     with pytest.raises(PromotionPublicationError):
         publish(factory, promotion_id)
     with factory() as session:
         assert session.get(Promotion, promotion_id).status == PromotionStatus.REVIEW
 
 
-@pytest.mark.parametrize(
-    "evaluation_date",
-    [date(2026, 10, 9), date(2026, 11, 26), date(2026, 11, 27), date(2026, 12, 25)],
-)
-def test_http_published_reference_is_reproducible_and_read_only(
-    reference, postgres_engine, evaluation_date
-):
-    from fastapi.testclient import TestClient
-    from sqlalchemy import event
-
-    from app.api.eligibility import uk_evaluation_date
-    from app.core.config import Settings
-    from app.main import create_app
-
-    factory, promotion_id = reference
-    publish(factory, promotion_id)
-    app = create_app(
-        Settings(_env_file=None, APP_ENV="test", DATABASE_URL="postgresql+psycopg://unused/unused"),
-        engine_factory=lambda _: postgres_engine,
-    )
-    app.dependency_overrides[uk_evaluation_date] = lambda: evaluation_date
-    statements = []
-
-    def record(connection, cursor, statement, parameters, context, executemany):
-        statements.append(statement.strip().split()[0].upper())
-
-    with TestClient(app) as client:
-        event.listen(postgres_engine, "before_cursor_execute", record)
-        try:
-            body = {
-                "brand": "Hisense",
-                "model": "WF7I1248BBR",
-                "retailer": "Currys",
-                "purchase_date": "2026-09-09"
-                if evaluation_date == date(2026, 10, 9)
-                else "2026-10-27",
-            }
-            response = client.post("/api/v1/eligibility/check", json=body)
-            assert response.status_code == 200
-            offer = response.json()["promotions"][0]
-            expected = (
-                "CLAIM_NOT_YET_OPEN"
-                if evaluation_date < date(2026, 11, 27)
-                else "EXPIRED"
-                if evaluation_date > date(2026, 12, 24)
-                else "ELIGIBLE"
-            )
-            assert offer["eligibility"]["classification"] == expected
-            assert offer["benefits"][0]["cashback_reward_gbp"] == "100.00"
-            assert offer["claim_window"]["opens_on"] == "2026-11-27"
-            assert offer["claim_window"]["deadline_on"] == "2026-12-24"
-            assert offer["provenance"]["claim_url"] == reference_manifest()["claim_url"]
-            assert offer["promotion_status"] == "active"
-            if expected == "ELIGIBLE":
-                requirements = {
-                    item["requirement_type"]: item["description"] for item in offer["requirements"]
-                }
-                assert set(requirements) == {"receipt", "serial_number"}
-                assert "purchase price" in requirements["receipt"].lower()
-                manifest = reference_manifest()
-                assert {item["url"] for item in offer["sources"]} == {
-                    item["url"] for item in manifest["evidence"]["observations"]
-                }
-                assert all(item["verified_at"] is not None for item in offer["sources"])
-            assert client.post("/api/v1/eligibility/check", json=body).json() == response.json()
-            outside = client.post(
-                "/api/v1/eligibility/check", json={**body, "purchase_date": "2026-10-28"}
-            )
-            assert outside.status_code == 200
-            assert outside.json()["promotions"] == []
-            assert outside.json()["no_match_reason"] == "no_matching_published_promotions"
-            assert not {"INSERT", "UPDATE", "DELETE", "COMMIT"}.intersection(statements)
-        finally:
-            event.remove(postgres_engine, "before_cursor_execute", record)
-    with factory.begin() as session:
-        synthetic = Retailer(
-            name="Synthetic unrelated retailer", slug="synthetic-unrelated-retailer"
-        )
-        session.add(synthetic)
-        session.flush()
-        synthetic_id = synthetic.id
-    try:
-        with TestClient(app) as client:
-            wrong_retailer = client.post(
-                "/api/v1/eligibility/check",
-                json={
-                    "brand": "Hisense",
-                    "model": "WF7I1248BBR",
-                    "retailer": "Synthetic unrelated retailer",
-                    "purchase_date": "2026-10-01",
-                },
-            )
-            assert wrong_retailer.status_code == 200
-            assert wrong_retailer.json()["promotions"] == []
-            assert wrong_retailer.json()["no_match_reason"] == "no_matching_published_promotions"
-    finally:
-        with factory.begin() as session:
-            session.execute(delete(Retailer).where(Retailer.id == synthetic_id))
-    with factory() as session:
-        assert session.get(Promotion, promotion_id).status == PromotionStatus.ACTIVE
-
-
 def test_known_unlinked_identity_is_no_match_and_unknown_is_unresolved(reference):
     factory, promotion_id = reference
-    publish(factory, promotion_id)
+    with pytest.raises(PromotionPublicationError):
+        publish(factory, promotion_id)
     with factory.begin() as session:
         candidate = session.get(Promotion, promotion_id)
         fake = Product(
@@ -495,19 +409,11 @@ def test_known_unlinked_identity_is_no_match_and_unknown_is_unresolved(reference
         session.flush()
         fake_id, shop_id = fake.id, shop.id
     try:
-        for model, retailer in [
-            ("SYNTHETIC-UNLINKED", "Currys"),
-            ("WF7I1248BBR", "Synthetic unrelated retailer"),
-        ]:
-            result = check(
-                factory, date(2026, 10, 1), date(2026, 11, 27), model=model, retailer=retailer
-            )
-            assert result.promotions == ()
-            assert result.no_match_reason == "no_matching_published_promotions"
         result = check(factory, date(2026, 10, 1), date(2026, 11, 27), model="UNKNOWN-HISENSE")
         from app.application.promotion_candidate_matching import UnresolvedPurchaseIdentity
 
         assert isinstance(result, UnresolvedPurchaseIdentity)
+        assert check(factory, date(2026, 10, 1), date(2026, 11, 27)).promotions == ()
     finally:
         with factory.begin() as session:
             session.execute(delete(Product).where(Product.id == fake_id))
@@ -528,100 +434,6 @@ def test_same_model_owned_by_other_manufacturer_is_not_reused(db_session):
     assert candidate.manufacturer_id != maker.id
     assert candidate.variants[0].product_links[0].product_id != product.id
     assert db_session.get(Product, product.id).manufacturer_id == maker.id
-
-
-def test_cross_campaign_graph_does_not_change_autumn_reward_or_sources(reference):
-    from datetime import UTC, datetime
-
-    from app.db.models import (
-        Benefit,
-        BenefitReward,
-        PromotionSource,
-        PromotionVariant,
-        PromotionVariantProduct,
-    )
-
-    factory, autumn_id = reference
-    publish(factory, autumn_id)
-    with factory.begin() as session:
-        autumn = session.get(Promotion, autumn_id)
-        product_id = autumn.variants[0].product_links[0].product_id
-        retailer_id = autumn.variants[0].retailer_id
-        earlier = Promotion(
-            manufacturer_id=autumn.manufacturer_id,
-            name="Synthetic cross-campaign collision test fixture",
-            slug="synthetic-cross-campaign-collision-test",
-            status=PromotionStatus.REVIEW,
-            purchase_start_date=date(2026, 5, 1),
-            purchase_end_date=date(2026, 6, 30),
-            claim_start_date=date(2026, 7, 1),
-            claim_end_date=date(2026, 7, 31),
-        )
-        earlier.variants = [
-            PromotionVariant(
-                code="synthetic-overlap",
-                name="Synthetic GBP 150 cross-campaign collision fixture",
-                retailer_id=retailer_id,
-                product_links=[PromotionVariantProduct(product_id=product_id)],
-                benefits=[
-                    Benefit(
-                        benefit_type="cashback",
-                        name="Synthetic GBP 150 test reward; no official evidence",
-                        reward=BenefitReward(
-                            reward_type="fixed_amount", fixed_amount=Decimal("150.00")
-                        ),
-                    )
-                ],
-            )
-        ]
-        synthetic_source = Source(
-            url="https://example.test/synthetic-cross-campaign-fixture",
-            source_type="web_page",
-            title="Synthetic test fixture; not manufacturer evidence",
-            retrieved_at=datetime(2026, 10, 9, tzinfo=UTC),
-            verified_at=datetime(2026, 10, 9, tzinfo=UTC),
-        )
-        synthetic_claim_source = Source(
-            url="https://example.test/synthetic-claim-fixture",
-            source_type="web_page",
-            title="Synthetic test fixture claim destination; not manufacturer evidence",
-            retrieved_at=datetime(2026, 10, 9, tzinfo=UTC),
-            verified_at=datetime(2026, 10, 9, tzinfo=UTC),
-        )
-        earlier.source_links = [
-            PromotionSource(role="primary", source=synthetic_source),
-            PromotionSource(role="claim", source=synthetic_claim_source),
-        ]
-        session.add(earlier)
-        session.flush()
-        earlier_id = earlier.id
-        synthetic_source_ids = [synthetic_source.id, synthetic_claim_source.id]
-
-    # This distinct fixture exercises the same product and retailer. It is published
-    # through the normal gate with explicitly synthetic provenance, never official evidence.
-    try:
-        publish(factory, earlier_id)
-        result = check(factory, date(2026, 10, 1), date(2026, 11, 27))
-        assert len(result.promotions) == 1
-        autumn_offer = result.promotions[0]
-        assert autumn_offer.promotion_id == autumn_id
-        assert autumn_offer.eligibility.classification == "ELIGIBLE"
-        assert autumn_offer.benefits[0].cashback_reward_gbp == Decimal("100.00")
-        assert (
-            autumn_offer.provenance.official_source_url
-            == reference_manifest()["official_terms_url"]
-        )
-        assert all(
-            source.url != "https://example.test/synthetic-cross-campaign-fixture"
-            for source in autumn_offer.sources
-        )
-    finally:
-        with factory.begin() as session:
-            session.execute(
-                delete(PromotionSource).where(PromotionSource.source_id.in_(synthetic_source_ids))
-            )
-            session.execute(delete(Promotion).where(Promotion.id == earlier_id))
-            session.execute(delete(Source).where(Source.id.in_(synthetic_source_ids)))
 
 
 @pytest.mark.parametrize("case", ["ambiguous", "wrong_model"])

@@ -1,6 +1,6 @@
 {
   "reference_version": 1,
-  "evidence_status": "verified_reference",
+  "evidence_status": "unverified_review_candidate",
   "campaign": "Hisense Autumn Cashback 2026 Promotion (UK)",
   "promotion_slug": "hisense-autumn-cashback-2026-wf7i1248bbr-currys-reference",
   "coverage": "WF7I1248BBR purchased directly from Currys only; not the full campaign",
@@ -30,51 +30,36 @@
   "claim_url": "https://autumncashback2026.hisensepromotions.co.uk/",
   "evidence": {
     "reviewed_on": "2026-10-09",
-    "observations": [
+    "observations": [],
+    "access_outcomes": [
       {
         "url": "https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2",
         "role": "primary_terms",
-        "retrieval_status": "complete_official_html_reviewed",
-        "retrieved_at": "2026-10-09T14:53:52Z",
-        "verified_at": "2026-10-09T14:53:52Z",
-        "title_or_version": "Hisense Autumn Cashback 2026 Promotion Terms and Conditions; Updated 01-Sep-2026 05:38; footer 07.08.2026",
-        "sections_reviewed": [
-          "Sections 1\u20138",
-          "Annex 1",
-          "Annex 1.1",
-          "Annex 2"
-        ],
-        "outcome": "Full official terms reviewed: Currys Annex 1; WF7I1248BBR GBP 100 Annex 2; purchase 9 September\u201327 October; claims 27 November\u201324 December inclusive.",
-        "content_sha256": "2f554d5266baec55c9cc3fae4734cca65f25d2ac14977137ab192fb0a85298dc"
+        "status": "not_available_as_approved_evidence",
+        "verified_at": null,
+        "outcome": "The attached instructions identify the full applicable terms as unverified; local captures alone do not establish approved source provenance. Do not use for publication."
       },
       {
         "url": "https://autumncashback2026.hisensepromotions.co.uk/",
         "role": "claim_destination",
-        "retrieval_status": "destination_verified_from_official_terms",
-        "retrieved_at": "2026-10-09T14:53:52Z",
-        "verified_at": "2026-10-09T14:53:52Z",
-        "title_or_version": "Hisense designated claim destination (\u00a7\u00a75.1, 5.12); portal availability not independently checked",
-        "sections_reviewed": [
-          "Sections 5.1 and 5.12"
-        ],
-        "outcome": "URL verified in official terms, not evidence of present portal availability."
+        "status": "not_independently_retrieved",
+        "verified_at": null,
+        "outcome": "URL appears in candidate source material, but portal availability was not independently observed."
       },
       {
-        "url": "https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys",
+        "url": "https://www.currys.co.uk/products/hisense-kitchenfit-7i-series-wf7i1248bbr-wifienabled-12-kg-1400-spin-washing-machine-black-10304682.html",
         "role": "retailer_corroboration",
-        "retrieval_status": "official_retailer_pdf_reviewed",
-        "retrieved_at": "2026-10-09T14:54:03Z",
-        "verified_at": "2026-10-09T14:54:03Z",
-        "title_or_version": "Hisense Autumn Cashback 2026 Promotion Terms and Conditions Currys PDF; 07.08.2026",
-        "sections_reviewed": [
-          "Sections 1\u20138",
-          "Annex 2 page 6"
-        ],
-        "content_sha256": "2c276d16e0419843a90132a85ab36e590bb95a23d769eb48dcb1b5a366aa94e8",
-        "outcome": "Corroborates exact model/reward/dates. Omits Annex 1 and differs for unrelated models; current complete official HTML takes precedence."
+        "status": "historical_partial_observation_only",
+        "retrieved_at": "2026-10-09T12:29:00Z",
+        "verified_at": null,
+        "outcome": "Product identity and campaign summary were observed; campaign participation, dates and amount were not established."
       }
     ],
-    "unverified_facts": [],
+    "unverified_facts": [
+      "Complete current official Autumn terms, including Annex 1 and Annex 2",
+      "Currys participation and exact model/reward under the applicable terms",
+      "Purchase and claim dates, claim URL availability, requirements and restrictions"
+    ],
     "excluded_cross_campaign_evidence": "The separate May-June 2026 A-Rated Appliances promotion reportedly lists this model at GBP 150. It is not evidence for this Autumn candidate.",
     "historical_observations": [
       {
@@ -121,20 +106,11 @@
         "outcome": "Destination is proposed from the specification; portal availability and claim acceptance were not established."
       }
     ],
-    "manufacturer_page_status": "HTTP 403; not reviewed; no verified source created",
+    "manufacturer_page_status": "Not independently verified in this task",
     "date_reconciliation": "Conflicting Currys 27 October claim-opening snippet rejected in favor of complete official terms \u00a7\u00a73.5, 5.1 and retailer PDF \u00a73.5: 27 November 2026.",
     "condition_limitation": "Section 4.4 excludes graded/ex-display/seconds/imperfect/replacement products but does not explicitly define all purchases as NEW or exclude every refurbished item; no unverified general NEW-only domain rule is asserted."
   },
-  "requirements": [
-    {
-      "type": "receipt",
-      "description": "Upload a valid purchase receipt or invoice showing the product/model, purchase date, purchase price and participating retailer (\u00a7\u00a73.6, 5.2\u20135.5)."
-    },
-    {
-      "type": "serial_number",
-      "description": "Provide valid product serial number (\u00a7\u00a73.6, 5.2\u20135.5)."
-    }
-  ],
+  "requirements": [],
   "limitations": [
     "Bounded reference covers only this exact model and direct Currys purchases; other products or retailers are not assessed.",
     "Claimants must be UK residents aged 18 or over purchasing for consumer use (\u00a7\u00a72, 4).",
@@ -142,6 +118,6 @@
     "Purchase must be directly from the participating retailer own stores or website, excluding marketplace sellers (\u00a73.2).",
     "No concurrent promoter offers; one claim per model and maximum five per household (\u00a7\u00a74, 5).",
     "The five-field request cannot check claimant identity, residency, age, product condition, seller, serial, proof submission, previous claims or payment details.",
-    "Receipt and serial requirements are claim instructions, not proof that they were satisfied. Hisense determines claim acceptance."
+    "Do not infer receipt or serial-number requirement types until full terms are verified. Hisense determines claim acceptance."
   ]
 }

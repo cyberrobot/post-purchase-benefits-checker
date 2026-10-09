@@ -1,4 +1,4 @@
-"""Offline test-only constructor for the reviewed bounded Hisense reference."""
+"""Offline test-only constructor for an unverified Hisense review candidate."""
 
 import hashlib
 import json
@@ -33,15 +33,18 @@ from app.domain.promotion_lifecycle import PromotionStatus
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/hisense-autumn-cashback-2026-wf7i1248bbr.json"
 )
-REVIEWED_SHA256 = "307d6254ee0faa09d3425a513cdd7da5b4be499cddba8ea4c8e86dc90a8364fc"
+REVIEWED_SHA256 = "2f734101962f7d1aae24d4c3a31bdfd236495f20d44bd09fc5e4c46eaa26eb31"
 
 
 def validate_manifest(value):
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    try:
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    except (ValueError, TypeError):
+        raise ValueError("Hisense manifest must contain valid JSON data") from None
     if not REVIEWED_SHA256 or hashlib.sha256(encoded).hexdigest() != REVIEWED_SHA256:
-        raise ValueError("Hisense manifest differs from its pinned reviewed reference")
-    if value.get("evidence_status") != "verified_reference":
-        raise ValueError("Hisense evidence has not passed the required full terms review")
+        raise ValueError("Hisense manifest differs from its pinned unverified review candidate")
+    if value.get("evidence_status") != "unverified_review_candidate":
+        raise ValueError("Hisense Autumn terms remain unverified; candidate must stay in review")
     for key in (
         "official_terms_url",
         "manufacturer_campaign_url",
@@ -51,8 +54,6 @@ def validate_manifest(value):
         url = value.get(key)
         if not isinstance(url, str) or not url.startswith("https://"):
             raise ValueError("Reference source URLs must use HTTPS")
-    if any(item["verified_at"] is None for item in value["evidence"]["observations"]):
-        raise ValueError("Reviewed authority requires verified source observations")
     return value
 
 
@@ -188,7 +189,7 @@ def construct_reference(session):
         )
         expected = Promotion(
             manufacturer_id=maker.id,
-            name=f["campaign"] + " — WF7I1248BBR at Currys reviewed reference",
+            name=f["campaign"] + " — WF7I1248BBR at Currys unverified candidate",
             slug=f["promotion_slug"],
             status=PromotionStatus.REVIEW,
             purchase_start_date=date.fromisoformat(f["purchase_start_date"]),
@@ -209,7 +210,7 @@ def construct_reference(session):
                 benefits=[
                     Benefit(
                         benefit_type="cashback",
-                        name="GBP 100.00 cashback",
+                        name="Proposed GBP 100.00 cashback (unverified)",
                         description=" ".join(f["limitations"]),
                         reward=BenefitReward(
                             reward_type="fixed_amount", fixed_amount=Decimal("100.00")
@@ -218,23 +219,19 @@ def construct_reference(session):
                 ],
             )
         ]
-        roles = {
-            "primary_terms": "primary",
-            "claim_destination": "claim",
-            "retailer_corroboration": "supporting",
-        }
         expected.source_links = [
             PromotionSource(
-                role=roles[item["role"]],
+                role="supporting",
                 source=Source(
                     url=item["url"],
-                    source_type="pdf" if item["role"] == "retailer_corroboration" else "web_page",
+                    source_type="web_page",
                     title=item["title_or_version"],
                     retrieved_at=datetime.fromisoformat(item["retrieved_at"]),
-                    verified_at=datetime.fromisoformat(item["verified_at"]),
+                    verified_at=None,
                 ),
             )
-            for item in f["evidence"]["observations"]
+            for item in f["evidence"]["historical_observations"]
+            if item["url"] == f["retailer_corroboration_url"] and item["retrieved_at"]
         ]
         if existing:
             if existing.status not in (
@@ -248,7 +245,7 @@ def construct_reference(session):
             except (AttributeError, TypeError):
                 same = False
             if not same:
-                raise ValueError("Conflicting existing reviewed reference")
+                raise ValueError("Conflicting existing unverified candidate")
             return existing
         session.add(expected)
         session.flush()
@@ -271,7 +268,7 @@ def construct_reference(session):
                             "benefits": [
                                 {
                                     "type": "cashback",
-                                    "name": "GBP 100.00 cashback",
+                                    "name": "Proposed GBP 100.00 cashback (unverified)",
                                     "reward": f["benefit"]["reward"],
                                 }
                             ],
@@ -286,6 +283,11 @@ def construct_reference(session):
             }
         )
         issues = validate_candidate_promotion(candidate).issues
-        if any(issue.code != "unresolved_references" for issue in issues):
-            raise ValueError("Reviewed reference candidate preflight failed")
+        allowed_candidate_issues = {
+            "unresolved_references",
+            "missing_primary_source",
+            "missing_claim_source",
+        }
+        if any(issue.code not in allowed_candidate_issues for issue in issues):
+            raise ValueError("Unverified reference candidate preflight failed")
         return expected
