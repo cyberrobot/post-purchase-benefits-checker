@@ -91,3 +91,38 @@ window. On 9 October 2026 its computed claim status is `EXPIRED`.
 
 No startup seeding, migrations, production writes, configuration or API/MCP contract
 changes are introduced. Normal startup does not load this historical reference.
+
+---
+
+# Hisense Autumn 2026 review candidate (publication blocked)
+
+`hisense-autumn-cashback-2026-wf7i1248bbr.json` is **not verified reference data**.
+It records a bounded proposal for model `WF7I1248BBR` at Currys and the facts
+specified for investigation. Those dates, the GBP 100 amount, Currys participation,
+claim destination and requirements remain unverified. The candidate constructor
+keeps the graph in `review`, records unverified sources without verification
+timestamps, and the persisted publication gate must reject activation. It must not
+be used to claim the active purchase-check behaviour in PR 22's objective.
+
+## Evidence audit on 9 October 2026
+
+| Source | Observation | What it establishes |
+| --- | --- | --- |
+| [Hisense Autumn terms and conditions](https://autumncashback2026.hisensepromotions.co.uk/en_gb/terms-and-conditions-promotion/?country_promotion=2) | Opened; page returned a JavaScript/bot verification challenge | Nothing about applicable terms or Annexes 1/2 was verified |
+| [Hisense UK campaign page](https://uk.hisense.com/promotions-giveaways/energy-efficiency-cashback) | Not accessible in the review environment | Nothing directly verified |
+| [Currys product page](https://www.currys.co.uk/products/hisense-kitchenfit-7i-series-wf7i1248bbr-wifienabled-12-kg-1400-spin-washing-machine-black-10304682.html) | Opened; product identity is shown and page advertises “up to £300” on selected Hisense appliances | Product identity only; not Autumn retailer annex, exact reward, or dates |
+| [Hisense-designated claim portal](https://autumncashback2026.hisensepromotions.co.uk/) | Not independently reviewed | Availability and claim acceptance unknown |
+
+No retrieval/verification timestamp is fabricated for the challenged terms or
+unavailable manufacturer page. The Currys observation timestamp is approximate to
+the minute from the review session and is retrieval only, not verification. The
+different May–June 2026 A-Rated promotion's reported GBP 150 amount is explicitly
+excluded from this candidate.
+
+The complete applicable official Autumn terms, including participating retailers,
+qualifying model/reward annexes, restrictions, claim dates and evidence requirements,
+must be obtained and reviewed before the digest, evidence ledger, graph sources or
+tests are upgraded to a verified reference. Until then there is no active Hisense
+promotion and no Hisense eligibility claim. The five-field request also cannot
+evaluate claimant identity, region, age, product condition, third-party seller,
+serial/proof submission, previous claims or payment details.
