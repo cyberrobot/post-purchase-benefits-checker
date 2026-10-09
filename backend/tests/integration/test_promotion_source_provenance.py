@@ -5,11 +5,15 @@ from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.application.promotions import PromotionPersistenceError, change_promotion_status
+from app.application.promotions import (
+    PromotionPersistenceError,
+    PromotionPublicationError,
+    change_promotion_status,
+)
 from app.db.models import PromotionSource, Source
 from app.db.repositories.promotions import SqlAlchemyPromotionRepository, promotion_transaction
 from app.domain.promotion_lifecycle import PromotionStatus as S
-from app.domain.promotion_provenance import PromotionProvenanceError, SourceRole, SourceType
+from app.domain.promotion_provenance import SourceRole, SourceType
 from tests.integration.test_core_promotion_schema import graph as complete_graph  # noqa: F401
 from tests.integration.test_promotion_lifecycle import snapshot, transaction
 
@@ -18,7 +22,9 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def graph(request):
-    return request.getfixturevalue("complete_graph")
+    from tests.integration.test_promotion_publication import make_publishable
+
+    return make_publishable(request.getfixturevalue("complete_graph"))
 
 
 @pytest.mark.parametrize("target", [S.EXPIRED, S.ARCHIVED])
@@ -76,9 +82,9 @@ def test_rejected_publication_and_corrected_retry(db_session, graph, role, case)
 
     event.listen(db_session.bind, "before_cursor_execute", capture)
     try:
-        with pytest.raises(PromotionProvenanceError) as error:
+        with pytest.raises(PromotionPublicationError) as error:
             change_promotion_status(partial(transaction, db_session), graph.id, S.ACTIVE)
-        assert error.value.reason_code == reason
+        assert reason in {i.code for i in error.value.report.issues}
     finally:
         event.remove(db_session.bind, "before_cursor_execute", capture)
     assert not any(s.lstrip().upper().startswith("UPDATE") for s in statements)
@@ -101,7 +107,7 @@ def test_publication_database_failure_rolls_back(db_session, graph, stage):
     before = snapshot(db_session)
 
     def fail_statement(connection, cursor, statement, *args):
-        if (stage == "query" and "JOIN promotion_sources" in statement) or (
+        if (stage == "query" and "FOR UPDATE" in statement) or (
             stage == "update" and statement.startswith("UPDATE promotions")
         ):
             raise OperationalError("private SQL", {}, Exception("private detail"))

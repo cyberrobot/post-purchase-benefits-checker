@@ -522,3 +522,53 @@ no verified gateway rate limiter or request timeout policy. Configure and verify
 edge rate limit (initial suggestion: 60 requests/minute/IP with a modest burst, 429 and Retry-After)
 and bounded request timeouts before public exposure. Align configurable gateway errors with the
 problem contract. An optional future browser UI must use exact-origin CORS without credentials.
+
+## Candidate promotion authoring (schema version 1)
+
+`app.application.promotion_authoring.parse_candidate_promotion(mapping)` parses an internal
+JSON document with `schema_version: 1` and a `promotion` body. Serialize with
+`candidate.model_dump(mode="json")`; UUIDs, ISO calendar dates, nulls and decimal strings
+round-trip without floating point money. Unknown fields (including lifecycle status,
+country/channel/condition/price rules and source URLs or verification timestamps) are rejected.
+No authoring write endpoint or candidate persistence operation is introduced.
+
+The body contains canonical `manufacturer_id`, `name`, `slug`, purchase date bounds,
+a fixed (`type`, `start_date`, `end_date`) or relative (`type`, `start_offset_days`,
+`end_offset_days`) `claim_window`, `variants` and `sources`. Incomplete drafts may use null
+identity/display/date/window fields and empty arrays. Each variant must explicitly include
+`retailer_id`: null means all retailers, never unknown scope. It contains `code`, optional
+`name`, canonical `product_ids`, `benefits` and `requirements`. Benefits use the existing
+cashback/extended_warranty/free_gift types. Cashback rewards discriminate on `type`:
+`fixed_amount` with `amount_gbp: "50.00"`, `percentage` with `percentage: "10.5000"`, or
+`product_specific` with `values: [{product_id: "<UUID>", amount_gbp: "40.00"}]`.
+Requirements use existing requirement types and optional plain text descriptions.
+Sources contain only curated `source_id` and primary/terms/claim/supporting `role`.
+
+Parsing bounds each document to 256 KiB and 12 levels, 50 variants, 200 product references,
+20 benefits/30 requirements per variant, 30 sources, 255 character names/codes and 2,000
+character descriptions. Money uses positive decimal strings with at most two decimal places;
+percentages allow four places and must not exceed 100. Neither scientific notation nor
+JSON floating point values are accepted. Descriptions are passive instructions, never rules.
+
+`validate_candidate_promotion(candidate)` produces immutable issues with stable codes,
+JSON Pointer paths, safe messages and error severity. Preflight always reports unresolved
+references and cannot authorize publication. `CandidateInputError.report` contains parse
+issues; `PromotionPublicationError.report` contains publication issues. Curators can inspect
+these codes/paths and correct the existing persisted candidate before retrying activation.
+
+Only the existing `review → active` operation validates the current PostgreSQL graph.
+It requires purchase bounds, exactly one valid claim window, a manufacturer, named variants
+with matching canonical products and benefits, complete cashback rewards, supported
+requirements, and verified curated primary and claim sources. Product-specific rewards
+cover exactly the variant products. Provenance uses actual stored URLs and timestamps;
+source IDs in a candidate are not evidence. Invalid data blocks the whole promotion and
+rolls back without changing timestamps or linked data. Active no-ops and retirement retain
+historical behaviour; existing published rows are not repaired or backfilled.
+
+Publication takes a parent promotion row lock before reading associations and retains the
+conditional status update. Every future controlled graph editor must acquire that same lock
+before editing and recheck lifecycle status; published graph changes must use coordinated
+application transactions. Direct out-of-band SQL writes are operationally prohibited and
+are not protected by this lock discipline. Database immutability/permissions, candidate
+write idempotency, curator authentication/audit, source curation/content versioning and
+unsupported eligibility dimensions require separate designs.

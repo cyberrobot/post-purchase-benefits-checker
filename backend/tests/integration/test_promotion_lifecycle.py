@@ -250,6 +250,9 @@ def test_application_commit_is_visible_in_new_session(postgres_engine, migrated_
                 name="Committed",
                 slug=str(identity),
                 status=S.REVIEW,
+                purchase_start_date=date(2026, 10, 1),
+                claim_start_offset_days=0,
+                claim_end_offset_days=30,
             )
         )
     with factory.begin() as session:
@@ -266,6 +269,14 @@ def test_application_commit_is_visible_in_new_session(postgres_engine, migrated_
                     ),
                 )
             )
+    from app.db.models import Benefit, Product, PromotionVariant, PromotionVariantProduct
+
+    with factory.begin() as session:
+        product = Product(manufacturer_id=manufacturer_id, name="Product", slug="product")
+        variant = PromotionVariant(promotion_id=identity, code="all")
+        variant.product_links = [PromotionVariantProduct(product=product)]
+        variant.benefits = [Benefit(benefit_type="free_gift", name="Gift")]
+        session.add(variant)
     try:
         transaction_factory = partial(promotion_transaction, factory)
         assert change_promotion_status(transaction_factory, identity, S.ACTIVE).changed
@@ -288,6 +299,11 @@ def test_application_commit_is_visible_in_new_session(postgres_engine, migrated_
             session.flush()
             for source in source_rows:
                 session.delete(source)
+            for product in session.scalars(
+                select(Product).where(Product.manufacturer_id == manufacturer_id)
+            ):
+                session.delete(product)
+            session.flush()
             session.delete(session.get(Manufacturer, manufacturer_id))
 
 

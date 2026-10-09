@@ -137,6 +137,144 @@ class SqlAlchemyPromotionRepository:
                 code=PublishedDataErrorCode.INVALID_PROJECTION
             ) from error
 
+    def get_publication_snapshot_for_update(self, promotion_id):
+        """Lock parent first; cooperating graph writers must acquire this same lock."""
+        from app.domain.benefits import Benefit as BenefitValue
+        from app.domain.claim_windows import FixedClaimWindow, RelativeClaimWindow
+        from app.domain.promotion_validation import (
+            PromotionValidationSnapshot,
+            ValidationBenefit,
+            ValidationIssue,
+            ValidationSource,
+            ValidationVariant,
+        )
+        from app.domain.requirements import Requirement as RequirementValue
+
+        try:
+            with self.session.no_autoflush:
+                promotion = self.session.scalar(
+                    select(Promotion)
+                    .where(Promotion.id == promotion_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if promotion is None:
+                    return None
+                # Reload only after obtaining the parent lock, including identity references.
+                self.session.refresh(promotion, ["variants", "source_links", "manufacturer"])
+                issues = []
+                window = None
+                try:
+                    fixed = (promotion.claim_start_date, promotion.claim_end_date)
+                    relative = (promotion.claim_start_offset_days, promotion.claim_end_offset_days)
+                    if any(v is not None for v in fixed) and any(v is not None for v in relative):
+                        raise ValueError
+                    if any(v is not None for v in fixed):
+                        window = FixedClaimWindow(*fixed)
+                    elif any(v is not None for v in relative):
+                        window = RelativeClaimWindow(*relative)
+                except (ValueError, TypeError):
+                    issues.append(
+                        ValidationIssue(
+                            "invalid_claim_window",
+                            "/promotion/claim_window",
+                            "Invalid claim window.",
+                        )
+                    )
+                variants = []
+                for i, variant in enumerate(sorted(promotion.variants, key=lambda v: v.id)):
+                    self.session.refresh(
+                        variant, ["product_links", "benefits", "requirements", "retailer"]
+                    )
+                    benefits = []
+                    for j, row in enumerate(sorted(variant.benefits, key=lambda v: v.id)):
+                        try:
+                            benefits.append(
+                                ValidationBenefit(
+                                    BenefitValue(row.benefit_type, row.name, row.description),
+                                    _publication_reward(row.reward),
+                                )
+                            )
+                        except (ValueError, TypeError):
+                            try:
+                                benefit = BenefitValue(row.benefit_type, row.name, row.description)
+                                benefits.append(ValidationBenefit(benefit, invalid_reward=True))
+                            except (ValueError, TypeError):
+                                issues.append(
+                                    ValidationIssue(
+                                        "unsupported_benefit_type",
+                                        f"/promotion/variants/{i}/benefits/{j}",
+                                        "Unsupported benefit.",
+                                    )
+                                )
+                    requirements = []
+                    for j, row in enumerate(sorted(variant.requirements, key=lambda v: v.id)):
+                        try:
+                            requirements.append(
+                                RequirementValue(row.requirement_type, row.description)
+                            )
+                        except (ValueError, TypeError):
+                            issues.append(
+                                ValidationIssue(
+                                    "unsupported_requirement_type",
+                                    f"/promotion/variants/{i}/requirements/{j}",
+                                    "Unsupported requirement.",
+                                )
+                            )
+                    links = sorted(variant.product_links, key=lambda v: v.product_id)
+                    variants.append(
+                        ValidationVariant(
+                            variant.code,
+                            variant.name,
+                            variant.retailer_id,
+                            tuple(v.product_id for v in links),
+                            tuple(benefits),
+                            tuple(requirements),
+                            tuple(
+                                (v.product_id, v.product.manufacturer_id if v.product else None)
+                                for v in links
+                            ),
+                            variant.retailer_id is None or variant.retailer is not None,
+                        )
+                    )
+                sources = []
+                for i, link in enumerate(sorted(promotion.source_links, key=lambda v: v.source_id)):
+                    record = None
+                    try:
+                        source = link.source
+                        if source is not None:
+                            record = PromotionSourceRecord(
+                                source.id,
+                                link.role,
+                                source.url,
+                                source.source_type,
+                                source.retrieved_at,
+                                source.verified_at,
+                            )
+                    except (ValueError, TypeError):
+                        issues.append(
+                            ValidationIssue(
+                                "invalid_source_provenance",
+                                f"/promotion/sources/{i}",
+                                "Invalid curated source.",
+                            )
+                        )
+                    sources.append(ValidationSource(link.source_id, link.role, record))
+                return PromotionValidationSnapshot(
+                    promotion.manufacturer_id,
+                    promotion.name,
+                    promotion.slug,
+                    promotion.purchase_start_date,
+                    promotion.purchase_end_date,
+                    window,
+                    tuple(variants),
+                    tuple(sources),
+                    promotion.manufacturer is not None,
+                    tuple(issues),
+                )
+        except SQLAlchemyError:
+            raise PromotionPersistenceError("Promotion publication query failed") from None
+
     def get_promotion(self, promotion_id: UUID) -> PromotionRecord | None:
         try:
             row = self.session.scalar(
@@ -221,6 +359,33 @@ def promotion_transaction(
             yield SqlAlchemyPromotionRepository(session)
     except SQLAlchemyError:
         raise PromotionPersistenceError("Promotion transaction failed") from None
+
+
+def _publication_reward(stored):
+    from app.domain.rewards import (
+        FixedAmountReward,
+        PercentageReward,
+        ProductRewardValue,
+        ProductSpecificReward,
+        RewardType,
+    )
+
+    if stored is None:
+        return None
+    kind = RewardType(stored.reward_type)
+    if kind == RewardType.FIXED_AMOUNT:
+        if stored.percentage is not None or stored.product_values:
+            raise ValueError("Invalid reward shape")
+        return FixedAmountReward(stored.fixed_amount)
+    if kind == RewardType.PERCENTAGE:
+        if stored.fixed_amount is not None or stored.product_values:
+            raise ValueError("Invalid reward shape")
+        return PercentageReward(stored.percentage)
+    if stored.fixed_amount is not None or stored.percentage is not None:
+        raise ValueError("Invalid reward shape")
+    return ProductSpecificReward(
+        tuple(ProductRewardValue(v.product_id, v.amount) for v in stored.product_values)
+    )
 
 
 def _check_details(variant):
