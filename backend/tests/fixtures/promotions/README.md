@@ -91,3 +91,85 @@ window. On 9 October 2026 its computed claim status is `EXPIRED`.
 
 No startup seeding, migrations, production writes, configuration or API/MCP contract
 changes are introduced. Normal startup does not load this historical reference.
+
+# LG historical G5 reference
+
+`lg-g5-cashback-2025.json` covers one exact UK model **OLED55G54LW.AEK**,
+purchased directly from **LG.com/UK**, between **21 May and 24 June 2025**,
+with **GBP 150.00** cashback. It is not the full LG G5 campaign catalogue;
+other models and rewards in the official G5 table require separate reviewed data.
+
+## LG evidence reviewed on 9 October 2026
+
+The [official LG UK G5 terms](https://www.lg.com/uk/tncs/g5-cashback/)
+were opened and inspected during implementation at **10:37:50 UTC**. Retrieval
+and verification record that observed instant; they are not inferred from the
+historical purchase dates. The claim source records the destination named in
+those terms, [lgcashback.com/g5](https://www.lgcashback.com/g5), and explicitly
+states that the portal was not accessed. Live accessibility and claim acceptance
+have not been independently established.
+
+| Manifest fact | Official LG evidence |
+| --- | --- |
+| Purchase dates 21 May–24 June 2025 | Summary; Eligibility §4 |
+| OLED55G54LW.AEK and GBP 150 | G5 Qualifying Products reward table, exact SKU row |
+| LG.com/UK only | Eligibility §§3–4; Participating Retailers §22 |
+| New UK variant; refurbished/second-hand exclusions | Eligibility §4; General Conditions §27 |
+| Readable serial number and full receipt/order confirmation | Eligibility §§6–7 |
+| Submission after purchase, inclusive 19 August 2025 deadline | Eligibility §§4, 6, 9; Cashback Claim §12 |
+| Processing/validation after 30 calendar days from purchase | Eligibility §§4, 6; Cashback Claim §12 |
+| Age, residency, GBP bank account, bulk and returns restrictions | Eligibility §§1–2, 10, 18–20; Cashback Claim §13 |
+
+The **fixed inclusive submission window is 21 May–19 August 2025**. Consumers
+can register on the purchase date; the 30-day processing/validation delay does
+not delay the claim opening. The terms' **23:59 GMT** cutoff is represented only
+at calendar-date resolution. The current fixed-window contract cannot enforce
+submission after each individual's purchase, so service regression dates are
+always on or after the supplied purchase date.
+
+## LG construction, checks and limits
+
+`tests/lg_reference.py` mirrors the bounded Samsung constructor with an
+independently pinned semantic manifest. It preserves the exact `.AEK` suffix,
+resolves unambiguous existing identities and rejects conflicting/ambiguous
+identity or graph data. Product display names may differ when a canonical model
+and manufacturer precisely match. A shortened model is not automatically an
+alias for this UK variant. JSON key order/formatting do not affect the digest;
+any change to facts, evidence, requirements or limitations requires a deliberate
+new review and digest update.
+
+The helper constructs in a caller-owned savepoint, performs the existing
+UUID-based candidate preflight, and publishes only through the persisted
+`review → active` validation gate before expiring through the lifecycle service.
+The official page and its designated claim destination use distinct source
+records, both `web_page`, with meaningful source verification titles. Failed
+construction rolls back its writes; replay from review/active completes expiry,
+and expired replay compares the graph without reactivation. The integration
+fixture deletes only rows it created, preserving reused shared identities and
+pre-existing sources.
+
+Migrated PostgreSQL tests exercise real purchase snapshots, every purchase/claim
+boundary, exact fixed cashback with/without purchase price, publication rejection,
+atomic rollback, identity aliases/conflicts, read-only reproducibility and the
+existing HTTP route. Synthetic unlinked model and unrelated retailer rows are
+separate from official facts; their resolved no-match results do not establish
+whether a different real G5 model qualifies for LG's full campaign. Unknown
+identities and an unreviewed shortened model stay unresolved. Normal tests use
+local data and never request the LG URLs.
+
+Run from `backend/` with Docker available:
+
+```sh
+uv run pytest tests/unit/test_lg_reference_promotion.py
+uv run pytest tests/integration/test_lg_reference_promotion.py
+```
+
+The stored historical lifecycle is `expired`, while a historical check during
+the claim window can return computed `ELIGIBLE`. That result describes configured
+rules only. The v1 request cannot establish claimant age/residency, GBP bank
+account, new condition, prior claims, returns, purchase-volume cap or seller
+details. Evidence requirements are instructions, not proof they were met. A pure
+domain test checks refurbished/unknown condition without claiming that the
+public request enforces condition. LG alone approves claims; no approval or
+payment guarantee, minute-level cutoff enforcement, production data deployment,
+startup seeding, schema migration, new configuration or API/MCP change is added.
