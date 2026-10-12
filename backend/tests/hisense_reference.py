@@ -33,7 +33,7 @@ from app.domain.promotion_lifecycle import PromotionStatus
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/hisense-autumn-cashback-2026-wf7i1248bbr.json"
 )
-REVIEWED_SHA256 = "2f734101962f7d1aae24d4c3a31bdfd236495f20d44bd09fc5e4c46eaa26eb31"
+REVIEWED_SHA256 = "09398376991658dd9b436ca928bdc398add6a39967a527bfe5a444d1745226c0"
 
 
 def validate_manifest(value):
@@ -143,6 +143,35 @@ def _fingerprint(promotion):
     )
 
 
+def _reviewed_supporting_source(session, observation):
+    """Reuse only an exactly identical observed Currys source record."""
+    retrieved_at = datetime.fromisoformat(observation["retrieved_at"])
+    if retrieved_at.tzinfo is None or retrieved_at.utcoffset() is None:
+        raise ValueError("Observed source retrieval time must be timezone-aware")
+    criteria = (
+        Source.url == observation["url"],
+        Source.source_type == "web_page",
+        Source.title == observation["title_or_version"],
+        Source.retrieved_at == retrieved_at,
+        Source.verified_at.is_(None),
+    )
+    rows = list(session.scalars(select(Source).where(*criteria).with_for_update()))
+    if len(rows) > 1:
+        raise ValueError("Ambiguous identical unverified Currys source observations")
+    if rows:
+        return rows[0]
+    source = Source(
+        url=observation["url"],
+        source_type="web_page",
+        title=observation["title_or_version"],
+        retrieved_at=retrieved_at,
+        verified_at=None,
+    )
+    session.add(source)
+    session.flush()
+    return source
+
+
 def construct_reference(session):
     """Construct in review; callers publish through the persisted publication gate."""
     if session.new or session.dirty or session.deleted:
@@ -219,20 +248,24 @@ def construct_reference(session):
                 ],
             )
         ]
-        expected.source_links = [
-            PromotionSource(
-                role="supporting",
-                source=Source(
-                    url=item["url"],
-                    source_type="web_page",
-                    title=item["title_or_version"],
-                    retrieved_at=datetime.fromisoformat(item["retrieved_at"]),
-                    verified_at=None,
-                ),
-            )
-            for item in f["evidence"]["historical_observations"]
-            if item["url"] == f["retailer_corroboration_url"] and item["retrieved_at"]
-        ]
+        observed_currys = next(
+            (
+                item
+                for item in f["evidence"]["historical_observations"]
+                if item["url"] == f["retailer_corroboration_url"] and item["retrieved_at"]
+            ),
+            None,
+        )
+        expected.source_links = (
+            [
+                PromotionSource(
+                    role="supporting",
+                    source=_reviewed_supporting_source(session, observed_currys),
+                )
+            ]
+            if observed_currys
+            else []
+        )
         if existing:
             if existing.status not in (
                 PromotionStatus.REVIEW,

@@ -107,16 +107,14 @@
       }
     ],
     "manufacturer_page_status": "Not independently verified in this task",
-    "date_reconciliation": "Conflicting Currys 27 October claim-opening snippet rejected in favor of complete official terms \u00a7\u00a73.5, 5.1 and retailer PDF \u00a73.5: 27 November 2026.",
-    "condition_limitation": "Section 4.4 excludes graded/ex-display/seconds/imperfect/replacement products but does not explicitly define all purchases as NEW or exclude every refurbished item; no unverified general NEW-only domain rule is asserted."
+    "date_reconciliation": "The proposed 27 November 2026 claim opening is provisional. A retailer snippet reportedly gives a conflicting date; the discrepancy remains unresolved pending authoritative review of the complete applicable terms.",
+    "condition_limitation": "Product-condition restrictions are unknown pending authoritative review of the complete applicable terms."
   },
   "requirements": [],
   "limitations": [
     "Bounded reference covers only this exact model and direct Currys purchases; other products or retailers are not assessed.",
-    "Claimants must be UK residents aged 18 or over purchasing for consumer use (\u00a7\u00a72, 4).",
-    "Graded, ex-display, seconds, imperfect and replacement products are excluded; cancelled or returned purchases do not qualify (\u00a74).",
-    "Purchase must be directly from the participating retailer own stores or website, excluding marketplace sellers (\u00a73.2).",
-    "No concurrent promoter offers; one claim per model and maximum five per household (\u00a7\u00a74, 5).",
+    "Possible claimant, residency, age and consumer-use restrictions are unverified hypotheses pending complete terms review.",
+    "Possible product-condition, return, seller, exclusivity and household claim limits are unverified hypotheses pending complete terms review.",
     "The five-field request cannot check claimant identity, residency, age, product condition, seller, serial, proof submission, previous claims or payment details.",
     "Do not infer receipt or serial-number requirement types until full terms are verified. Hisense determines claim acceptance."
   ]

@@ -264,7 +264,10 @@ def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
     source = Source(
         url=reference_manifest()["retailer_corroboration_url"],
         source_type="web_page",
-        title="Observed Currys product summary; campaign rules unverified",
+        title=(
+            "HISENSE KitchenFit 7i Series WF7I1248BBR WiFi-enabled 12 kg "
+            "1400 Spin Washing Machine - Black"
+        ),
         retrieved_at=datetime.fromisoformat("2026-10-09T12:29:00+00:00"),
         verified_at=None,
     )
@@ -294,6 +297,24 @@ def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
     assert db_session.get(Retailer, shared[1]) is not None
     assert db_session.get(Product, shared[2]) is not None
     assert db_session.get(Source, shared[3]) is not None
+
+
+def test_same_url_different_source_metadata_is_not_reused_or_mutated(db_session):
+    maker = Manufacturer(name="Hisense", slug="hisense")
+    shop = Retailer(name="Currys", slug="currys")
+    source = Source(
+        url=reference_manifest()["retailer_corroboration_url"],
+        source_type="web_page",
+        title="Different, unverified observation metadata",
+        retrieved_at=datetime.fromisoformat("2026-10-09T12:29:00+00:00"),
+        verified_at=None,
+    )
+    db_session.add_all([maker, shop, source])
+    db_session.flush()
+    before = (source.title, source.retrieved_at, source.verified_at)
+    candidate = construct_reference(db_session)
+    assert candidate.source_links[0].source_id != source.id
+    assert (source.title, source.retrieved_at, source.verified_at) == before
 
 
 def test_same_display_name_with_wrong_canonical_model_is_rejected(db_session):
@@ -338,7 +359,14 @@ def test_replay_rejects_changed_graph_without_replacement(db_session, field):
         db_session.flush()
         db_session.expire(variant, ["product_links"])
     else:
-        variant.requirements[0].description = "Changed receipt requirement"
+        from app.db.models import Requirement
+
+        variant.requirements.append(
+            Requirement(
+                requirement_type="receipt",
+                description="Synthetic unexpected requirement for replay conflict test",
+            )
+        )
     db_session.flush()
     before = _graph_ids(db_session)
     with pytest.raises(ValueError, match="Conflicting existing"):
@@ -409,6 +437,24 @@ def test_known_unlinked_identity_is_no_match_and_unknown_is_unresolved(reference
         session.flush()
         fake_id, shop_id = fake.id, shop.id
     try:
+        known = check(
+            factory,
+            date(2026, 10, 1),
+            date(2026, 11, 27),
+            model="SYNTHETIC-UNLINKED",
+            retailer="Currys",
+        )
+        assert known.promotions == ()
+        assert known.no_match_reason == "no_matching_published_promotions"
+        known_retailer = check(
+            factory,
+            date(2026, 10, 1),
+            date(2026, 11, 27),
+            model="WF7I1248BBR",
+            retailer="Synthetic unrelated retailer",
+        )
+        assert known_retailer.promotions == ()
+        assert known_retailer.no_match_reason == "no_matching_published_promotions"
         result = check(factory, date(2026, 10, 1), date(2026, 11, 27), model="UNKNOWN-HISENSE")
         from app.application.promotion_candidate_matching import UnresolvedPurchaseIdentity
 

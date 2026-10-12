@@ -32,6 +32,12 @@ def test_candidate_records_proposed_facts_and_unverified_authority():
     assert terms["verified_at"] is None
     assert f["requirements"] == []
     assert f["evidence"]["historical_observations"][0]["verified_at"] is None
+    assert "provisional" in f["evidence"]["date_reconciliation"]
+    assert "unresolved" in f["evidence"]["date_reconciliation"]
+    assert all("unverified" in item.lower() for item in f["limitations"][1:3])
+    assert "not assessed" in f["limitations"][0].lower()
+    assert "cannot check" in f["limitations"][3].lower()
+    assert not any("§" in item for item in f["limitations"])
 
 
 def test_candidate_manifest_rejects_falsified_verified_status():
