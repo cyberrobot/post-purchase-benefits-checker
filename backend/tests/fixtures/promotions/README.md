@@ -7,16 +7,16 @@ cashback. Other campaign products and participating retailers need separate revi
 
 ## Evidence reviewed on 9 October 2026
 
-| Manifest fact | Official evidence |
-| --- | --- |
-| Campaign, promoter and purchase dates | [Samsung PDF](https://api.my-samsung.com/UploadImages/terms/TermsConditionsLegal_91665.pdf), p. 1, clauses 1–2 |
-| SM-R640 and GBP 50 | PDF p. 2, Table 1 |
-| Samsung.com participation | PDF p. 3, Table 2 |
-| New-only condition | PDF pp. 1–2, clause 7 |
-| Proof of purchase; serial number/IMEI where requested | PDF p. 4, clause 11 |
-| Claim destination and 30-day deadline | PDF pp. 1 and 4, clauses 11–12 |
-| Territory, age/company, resellers, prior claims and caps | PDF pp. 1 and 4, clauses 3–6 and 13 |
-| Corroborating dates and Buds4 Pro GBP 50 | [Samsung Newsroom, 15 June 2026](https://news.samsung.com/uk/samsung-electronics-uk-launches-summer-cashback-promotion-offering-up-to-300-cashback-on-selected-galaxy-devices) |
+| Manifest fact                                            | Official evidence                                                                                                                                                              |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Campaign, promoter and purchase dates                    | [Samsung PDF](https://api.my-samsung.com/UploadImages/terms/TermsConditionsLegal_91665.pdf), p. 1, clauses 1–2                                                                 |
+| SM-R640 and GBP 50                                       | PDF p. 2, Table 1                                                                                                                                                              |
+| Samsung.com participation                                | PDF p. 3, Table 2                                                                                                                                                              |
+| New-only condition                                       | PDF pp. 1–2, clause 7                                                                                                                                                          |
+| Proof of purchase; serial number/IMEI where requested    | PDF p. 4, clause 11                                                                                                                                                            |
+| Claim destination and 30-day deadline                    | PDF pp. 1 and 4, clauses 11–12                                                                                                                                                 |
+| Territory, age/company, resellers, prior claims and caps | PDF pp. 1 and 4, clauses 3–6 and 13                                                                                                                                            |
+| Corroborating dates and Buds4 Pro GBP 50                 | [Samsung Newsroom, 15 June 2026](https://news.samsung.com/uk/samsung-electronics-uk-launches-summer-cashback-promotion-offering-up-to-300-cashback-on-selected-galaxy-devices) |
 
 The official PDF and Newsroom were opened and checked during implementation.
 Retrieval is recorded to minute precision at 09:42 UTC; subsequent verification
@@ -109,16 +109,16 @@ those terms, [lgcashback.com/g5](https://www.lgcashback.com/g5), and explicitly
 states that the portal was not accessed. Live accessibility and claim acceptance
 have not been independently established.
 
-| Manifest fact | Official LG evidence |
-| --- | --- |
-| Purchase dates 21 May–24 June 2025 | Summary; Eligibility §4 |
-| OLED55G54LW.AEK and GBP 150 | G5 Qualifying Products reward table, exact SKU row |
-| LG.com/UK only | Eligibility §§3–4; Participating Retailers §22 |
-| New UK variant; refurbished/second-hand exclusions | Eligibility §4; General Conditions §27 |
-| Readable serial number and full receipt/order confirmation | Eligibility §§6–7 |
-| Submission after purchase, inclusive 19 August 2025 deadline | Eligibility §§4, 6, 9; Cashback Claim §12 |
-| Processing/validation after 30 calendar days from purchase | Eligibility §§4, 6; Cashback Claim §12 |
-| Age, residency, GBP bank account, bulk and returns restrictions | Eligibility §§1–2, 10, 18–20; Cashback Claim §13 |
+| Manifest fact                                                   | Official LG evidence                               |
+| --------------------------------------------------------------- | -------------------------------------------------- |
+| Purchase dates 21 May–24 June 2025                              | Summary; Eligibility §4                            |
+| OLED55G54LW.AEK and GBP 150                                     | G5 Qualifying Products reward table, exact SKU row |
+| LG.com/UK only                                                  | Eligibility §§3–4; Participating Retailers §22     |
+| New UK variant; refurbished/second-hand exclusions              | Eligibility §4; General Conditions §27             |
+| Readable serial number and full receipt/order confirmation      | Eligibility §§6–7                                  |
+| Submission after purchase, inclusive 19 August 2025 deadline    | Eligibility §§4, 6, 9; Cashback Claim §12          |
+| Processing/validation after 30 calendar days from purchase      | Eligibility §§4, 6; Cashback Claim §12             |
+| Age, residency, GBP bank account, bulk and returns restrictions | Eligibility §§1–2, 10, 18–20; Cashback Claim §13   |
 
 The **fixed inclusive submission window is 21 May–19 August 2025**. Consumers
 can register on the purchase date; the 30-day processing/validation delay does
@@ -194,11 +194,11 @@ The supporting Currys-hosted terms copy was compared for this model; its exact
 retrieval time was not established and is left unset. The official terms name the
 claim portal, but the portal itself was not independently accessed.
 
-| Source | Verified observation | Outcome |
-| --- | --- | --- |
-| [Primary Hisense terms](https://uk.hisense.com/autumn-cashback-terms) | §§3.1, 3.2, 3.5–3.7; §§4.1–4.8; §§5.1–5.12; Annexes 1–2 | Currys participation, model/reward, purchase and claim dates and requirements verified. |
-| [Currys-hosted terms PDF](https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys) | Target model, amount and dates compared | Supporting only; primary 19 August terms govern; exact retrieval timestamp unavailable. |
-| [Claim destination](https://autumncashback2026.hisensepromotions.co.uk/) | URL stated in §§5.1 and 5.12 | Portal availability and claim acceptance were not independently verified. |
+| Source                                                                                                                                         | Verified observation                                    | Outcome                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [Primary Hisense terms](https://uk.hisense.com/autumn-cashback-terms)                                                                          | §§3.1, 3.2, 3.5–3.7; §§4.1–4.8; §§5.1–5.12; Annexes 1–2 | Currys participation, model/reward, purchase and claim dates and requirements verified. |
+| [Currys-hosted terms PDF](https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys) | Target model, amount and dates compared                 | Supporting only; primary 19 August terms govern; exact retrieval timestamp unavailable. |
+| [Claim destination](https://autumncashback2026.hisensepromotions.co.uk/)                                                                       | URL stated in §§5.1 and 5.12                            | Portal availability and claim acceptance were not independently verified.               |
 
 The terms require a valid receipt/proof of purchase and the product serial number.
 They also limit claimants by residence, age, consumer use, employee status,
@@ -266,11 +266,11 @@ retrieval of web-tool page text, whose reported crawl ages were three days for
 terms, six days for FAQ and today for the campaign page. They do not assert a
 fresh origin-server retrieval or an exact HTML-byte checksum/revision.
 
-| Source | Observations |
-| --- | --- |
+| Source                                                                   | Observations                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Official Wren terms](https://promo.hotpoint.co.uk/terms-and-conditions) | Only the `HOTPOINT CASHBACK PROMOTION - WREN` subsection: clauses 2/3 dates, clause 4 dishwasher model and GBP 75, clause 13 Wren, clauses 5/6/8 receipt, serial, warranty and wait, clauses 1/9/14/15/16/20 restrictions/payment. |
-| [Official campaign claim destination](https://promo.hotpoint.co.uk/) | Campaign page corroborates Wren's 4 December deadline; no claim submitted or user-specific claim acceptance checked. Wren clause 8(c) names `hotpoint.co.uk/promo`; this manifest uses the reviewed official campaign destination. |
-| [Official FAQ](https://promo.hotpoint.co.uk/faqs/) | Supporting corroboration of Wren extended deadline and 30-day wait. |
+| [Official campaign claim destination](https://promo.hotpoint.co.uk/)     | Campaign page corroborates Wren's 4 December deadline; no claim submitted or user-specific claim acceptance checked. Wren clause 8(c) names `hotpoint.co.uk/promo`; this manifest uses the reviewed official campaign destination. |
+| [Official FAQ](https://promo.hotpoint.co.uk/faqs/)                       | Supporting corroboration of Wren extended deadline and 30-day wait.                                                                                                                                                                |
 
 The adjacent participating-retailers and Hotpoint.co.uk-only subsections use
 26 July deadlines and different scopes. They are excluded from Wren authority.
@@ -286,8 +286,7 @@ It rejects pending caller changes, builds within a caller-owned savepoint in
 leaves commit/publication ownership to the test caller. Tests use the persisted
 `change_promotion_status` gate; unresolved candidate references are not publication
 approval. Safe review/active/expired replay preserves the graph and lifecycle;
-conflicts fail without replacement. Narrow identity/source/fingerprint helpers
-are reused from the Hisense test reference without changing its reviewed data.
+conflicts fail without replacement. Shared identity resolution, source verification, and graph fingerprinting helpers live in tests/reference_helpers.py and are used by both the Hotpoint and Hisense reference fixtures.
 Only verified `primary` and `claim` sources are persisted; the FAQ remains
 supporting evidence. No startup seed, migration, public contract, network test,
 personal receipt, genuine serial or banking information is added.
