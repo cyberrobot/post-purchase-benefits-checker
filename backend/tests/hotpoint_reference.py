@@ -29,7 +29,7 @@ from app.db.models import (
 from app.db.repositories.identity_matching import SqlAlchemyIdentityRepository
 from app.domain.identity_normalisation import MatchStatus
 from app.domain.promotion_lifecycle import PromotionStatus
-from tests.hisense_reference import _fingerprint, _resolve, _verified_source
+from tests.reference_helpers import _fingerprint, _resolve, _verified_source
 
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/hotpoint-wren-cashback-2026-h7ic16m6-uk.json"
