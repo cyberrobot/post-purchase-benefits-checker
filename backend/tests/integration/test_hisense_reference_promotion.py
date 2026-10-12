@@ -3,21 +3,27 @@ from decimal import Decimal
 from functools import partial
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 from sqlalchemy.orm import sessionmaker
 
+from app.api.eligibility import uk_evaluation_date
 from app.application.promotions import (
     PromotionPublicationError,
     change_promotion_status,
 )
 from app.application.purchase_check import CheckPurchaseRequest, check_purchase
+from app.application.purchase_check_details import CheckPurchaseResult
+from app.core.config import Settings
 from app.db.models import Manufacturer, Product, Promotion, Retailer, Source
 from app.db.repositories.promotions import (
     promotion_transaction,
     purchase_check_snapshot,
 )
 from app.domain.promotion_lifecycle import PromotionStatus
+from app.main import create_app
 from tests.hisense_reference import construct_reference, reference_manifest
+from tests.integration.test_promotion_lifecycle import transaction
 
 pytestmark = pytest.mark.integration
 
@@ -30,6 +36,15 @@ def reference(postgres_engine, migrated_test_database):
         before = {kind: set(session.scalars(select(kind.id))) for kind in owned_types}
         promotion = construct_reference(session)
         promotion_id = promotion.id
+        wrong_product = Product(
+            manufacturer_id=promotion.manufacturer_id,
+            name="Unlinked test model",
+            slug="hisense-unlinked-test-model",
+            model_number="TEST-NOT-WF7I1248BBR",
+        )
+        wrong_retailer = Retailer(name="Excluded test retailer", slug="hisense-excluded-retailer")
+        session.add_all([wrong_product, wrong_retailer])
+        session.flush()
         owned = {kind: set(session.scalars(select(kind.id))) - before[kind] for kind in owned_types}
     try:
         yield factory, promotion_id
@@ -54,36 +69,104 @@ def test_constructor_replay_preserves_review_graph(db_session):
     assert second.status == PromotionStatus.REVIEW
 
 
-def test_unverified_candidate_cannot_publish_and_is_invisible(reference):
+def test_historical_expired_promotion_replay_preserves_lifecycle_and_graph(db_session):
+    promotion = construct_reference(db_session)
+    operation = partial(transaction, db_session)
+    change_promotion_status(operation, promotion.id, PromotionStatus.ACTIVE)
+    change_promotion_status(operation, promotion.id, PromotionStatus.EXPIRED)
+    before = _graph_ids(db_session)
+    db_session.expire_all()
+    replay = construct_reference(db_session)
+    assert replay.id == promotion.id
+    assert replay.status == PromotionStatus.EXPIRED
+    assert _graph_ids(db_session) == before
+
+
+@pytest.mark.parametrize(
+    "purchase,evaluation,classification",
+    [
+        ("2026-09-08", "2026-11-27", "NO_MATCH"),
+        ("2026-09-09", "2026-09-09", "CLAIM_NOT_YET_OPEN"),
+        ("2026-09-09", "2026-10-09", "CLAIM_NOT_YET_OPEN"),
+        ("2026-10-27", "2026-11-26", "CLAIM_NOT_YET_OPEN"),
+        ("2026-09-09", "2026-11-27", "ELIGIBLE"),
+        ("2026-10-27", "2026-12-24", "ELIGIBLE"),
+        ("2026-09-09", "2026-12-25", "EXPIRED"),
+        ("2026-10-28", "2026-11-27", "NO_MATCH"),
+    ],
+)
+def test_real_published_snapshot_boundaries(reference, purchase, evaluation, classification):
+    factory, identity = reference
+    publish(factory, identity)
+    result = check(factory, date.fromisoformat(purchase), date.fromisoformat(evaluation))
+    if classification == "NO_MATCH":
+        assert isinstance(result, CheckPurchaseResult)
+        assert result.promotions == ()
+        assert result.no_match_reason == "no_matching_published_promotions"
+        return
+    assert isinstance(result, CheckPurchaseResult) and result.no_match_reason is None
+    assert len(result.promotions) == 1
+    offer = result.promotions[0]
+    assert offer.promotion_id == identity
+    assert offer.eligibility.classification == classification
+    assert offer.claim_window.opens_on == date(2026, 11, 27)
+    assert offer.claim_window.deadline_on == date(2026, 12, 24)
+    assert offer.benefits[0].cashback_reward_gbp == Decimal("100.00")
+    assert {r.requirement_type for r in offer.requirements} == {"receipt", "serial_number"}
+    f = reference_manifest()
+    assert offer.provenance.official_source_url == f["official_terms_url"]
+    assert offer.provenance.claim_url == f["claim_url"]
+    assert {s.role for s in offer.sources} == {"primary", "claim"}
+    assert all(s.retrieved_at.tzinfo and s.verified_at >= s.retrieved_at for s in offer.sources)
+    assert offer.explanation[0] == "The recorded eligibility rules match this purchase."
+    if classification == "CLAIM_NOT_YET_OPEN":
+        assert "2026-11-27" in offer.explanation[1]
+    elif classification == "EXPIRED":
+        assert "deadline has passed" in offer.explanation[1].lower()
+
+
+def test_verified_candidate_publishes_through_validation_gate_and_is_visible(reference):
     factory, promotion_id = reference
     with factory() as session:
         candidate = session.get(Promotion, promotion_id)
         assert candidate.status == PromotionStatus.REVIEW
-        assert [link.role for link in candidate.source_links] == ["supporting"]
-        assert all(link.source.verified_at is None for link in candidate.source_links)
+        assert {link.role for link in candidate.source_links} == {"primary", "claim"}
+        assert all(link.source.verified_at is not None for link in candidate.source_links)
         manifest = reference_manifest()
         assert {link.source.url for link in candidate.source_links} == {
-            item["url"]
-            for item in manifest["evidence"]["historical_observations"]
-            if item["url"] == manifest["retailer_corroboration_url"] and item["retrieved_at"]
+            manifest["official_terms_url"],
+            manifest["claim_url"],
         }
-        assert all(item.role not in {"primary", "claim"} for item in candidate.source_links)
-    with pytest.raises(PromotionPublicationError) as error:
-        publish(factory, promotion_id)
-    assert {issue.code for issue in error.value.report.issues} >= {
-        "missing_primary_source",
-        "missing_claim_source",
-    }
-    assert "unverified_primary_source" not in {issue.code for issue in error.value.report.issues}
-    assert "unverified_claim_source" not in {issue.code for issue in error.value.report.issues}
+        assert {r.requirement_type for r in candidate.variants[0].requirements} == {
+            "receipt",
+            "serial_number",
+        }
+        assert candidate.variants[0].benefits[0].reward.fixed_amount == Decimal("100.00")
+    publish(factory, promotion_id)
+    with factory.begin() as session:
+        replay = construct_reference(session)
+        assert replay.id == promotion_id
+        assert replay.status == PromotionStatus.ACTIVE
     with factory() as session:
-        assert session.get(Promotion, promotion_id).status == PromotionStatus.REVIEW
-    result = check(factory, date(2026, 10, 1), date(2026, 11, 27))
-    assert result.promotions == ()
-    assert result.no_match_reason == "no_matching_published_promotions"
+        assert session.get(Promotion, promotion_id).status == PromotionStatus.ACTIVE
+    assert check(factory, date(2026, 10, 1), date(2026, 11, 27)).promotions
 
 
-def test_candidate_replay_reuses_unverified_supporting_source(reference):
+@pytest.mark.parametrize("role", ["primary", "claim"])
+def test_unverified_required_source_cannot_publish(db_session, role):
+    promotion = construct_reference(db_session)
+    source = next(link.source for link in promotion.source_links if link.role == role)
+    source.verified_at = None
+    db_session.flush()
+    with pytest.raises(PromotionPublicationError) as error:
+        change_promotion_status(
+            partial(transaction, db_session), promotion.id, PromotionStatus.ACTIVE
+        )
+    assert f"{role}_source_unverified" in {issue.code for issue in error.value.report.issues}
+    assert promotion.status == PromotionStatus.REVIEW
+
+
+def test_candidate_replay_reuses_verified_sources(reference):
     factory, promotion_id = reference
     with factory.begin() as session:
         first = session.get(Promotion, promotion_id)
@@ -261,15 +344,13 @@ def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
         slug="shared-hisense-product",
         model_number="WF7I1248BBR",
     )
+    manifest = reference_manifest()
     source = Source(
-        url=reference_manifest()["retailer_corroboration_url"],
-        source_type="web_page",
-        title=(
-            "HISENSE KitchenFit 7i Series WF7I1248BBR WiFi-enabled 12 kg "
-            "1400 Spin Washing Machine - Black"
-        ),
-        retrieved_at=datetime.fromisoformat("2026-10-09T12:29:00+00:00"),
-        verified_at=None,
+        url=manifest["official_terms_url"],
+        source_type="pdf",
+        title="Hisense Autumn Cashback terms — 19 August 2026",
+        retrieved_at=datetime.fromisoformat(manifest["evidence"]["retrieved_at"]),
+        verified_at=datetime.fromisoformat(manifest["evidence"]["verified_at"]),
     )
     db_session.add_all([maker, shop, product, source])
     db_session.flush()
@@ -292,7 +373,7 @@ def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
     }
     delete_owned_rows(db_session, owned)
     assert candidate.variants[0].product_links[0].product_id == shared[2]
-    assert candidate.source_links[0].source_id == shared[3]
+    assert shared[3] in {link.source_id for link in candidate.source_links}
     assert db_session.get(Manufacturer, shared[0]) is not None
     assert db_session.get(Retailer, shared[1]) is not None
     assert db_session.get(Product, shared[2]) is not None
@@ -303,17 +384,20 @@ def test_same_url_different_source_metadata_is_not_reused_or_mutated(db_session)
     maker = Manufacturer(name="Hisense", slug="hisense")
     shop = Retailer(name="Currys", slug="currys")
     source = Source(
-        url=reference_manifest()["retailer_corroboration_url"],
+        url=reference_manifest()["official_terms_url"],
         source_type="web_page",
         title="Different, unverified observation metadata",
-        retrieved_at=datetime.fromisoformat("2026-10-09T12:29:00+00:00"),
+        retrieved_at=datetime.fromisoformat("2026-10-12T13:57:18+00:00"),
         verified_at=None,
     )
     db_session.add_all([maker, shop, source])
     db_session.flush()
     before = (source.title, source.retrieved_at, source.verified_at)
     candidate = construct_reference(db_session)
-    assert candidate.source_links[0].source_id != source.id
+    assert (
+        next(link for link in candidate.source_links if link.role == "primary").source_id
+        != source.id
+    )
     assert (source.title, source.retrieved_at, source.verified_at) == before
 
 
@@ -412,18 +496,70 @@ def check(factory, purchase, evaluation, *, price=None, model="WF7I1248BBR", ret
         )
 
 
-def test_persisted_gate_rejects_unverified_candidate(reference):
+def test_persisted_gate_accepts_reviewed_candidate(reference):
     factory, promotion_id = reference
-    with pytest.raises(PromotionPublicationError):
-        publish(factory, promotion_id)
+    publish(factory, promotion_id)
     with factory() as session:
-        assert session.get(Promotion, promotion_id).status == PromotionStatus.REVIEW
+        assert session.get(Promotion, promotion_id).status == PromotionStatus.ACTIVE
+
+
+def test_historical_published_promotion_remains_explainable_after_expiry(reference):
+    factory, promotion_id = reference
+    publish(factory, promotion_id)
+    change_promotion_status(
+        partial(promotion_transaction, factory), promotion_id, PromotionStatus.EXPIRED
+    )
+    result = check(factory, date(2026, 9, 9), date(2026, 12, 24))
+    assert isinstance(result, CheckPurchaseResult)
+    offer = result.promotions[0]
+    assert offer.promotion_id == promotion_id
+    assert offer.promotion_status == PromotionStatus.EXPIRED
+    assert offer.eligibility.classification == "ELIGIBLE"
+    assert offer.benefits[0].cashback_reward_gbp == Decimal("100.00")
+    assert offer.provenance.official_source_url == reference_manifest()["official_terms_url"]
+
+
+def test_http_api_regression_uses_existing_contract(reference, postgres_engine):
+    publish(reference[0], reference[1])
+    app = create_app(
+        Settings(_env_file=None, APP_ENV="test", DATABASE_URL="postgresql+psycopg://unused/unused"),
+        engine_factory=lambda _: postgres_engine,
+    )
+    app.dependency_overrides[uk_evaluation_date] = lambda: date(2026, 11, 26)
+    body = {
+        "brand": "Hisense",
+        "model": "WF7I1248BBR",
+        "retailer": "Currys",
+        "purchase_date": "2026-09-09",
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/v1/eligibility/check", json=body)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["promotions"][0]["eligibility"]["classification"] == "CLAIM_NOT_YET_OPEN"
+        assert payload["promotions"][0]["benefits"][0]["cashback_reward_gbp"] == "100.00"
+        app.dependency_overrides[uk_evaluation_date] = lambda: date(2026, 11, 27)
+        response = client.post("/api/v1/eligibility/check", json=body)
+        assert response.status_code == 200
+        assert response.json()["promotions"][0]["eligibility"]["classification"] == "ELIGIBLE"
+        app.dependency_overrides[uk_evaluation_date] = lambda: date(2026, 12, 25)
+        response = client.post("/api/v1/eligibility/check", json=body)
+        assert response.status_code == 200
+        assert response.json()["promotions"][0]["eligibility"]["classification"] == "EXPIRED"
+        response = client.post("/api/v1/eligibility/check", json={**body, "model": "WRONG-MODEL"})
+        assert response.status_code == 200
+        assert response.json()["outcome"] == "unresolved_identity"
+        assert response.json()["unresolved_identity"]["field"] == "model"
+        response = client.post(
+            "/api/v1/eligibility/check", json={**body, "retailer": "Excluded test retailer"}
+        )
+        assert response.status_code == 200
+        assert response.json()["promotions"] == []
 
 
 def test_known_unlinked_identity_is_no_match_and_unknown_is_unresolved(reference):
     factory, promotion_id = reference
-    with pytest.raises(PromotionPublicationError):
-        publish(factory, promotion_id)
+    publish(factory, promotion_id)
     with factory.begin() as session:
         candidate = session.get(Promotion, promotion_id)
         fake = Product(
@@ -459,7 +595,7 @@ def test_known_unlinked_identity_is_no_match_and_unknown_is_unresolved(reference
         from app.application.promotion_candidate_matching import UnresolvedPurchaseIdentity
 
         assert isinstance(result, UnresolvedPurchaseIdentity)
-        assert check(factory, date(2026, 10, 1), date(2026, 11, 27)).promotions == ()
+        assert check(factory, date(2026, 10, 1), date(2026, 11, 27)).promotions
     finally:
         with factory.begin() as session:
             session.execute(delete(Product).where(Product.id == fake_id))
@@ -514,29 +650,16 @@ def test_ambiguous_or_mislabelled_product_is_rejected(db_session, case):
     assert _graph_ids(db_session) == before
 
 
-def test_wrong_manufacturer_product_link_cannot_publish(reference):
+def test_wrong_manufacturer_product_link_cannot_publish(db_session):
     from app.db.models import PromotionVariantProduct
 
-    factory, promotion_id = reference
-    with factory.begin() as session:
-        maker = Manufacturer(name="Wrong maker", slug="wrong-maker")
-        product = Product(manufacturer=maker, name="Wrong maker washer", slug="wrong-maker-washer")
-        candidate = session.get(Promotion, promotion_id)
-        candidate.variants[0].product_links.append(PromotionVariantProduct(product=product))
-        session.flush()
-        maker_id, product_id = maker.id, product.id
-    try:
-        with pytest.raises(PromotionPublicationError) as error:
-            publish(factory, promotion_id)
-        assert "product_manufacturer_mismatch" in {
-            issue.code for issue in error.value.report.issues
-        }
-    finally:
-        with factory.begin() as session:
-            session.execute(
-                delete(PromotionVariantProduct).where(
-                    PromotionVariantProduct.product_id == product_id
-                )
-            )
-            session.execute(delete(Product).where(Product.id == product_id))
-            session.execute(delete(Manufacturer).where(Manufacturer.id == maker_id))
+    promotion = construct_reference(db_session)
+    maker = Manufacturer(name="Wrong maker", slug="wrong-maker")
+    product = Product(manufacturer=maker, name="Wrong maker washer", slug="wrong-maker-washer")
+    promotion.variants[0].product_links.append(PromotionVariantProduct(product=product))
+    db_session.flush()
+    with pytest.raises(PromotionPublicationError) as error:
+        change_promotion_status(
+            partial(transaction, db_session), promotion.id, PromotionStatus.ACTIVE
+        )
+    assert "product_manufacturer_mismatch" in {issue.code for issue in error.value.report.issues}

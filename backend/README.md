@@ -605,3 +605,21 @@ all official conditions or guarantee Samsung approval: v1 input cannot check new
 condition, territory, age, seller status, previous claims, caps or account steps.
 The historical claim URL is retained as evidence; current portal availability and
 claim acceptance are unknown. Further products/retailers require separate review.
+
+## Hisense Autumn Cashback 2026 reference
+
+The reviewed [Hisense reference manifest and evidence map](tests/fixtures/promotions/README.md)
+covers model `WF7I1248BBR` purchased directly from Currys for GBP 100 cashback,
+with fixed purchase and claim windows. Its test-only constructor persists verified
+primary terms provenance and the claim destination stated in those terms. It creates
+only review-state records; tests use the existing persisted publication validation
+service. No operator loader, startup seed or automatic production write is provided.
+The official terms were reviewed in full, including Annexes 1 and 2. The manifest
+records the source capture timestamp and the timestamped review; exact retrieval time
+for the supplied Currys copy was unavailable and is not asserted.
+
+The PostgreSQL regression exercises purchase and claim boundaries and the existing
+HTTP eligibility route without live manufacturer requests. The claim portal was not
+independently accessed. Eligibility explains only configured purchase rules and does
+not guarantee claimant eligibility, claim acceptance or payment; claimant and proof
+checks remain part of Hisense's claim process.
