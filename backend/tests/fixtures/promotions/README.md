@@ -173,3 +173,63 @@ domain test checks refurbished/unknown condition without claiming that the
 public request enforces condition. LG alone approves claims; no approval or
 payment guarantee, minute-level cutoff enforcement, production data deployment,
 startup seeding, schema migration, new configuration or API/MCP change is added.
+changes are introduced. Normal startup does not load this historical reference.
+
+---
+
+# Hisense Autumn Cashback 2026 reference
+
+`hisense-autumn-cashback-2026-wf7i1248bbr.json` is a verified, bounded reference
+for Hisense `WF7I1248BBR` purchased directly from Currys. It records GBP 100
+cashback, purchase dates 9 September–27 October 2026 and claim dates 27 November–
+24 December 2026, all inclusive. It is not a full campaign catalogue; absence of
+other products and retailers does not establish campaign-wide ineligibility.
+
+## Evidence status
+
+The complete primary official terms, version 19 August 2026, were reviewed from
+the attached 24-page Safari PDF print, including §§1–7, Annex 1 and Annex 2.
+The manifest pins its SHA-256 and records the PDF's retrieval and review times.
+The supporting Currys-hosted terms copy was compared for this model; its exact
+retrieval time was not established and is left unset. The official terms name the
+claim portal, but the portal itself was not independently accessed.
+
+| Source | Verified observation | Outcome |
+| --- | --- | --- |
+| [Primary Hisense terms](https://uk.hisense.com/autumn-cashback-terms) | §§3.1, 3.2, 3.5–3.7; §§4.1–4.8; §§5.1–5.12; Annexes 1–2 | Currys participation, model/reward, purchase and claim dates and requirements verified. |
+| [Currys-hosted terms PDF](https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys) | Target model, amount and dates compared | Supporting only; primary 19 August terms govern; exact retrieval timestamp unavailable. |
+| [Claim destination](https://autumncashback2026.hisensepromotions.co.uk/) | URL stated in §§5.1 and 5.12 | Portal availability and claim acceptance were not independently verified. |
+
+The terms require a valid receipt/proof of purchase and the product serial number.
+They also limit claimants by residence, age, consumer use, employee status,
+condition/returns, seller, offer combination and household claim count. The
+five-field public request cannot evaluate those additional facts. The separate
+May–June A-Rated campaign's GBP 150 reward is not evidence for this Autumn offer.
+
+The fixture pins semantic facts and evidence status. The offline test-only
+constructor creates a review graph in a caller-owned savepoint. It persists
+verified primary HTML terms (`web_page`) provenance and the claim destination as cited by those
+terms; the latter is explicitly not an assertion that the portal was accessed.
+Sources are reused only when URL, type, title and timestamps all match exactly.
+Tests publish through the persisted publication validation service. No
+production seeding is provided.
+
+Claimant, residency, age, consumer-use, condition, seller, return, offer-combination
+and household restrictions are recorded as terms but are not inputs to eligibility.
+The result describes recorded purchase rules only and does not guarantee claim
+acceptance or payment; Hisense validates the claimant's evidence.
+
+Normal tests consume local pinned observations and never fetch Hisense/Currys.
+Integration tests verify the persisted publication path and HTTP eligibility
+behaviour against the fixed claim window.
+Run from `backend/` with Docker/Testcontainers available:
+
+```sh
+uv run pytest tests/unit/test_hisense_reference_promotion.py
+uv run pytest tests/integration/test_hisense_reference_promotion.py
+```
+
+The Hisense claim source is also `web_page`, with the manifest's exact
+`claim_source_title`. Its retrieval and verification timestamps record observation
+and review of the URL in the captured official terms; they do not describe a
+portal HTTP retrieval. The archived Safari PDF has separate capture metadata.
