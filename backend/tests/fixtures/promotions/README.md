@@ -233,3 +233,68 @@ The Hisense claim source is also `web_page`, with the manifest's exact
 `claim_source_title`. Its retrieval and verification timestamps record observation
 and review of the URL in the captured official terms; they do not describe a
 portal HTTP retrieval. The archived Safari PDF has separate capture metadata.
+
+---
+
+# Hotpoint Wren cashback 2026 reference
+
+`hotpoint-wren-cashback-2026-h7ic16m6-uk.json` covers one MaxiSpace built-in
+60 cm dishwasher, exact model `H7IC16M6 UK`, purchased directly from Wren.
+Cashback is fixed GBP 75.00 regardless of optional purchase price. Purchases
+must fall on 5 May–12 June 2026 inclusive; the base claim dates are 4 June–
+4 December 2026 inclusive. This test-only reference is not a campaign catalogue.
+
+**The 30-day wait after each purchase is unmodelled. Do not production-publish
+this fixed-only fixture or make general claim-now promises.** The actual earliest
+claim date is `max(2026-06-04, purchase_date + 30 calendar days)`, with a fixed
+4 December deadline. The current candidate/persisted format accepts one fixed
+or relative window; it cannot combine them. Its fixed-only `ELIGIBLE` result
+may be a false positive during 4 June–11 July for purchases still waiting.
+For 5 May purchases the first claim date is 4 June; for 12 June purchases it
+is 12 July. Integrated eligible assertions use dates after the relevant wait.
+The manifest's structured `claim_delay_limitation` is evidence metadata, is
+included in the semantic pin, and is never passed into the strict v1 candidate.
+The benefit description exposes this limitation through existing contracts.
+A separate validated purchase-relative opening plus fixed absolute deadline
+feature is required before general production publication.
+
+## Evidence ledger
+
+Implementation reviewed official page text on 12 October 2026; the UTC observation
+and review completion timestamp is `2026-10-12T16:18:12Z`. These timestamps record
+retrieval of web-tool page text, whose reported crawl ages were three days for
+terms, six days for FAQ and today for the campaign page. They do not assert a
+fresh origin-server retrieval or an exact HTML-byte checksum/revision.
+
+| Source | Observations |
+| --- | --- |
+| [Official Wren terms](https://promo.hotpoint.co.uk/terms-and-conditions) | Only the `HOTPOINT CASHBACK PROMOTION - WREN` subsection: clauses 2/3 dates, clause 4 dishwasher model and GBP 75, clause 13 Wren, clauses 5/6/8 receipt, serial, warranty and wait, clauses 1/9/14/15/16/20 restrictions/payment. |
+| [Official campaign claim destination](https://promo.hotpoint.co.uk/) | Campaign page corroborates Wren's 4 December deadline; no claim submitted or user-specific claim acceptance checked. Wren clause 8(c) names `hotpoint.co.uk/promo`; this manifest uses the reviewed official campaign destination. |
+| [Official FAQ](https://promo.hotpoint.co.uk/faqs/) | Supporting corroboration of Wren extended deadline and 30-day wait. |
+
+The adjacent participating-retailers and Hotpoint.co.uk-only subsections use
+26 July deadlines and different scopes. They are excluded from Wren authority.
+Receipt, serial number and warranty registration requirements are claim steps,
+not proof that a customer satisfied them. Residence, age, employee exclusions,
+condition, seller, prior claims, returns, offer combination, receipt quality and
+bank details remain outside the five-field request. Date-only results do not
+establish precise 00:00/23:59 cutoffs. Hotpoint alone decides claim approval.
+
+`tests.hotpoint_reference.construct_reference(session)` is offline and test-only.
+It rejects pending caller changes, builds within a caller-owned savepoint in
+`review`, uses canonical identities and the existing candidate preflight, and
+leaves commit/publication ownership to the test caller. Tests use the persisted
+`change_promotion_status` gate; unresolved candidate references are not publication
+approval. Safe review/active/expired replay preserves the graph and lifecycle;
+conflicts fail without replacement. Narrow identity/source/fingerprint helpers
+are reused from the Hisense test reference without changing its reviewed data.
+Only verified `primary` and `claim` sources are persisted; the FAQ remains
+supporting evidence. No startup seed, migration, public contract, network test,
+personal receipt, genuine serial or banking information is added.
+
+Run from `backend/` with the existing migrated PostgreSQL Testcontainer:
+
+```sh
+uv run pytest tests/unit/test_hotpoint_reference_promotion.py
+uv run pytest tests/integration/test_hotpoint_reference_promotion.py
+```
