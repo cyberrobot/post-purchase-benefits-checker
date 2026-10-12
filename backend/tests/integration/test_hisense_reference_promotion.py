@@ -20,12 +20,16 @@ from app.db.repositories.promotions import (
     promotion_transaction,
     purchase_check_snapshot,
 )
+from app.domain.eligibility_result import EligibilityReasonCode
 from app.domain.promotion_lifecycle import PromotionStatus
 from app.main import create_app
 from tests.hisense_reference import construct_reference, reference_manifest
-from tests.integration.test_promotion_lifecycle import transaction
+from tests.integration.test_promotion_lifecycle import snapshot, transaction
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.filterwarnings("error::sqlalchemy.exc.SAWarning"),
+]
 
 
 @pytest.fixture
@@ -88,16 +92,27 @@ def test_historical_expired_promotion_replay_preserves_lifecycle_and_graph(db_se
         ("2026-09-08", "2026-11-27", "NO_MATCH"),
         ("2026-09-09", "2026-09-09", "CLAIM_NOT_YET_OPEN"),
         ("2026-09-09", "2026-10-09", "CLAIM_NOT_YET_OPEN"),
+        ("2026-10-27", "2026-10-27", "CLAIM_NOT_YET_OPEN"),
         ("2026-10-27", "2026-11-26", "CLAIM_NOT_YET_OPEN"),
         ("2026-09-09", "2026-11-27", "ELIGIBLE"),
+        ("2026-10-27", "2026-11-27", "ELIGIBLE"),
+        ("2026-10-27", "2026-12-23", "ELIGIBLE"),
         ("2026-10-27", "2026-12-24", "ELIGIBLE"),
         ("2026-09-09", "2026-12-25", "EXPIRED"),
+        ("2026-10-27", "2027-01-01", "EXPIRED"),
         ("2026-10-28", "2026-11-27", "NO_MATCH"),
     ],
 )
 def test_real_published_snapshot_boundaries(reference, purchase, evaluation, classification):
     factory, identity = reference
     publish(factory, identity)
+    with factory() as session:
+        promotion = session.get(Promotion, identity)
+        assert promotion.claim_start_date == date(2026, 11, 27)
+        assert promotion.claim_end_date == date(2026, 12, 24)
+        assert promotion.claim_start_offset_days is None
+        assert promotion.claim_end_offset_days is None
+        graph_before = snapshot(session)
     result = check(factory, date.fromisoformat(purchase), date.fromisoformat(evaluation))
     if classification == "NO_MATCH":
         assert isinstance(result, CheckPurchaseResult)
@@ -108,6 +123,7 @@ def test_real_published_snapshot_boundaries(reference, purchase, evaluation, cla
     assert len(result.promotions) == 1
     offer = result.promotions[0]
     assert offer.promotion_id == identity
+    assert offer.promotion_status == PromotionStatus.ACTIVE
     assert offer.eligibility.classification == classification
     assert offer.claim_window.opens_on == date(2026, 11, 27)
     assert offer.claim_window.deadline_on == date(2026, 12, 24)
@@ -116,13 +132,42 @@ def test_real_published_snapshot_boundaries(reference, purchase, evaluation, cla
     f = reference_manifest()
     assert offer.provenance.official_source_url == f["official_terms_url"]
     assert offer.provenance.claim_url == f["claim_url"]
+    assert offer.provenance.source_type == "web_page"
+    assert all(source.source_type == "web_page" for source in offer.sources)
     assert {s.role for s in offer.sources} == {"primary", "claim"}
     assert all(s.retrieved_at.tzinfo and s.verified_at >= s.retrieved_at for s in offer.sources)
     assert offer.explanation[0] == "The recorded eligibility rules match this purchase."
+    expected_claim_reason = {
+        "CLAIM_NOT_YET_OPEN": EligibilityReasonCode.CLAIM_WINDOW_NOT_YET_OPEN,
+        "ELIGIBLE": EligibilityReasonCode.CLAIM_WINDOW_OPEN,
+        "EXPIRED": EligibilityReasonCode.CLAIM_WINDOW_EXPIRED,
+    }[classification]
+    assert [reason.code for reason in offer.eligibility.reasons] == [
+        EligibilityReasonCode.ALL_CONFIGURED_RULES_SATISFIED,
+        expected_claim_reason,
+    ]
     if classification == "CLAIM_NOT_YET_OPEN":
         assert "2026-11-27" in offer.explanation[1]
     elif classification == "EXPIRED":
         assert "deadline has passed" in offer.explanation[1].lower()
+        with factory() as session:
+            persisted = session.get(Promotion, identity)
+            assert persisted.status == PromotionStatus.ACTIVE
+            assert snapshot(session) == graph_before
+
+
+def test_purchase_price_is_retained_as_exact_fixed_cashback_after_persistence(reference):
+    factory, identity = reference
+    publish(factory, identity)
+    result = check(
+        factory,
+        date(2026, 10, 27),
+        date(2026, 11, 27),
+        price=Decimal("100.00"),
+    )
+    offer = result.promotions[0]
+    assert offer.promotion_id == identity
+    assert offer.benefits[0].cashback_reward_gbp == Decimal("100.00")
 
 
 def test_verified_candidate_publishes_through_validation_gate_and_is_visible(reference):
@@ -132,6 +177,7 @@ def test_verified_candidate_publishes_through_validation_gate_and_is_visible(ref
         assert candidate.status == PromotionStatus.REVIEW
         assert {link.role for link in candidate.source_links} == {"primary", "claim"}
         assert all(link.source.verified_at is not None for link in candidate.source_links)
+        assert all(link.source.source_type == "web_page" for link in candidate.source_links)
         manifest = reference_manifest()
         assert {link.source.url for link in candidate.source_links} == {
             manifest["official_terms_url"],
@@ -347,7 +393,7 @@ def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
     manifest = reference_manifest()
     source = Source(
         url=manifest["official_terms_url"],
-        source_type="pdf",
+        source_type="web_page",
         title="Hisense Autumn Cashback terms — 19 August 2026",
         retrieved_at=datetime.fromisoformat(manifest["evidence"]["retrieved_at"]),
         verified_at=datetime.fromisoformat(manifest["evidence"]["verified_at"]),
@@ -521,6 +567,7 @@ def test_historical_published_promotion_remains_explainable_after_expiry(referen
 
 def test_http_api_regression_uses_existing_contract(reference, postgres_engine):
     publish(reference[0], reference[1])
+    manifest = reference_manifest()
     app = create_app(
         Settings(_env_file=None, APP_ENV="test", DATABASE_URL="postgresql+psycopg://unused/unused"),
         engine_factory=lambda _: postgres_engine,
@@ -530,14 +577,33 @@ def test_http_api_regression_uses_existing_contract(reference, postgres_engine):
         "brand": "Hisense",
         "model": "WF7I1248BBR",
         "retailer": "Currys",
-        "purchase_date": "2026-09-09",
+        "purchase_date": "2026-10-27",
     }
     with TestClient(app) as client:
         response = client.post("/api/v1/eligibility/check", json=body)
         assert response.status_code == 200
         payload = response.json()
-        assert payload["promotions"][0]["eligibility"]["classification"] == "CLAIM_NOT_YET_OPEN"
-        assert payload["promotions"][0]["benefits"][0]["cashback_reward_gbp"] == "100.00"
+        offer = payload["promotions"][0]
+        assert offer["eligibility"]["classification"] == "CLAIM_NOT_YET_OPEN"
+        assert offer["promotion_status"] == "active"
+        assert offer["claim_window"] == {
+            "status": "not_yet_open",
+            "opens_on": "2026-11-27",
+            "deadline_on": "2026-12-24",
+        }
+        assert offer["benefits"][0]["cashback_reward_gbp"] == "100.00"
+        assert {item["requirement_type"] for item in offer["requirements"]} == {
+            "receipt",
+            "serial_number",
+        }
+        assert offer["provenance"]["source_type"] == "web_page"
+        assert offer["provenance"]["official_source_url"] == manifest["official_terms_url"]
+        assert offer["provenance"]["claim_url"] == manifest["claim_url"]
+        assert {source["role"]: source["url"] for source in offer["sources"]} == {
+            "primary": manifest["official_terms_url"],
+            "claim": manifest["claim_url"],
+        }
+        assert all(s["source_type"] == "web_page" for s in offer["sources"])
         app.dependency_overrides[uk_evaluation_date] = lambda: date(2026, 11, 27)
         response = client.post("/api/v1/eligibility/check", json=body)
         assert response.status_code == 200
@@ -554,7 +620,15 @@ def test_http_api_regression_uses_existing_contract(reference, postgres_engine):
             "/api/v1/eligibility/check", json={**body, "retailer": "Excluded test retailer"}
         )
         assert response.status_code == 200
+        assert response.json()["no_match_reason"] == "no_matching_published_promotions"
         assert response.json()["promotions"] == []
+        app.dependency_overrides[uk_evaluation_date] = lambda: date(2026, 11, 27)
+        response = client.post(
+            "/api/v1/eligibility/check", json={**body, "purchase_date": "2026-10-28"}
+        )
+        assert response.status_code == 200
+        assert response.json()["promotions"] == []
+        assert response.json()["no_match_reason"] == "no_matching_published_promotions"
 
 
 def test_known_unlinked_identity_is_no_match_and_unknown_is_unresolved(reference):
@@ -663,3 +737,30 @@ def test_wrong_manufacturer_product_link_cannot_publish(db_session):
             partial(transaction, db_session), promotion.id, PromotionStatus.ACTIVE
         )
     assert "product_manufacturer_mismatch" in {issue.code for issue in error.value.report.issues}
+
+
+def test_claim_destination_provenance_records_terms_observation_not_portal_fetch(db_session):
+    from pathlib import Path
+
+    manifest = reference_manifest()
+    evidence = manifest["evidence"]
+    promotion = construct_reference(db_session)
+    claim = next(link.source for link in promotion.source_links if link.role == "claim")
+    primary = next(link.source for link in promotion.source_links if link.role == "primary")
+    assert primary.source_type == "web_page"
+    assert claim.source_type == "web_page"
+    assert claim.title == evidence["claim_source_title"]
+    assert "not portal retrieval" in claim.title
+    assert "portal not independently accessed" in claim.title
+    assert "not a portal HTTP retrieval" in evidence["claim_portal_observation"]
+    assert (
+        claim.retrieved_at
+        == primary.retrieved_at
+        == datetime.fromisoformat(evidence["retrieved_at"])
+    )
+    assert (
+        claim.verified_at == primary.verified_at == datetime.fromisoformat(evidence["verified_at"])
+    )
+    docs = (Path(__file__).parents[1] / "fixtures/promotions/README.md").read_text()
+    assert "they do not describe a" in docs and "portal HTTP retrieval" in docs
+    assert evidence["capture"]["format"] == "Safari print-to-PDF of the official terms page"

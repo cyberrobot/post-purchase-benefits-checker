@@ -33,7 +33,7 @@ from app.domain.promotion_lifecycle import PromotionStatus
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/hisense-autumn-cashback-2026-wf7i1248bbr.json"
 )
-REVIEWED_SHA256 = "2cff309042a42751bef9979c2480187463184bd8b2091d5188a2a6ea988c8aab"
+REVIEWED_SHA256 = "991139c7dfcc4938d25ffb1563a3a9aad694a4d4fc6474e69650b3594daea450"
 
 
 def validate_manifest(value):
@@ -80,7 +80,10 @@ def _resolve(session, match, kind, attributes, *, allow_create=True):
     return row
 
 
-def _fingerprint(promotion):
+def _fingerprint(promotion, sources_by_id=None):
+    def source_for(link):
+        return sources_by_id[link.source_id] if sources_by_id is not None else link.source
+
     return (
         promotion.name,
         promotion.manufacturer_id,
@@ -130,11 +133,11 @@ def _fingerprint(promotion):
             sorted(
                 (
                     link.role,
-                    link.source.url,
-                    link.source.source_type,
-                    link.source.title,
-                    link.source.retrieved_at,
-                    link.source.verified_at,
+                    source_for(link).url,
+                    source_for(link).source_type,
+                    source_for(link).title,
+                    source_for(link).retrieved_at,
+                    source_for(link).verified_at,
                 )
                 for link in promotion.source_links
             )
@@ -250,19 +253,18 @@ def construct_reference(session):
         evidence = f["evidence"]
         retrieved_at = datetime.fromisoformat(evidence["retrieved_at"])
         verified_at = datetime.fromisoformat(evidence["verified_at"])
-        expected.source_links = [
-            PromotionSource(
-                role=role,
-                source=_verified_source(
-                    session,
-                    {
-                        "url": url,
-                        "source_type": "pdf" if role == "primary" else "web_page",
-                        "title_or_version": title,
-                        "retrieved_at": retrieved_at.isoformat(),
-                        "verified_at": verified_at.isoformat(),
-                    },
-                ),
+        # Resolve and flush source observations before creating any transient links.
+        # FK-only links avoid appending an unsaved graph to persistent source backrefs.
+        sources = {
+            role: _verified_source(
+                session,
+                {
+                    "url": url,
+                    "source_type": "web_page",
+                    "title_or_version": title,
+                    "retrieved_at": retrieved_at.isoformat(),
+                    "verified_at": verified_at.isoformat(),
+                },
             )
             for role, url, title in (
                 (
@@ -273,9 +275,12 @@ def construct_reference(session):
                 (
                     "claim",
                     f["claim_url"],
-                    "Claim URL cited by terms; portal not independently accessed",
+                    evidence["claim_source_title"],
                 ),
             )
+        }
+        expected.source_links = [
+            PromotionSource(role=role, source_id=source.id) for role, source in sources.items()
         ]
         if existing:
             if existing.status not in (
@@ -285,7 +290,10 @@ def construct_reference(session):
             ):
                 raise ValueError("Incompatible reference lifecycle")
             try:
-                same = _fingerprint(existing) == _fingerprint(expected)
+                with session.no_autoflush:
+                    same = _fingerprint(existing) == _fingerprint(
+                        expected, {source.id: source for source in sources.values()}
+                    )
             except (AttributeError, TypeError):
                 same = False
             if not same:

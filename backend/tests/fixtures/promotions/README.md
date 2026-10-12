@@ -208,7 +208,7 @@ May–June A-Rated campaign's GBP 150 reward is not evidence for this Autumn off
 
 The fixture pins semantic facts and evidence status. The offline test-only
 constructor creates a review graph in a caller-owned savepoint. It persists
-verified primary terms provenance and the claim destination as cited by those
+verified primary HTML terms (`web_page`) provenance and the claim destination as cited by those
 terms; the latter is explicitly not an assertion that the portal was accessed.
 Sources are reused only when URL, type, title and timestamps all match exactly.
 Tests publish through the persisted publication validation service. No
@@ -228,3 +228,8 @@ Run from `backend/` with Docker/Testcontainers available:
 uv run pytest tests/unit/test_hisense_reference_promotion.py
 uv run pytest tests/integration/test_hisense_reference_promotion.py
 ```
+
+The Hisense claim source is also `web_page`, with the manifest's exact
+`claim_source_title`. Its retrieval and verification timestamps record observation
+and review of the URL in the captured official terms; they do not describe a
+portal HTTP retrieval. The archived Safari PDF has separate capture metadata.

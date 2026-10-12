@@ -67,7 +67,7 @@
       "The promoter may require eligibility and identity evidence.",
       "The receipt must show retailer, model, purchase date and purchase price; the claim must include proof of purchase and product serial number."
     ],
-    "claim_portal_observation": "The official terms provide this claim destination (§§5.1 and 5.12). The portal was not independently accessed; availability and claim acceptance have not been verified.",
+    "claim_portal_observation": "The official terms provide this claim destination (§§5.1 and 5.12). The portal was not independently accessed; availability and claim acceptance have not been verified. The persisted claim source retrieved_at and verified_at represent observation and verification of this URL in the captured official terms, not a portal HTTP retrieval or accessibility check.",
     "supporting_source": {
       "url": "https://currysprod.a.bigcontent.io/v1/static/Hisense_Autumn_Cashback_2026_Promotion_-_Terms_and_Conditions_-_Currys",
       "version": "7 August 2026",
@@ -75,7 +75,8 @@
       "retrieved_at": null,
       "retrieval_note": "The exact retrieval time of the local copy was not established; no timestamp is asserted."
     },
-    "excluded_cross_campaign_evidence": "The separate May–June 2026 A-Rated Appliances promotion is not evidence for this Autumn offer."
+    "excluded_cross_campaign_evidence": "The separate May–June 2026 A-Rated Appliances promotion is not evidence for this Autumn offer.",
+    "claim_source_title": "Claim destination attested by official terms §§5.1 and 5.12; timestamps record terms observation and review, not portal retrieval; portal not independently accessed"
   },
   "requirements": [
     {
