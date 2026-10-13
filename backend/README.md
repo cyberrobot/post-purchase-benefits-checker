@@ -623,3 +623,20 @@ HTTP eligibility route without live manufacturer requests. The claim portal was 
 independently accessed. Eligibility explains only configured purchase rules and does
 not guarantee claimant eligibility, claim acceptance or payment; claimant and proof
 checks remain part of Hisense's claim process.
+
+## Sony BRAVIA Autumn Cashback 2026 reference
+
+The [Sony reference manifest and evidence ledger](tests/fixtures/promotions/README.md)
+covers exact model `K55XR75M2B` purchased directly from `Currys - UK` between
+30 September and 27 October 2026 for GBP 150 cashback. The official dealer label
+is mapped to shared canonical `Currys` through a curated alias; both names resolve
+to the same retailer without changing Hisense data. It is an offline test-only
+reference constructed in review; isolated PostgreSQL tests activate through the
+existing publication gate and exercise the canonical purchase check and HTTP API.
+
+**Production publication is blocked:** the fixed base window (4 November through
+31 December) cannot enforce the additional individual 35-day wait. A 27 October
+purchaser cannot submit until 1 December. Combined purchase-relative opening and
+fixed deadline support is required before production use. The manifest and benefit
+description preserve this limitation, evidence and additional Sony claim conditions.
+There are no production seeds, migrations, configuration or public contract changes.

@@ -297,3 +297,73 @@ Run from `backend/` with the existing migrated PostgreSQL Testcontainer:
 uv run pytest tests/unit/test_hotpoint_reference_promotion.py
 uv run pytest tests/integration/test_hotpoint_reference_promotion.py
 ```
+
+## Sony BRAVIA Autumn Cashback 2026 — test reference only
+
+`sony-bravia-autumn-cashback-2026-k55xr75m2b.json` pins one exact TV model,
+**K55XR75M2B (55-inch BRAVIA 7 II)**, purchased directly from **Currys - UK**
+from **30 September through 27 October 2026**, for **GBP 150.00** cashback.
+`K55XR75M2PB` is a distinct model; no other model or retailer is assessed.
+The observed Sony dealer label remains `Currys - UK` in the pinned evidence.
+Construction uses shared canonical `Currys` (also used by Hisense) and a curated
+`RetailerAlias` for `Currys - UK`; both input names match the same ID. Conflicting
+or ambiguous owners fail without merging or renaming records. Cleanup tracks newly
+created aliases and preserves shared Hisense/Currys data.
+`tests.sony_reference` validates the complete local JSON semantic SHA-256 before
+writes and constructs only a review-state graph in the caller's savepoint.
+Activation occurs through the existing persisted publication gate in isolated
+PostgreSQL tests. Replays preserve identical review/active/expired records;
+fixture cleanup deletes only rows it created.
+
+Evidence was observed and reviewed on 13 October 2026 at the UTC times recorded
+in the manifest. These are observations of official source text supplied by the
+web tool, not origin-server retrieval timestamps or hashes of remote PDF bytes.
+The semantic pin covers the whole manifest, including evidence and limitations.
+
+| Fact | Official evidence |
+| --- | --- |
+| Exact model and GBP 150.00 | [Sony terms PDF](https://campaign.odw.sony-europe.com/redemption/terms/UK_TV_Autumn_Terms_and_Conditions_2026.pdf), version 26/08/2026, section 6, page 1 model row |
+| Purchase period | Terms sections 5–6 |
+| Currys - UK participant | [UK dealer PDF](https://campaign.odw.sony-europe.com/redemption/dealers/UK_TV_Autumn_dealers_2026.pdf), version 28/09/2026, page 3; terms section 11 |
+| Individual 35-day wait | Terms section 8; [campaign page](https://www.sony.co.uk/cashback/braviaautumn2026) and [Sony FAQ](https://www.sony.co.uk/electronics/support/articles/00412189) |
+| Final claim deadline | Terms section 10: 31 December 2026, subject to exact late-day CET cutoff |
+| Account and destination | Terms section 7: My Sony account and official campaign URL |
+| Receipt and serial photos | Terms section 9; order date controls where different |
+| Original consumer, age, condition and returns | Terms sections 2–3 and 11–12 |
+| One claim per model, two total | Terms section 13; conflicting FAQ wording does not override official terms |
+
+The persisted sources are a verified `primary` terms PDF, verified `claim`
+campaign web page and a separately versioned `supporting` dealer PDF. Each source
+uses its documented observation times; the supporting PDF uses its own metadata
+even when its recorded times equal the terms/page times. A pure mapping validates
+aware, ordered timestamps for all roles. Tests use deliberately different
+**synthetic** timestamps to prove mapping/reuse; recorded observations and the
+semantic digest remain unchanged. Inspecting
+the claim destination is not evidence that a customer submitted or received a
+claim. Unlisted third-party or Currys Marketplace sellers are not assumed authorised.
+Receipt and serial-number requirements describe the screen serial/device-ID
+photo **or** back-label model/manufacturing-date/serial photo alternatives.
+My Sony account creation remains explanatory text; no purchased-TV registration
+requirement is inferred.
+
+**Production publication is blocked.** The current backend supports a fixed
+claim window OR a purchase-relative window, and cannot enforce both the
+individual opening `max(2026-11-04, purchase_date + 35 calendar days)` and the
+fixed 31 December deadline. The persisted **base window** is 4 November through
+31 December only. For a 27 October purchase, the first legal calendar claim day
+is **1 December**, so the engine could produce false-positive `ELIGIBLE` results
+from 4–30 November. The structured `claim_delay_limitation` is pinned evidence
+metadata, not an executable runtime rule. Integrated eligible assertions use
+safe dates only. A separate combined-window feature is required before production use.
+
+The five-field API cannot prove age, first ownership, new condition, country/seller,
+returns, prior claims, My Sony account, receipt validity, actual serial/photos or
+payment eligibility. UK date-only evaluation does not enforce the exact CET
+minute cutoff. Sony retains final approval authority; results are not claim guarantees.
+No network request, account credentials, receipt, personal serial or production seed
+is involved in normal tests.
+
+```sh
+uv run pytest tests/unit/test_sony_reference_promotion.py
+uv run pytest tests/integration/test_sony_reference_promotion.py
+```
