@@ -14,7 +14,7 @@ from app.domain.rewards import FixedAmountReward, calculate_reward
 from tests.sony_reference import reference_manifest, validate_manifest
 
 
-def test_manifest_exact_wren_facts_evidence_and_unmodelled_delay():
+def test_manifest_exact_sony_facts_evidence_and_unmodelled_delay():
     f = reference_manifest()
     assert f["reference_version"] == 1
     assert f["evidence_status"] == "verified"
@@ -69,10 +69,10 @@ def test_manifest_exact_wren_facts_evidence_and_unmodelled_delay():
         (("benefit", "reward", "amount_gbp"), "100.00"),
         (("claim_window", "end_date"), "2026-07-26"),
         (("official_terms_url",), "https://example.com/terms"),
-        (("claim_url",), "http://promo.hotpoint.co.uk/"),
+        (("claim_url",), "http://www.sony.co.uk/cashback/braviaautumn2026"),
         (("evidence_status",), "unverified"),
         (("evidence", "verified_at"), None),
-        (("evidence", "section_heading"), "HOTPOINT CASHBACK PROMOTION"),
+        (("evidence", "section_heading"), "UNREVIEWED SONY CAMPAIGN"),
         (("claim_delay_limitation", "minimum_days_after_purchase"), 0),
         (("requirements",), []),
         (("purchase_start_date",), False),
@@ -192,3 +192,55 @@ def test_descriptive_restrictions_and_separate_source_observations():
     ):
         assert required in restrictions
     assert "one claim per individual model, two total" in f["evidence"]["faq_conflict"]
+
+
+def test_source_mapping_uses_synthetic_distinct_observation_times():
+    from tests.sony_reference import source_observations
+
+    synthetic = deepcopy(reference_manifest())
+    synthetic["evidence"]["supporting_source"].update(
+        retrieved_at="2000-01-01T12:00:00Z", verified_at="2000-01-02T12:00:00Z"
+    )
+    observations = source_observations(synthetic)
+    assert observations["supporting"] == synthetic["evidence"]["supporting_source"]
+    assert observations["primary"]["retrieved_at"] == synthetic["evidence"]["retrieved_at"]
+    assert observations["claim"]["verified_at"] == synthetic["evidence"]["verified_at"]
+    assert observations["supporting"]["retrieved_at"] != observations["primary"]["retrieved_at"]
+    # Pure synthetic mapping does not make the modified object a reviewed manifest.
+    with pytest.raises(ValueError, match="pinned"):
+        validate_manifest(synthetic)
+
+
+@pytest.mark.parametrize("role", ["primary", "supporting"])
+@pytest.mark.parametrize(
+    "retrieved,verified",
+    [
+        ("not-a-date", "2000-01-02T12:00:00Z"),
+        ("2000-01-01T12:00:00", "2000-01-02T12:00:00Z"),
+        ("2000-01-01T12:00:00Z", "2000-01-02T12:00:00"),
+        ("2000-01-02T12:00:00Z", "2000-01-01T12:00:00Z"),
+        ("2000-01-01T12:00:00Z", None),
+    ],
+)
+def test_source_mapping_rejects_invalid_synthetic_timestamps(role, retrieved, verified):
+    from tests.sony_reference import source_observations
+
+    synthetic = deepcopy(reference_manifest())
+    target = (
+        synthetic["evidence"] if role == "primary" else synthetic["evidence"]["supporting_source"]
+    )
+    target.update(retrieved_at=retrieved, verified_at=verified)
+    with pytest.raises(ValueError, match="timestamp|verification"):
+        source_observations(synthetic)
+
+
+@pytest.mark.parametrize(
+    "field,value", [("url", "https://example.com/unreviewed.pdf"), ("source_type", "web_page")]
+)
+def test_source_mapping_rejects_inconsistent_supporting_evidence(field, value):
+    from tests.sony_reference import source_observations
+
+    synthetic = deepcopy(reference_manifest())
+    synthetic["evidence"]["supporting_source"][field] = value
+    with pytest.raises(ValueError, match="Inconsistent supporting dealer evidence"):
+        source_observations(synthetic)

@@ -628,7 +628,9 @@ checks remain part of Hisense's claim process.
 
 The [Sony reference manifest and evidence ledger](tests/fixtures/promotions/README.md)
 covers exact model `K55XR75M2B` purchased directly from `Currys - UK` between
-30 September and 27 October 2026 for GBP 150 cashback. It is an offline test-only
+30 September and 27 October 2026 for GBP 150 cashback. The official dealer label
+is mapped to shared canonical `Currys` through a curated alias; both names resolve
+to the same retailer without changing Hisense data. It is an offline test-only
 reference constructed in review; isolated PostgreSQL tests activate through the
 existing publication gate and exercise the canonical purchase check and HTTP API.
 

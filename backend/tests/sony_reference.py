@@ -24,12 +24,16 @@ from app.db.models import (
     PromotionVariant,
     PromotionVariantProduct,
     Requirement,
-    Retailer,
 )
 from app.db.repositories.identity_matching import SqlAlchemyIdentityRepository
 from app.domain.identity_normalisation import MatchStatus
 from app.domain.promotion_lifecycle import PromotionStatus
-from tests.reference_helpers import _fingerprint, _resolve, _verified_source
+from tests.reference_helpers import (
+    _fingerprint,
+    _resolve,
+    _resolve_retailer_with_alias,
+    _verified_source,
+)
 
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/sony-bravia-autumn-cashback-2026-k55xr75m2b.json"
@@ -70,11 +74,50 @@ def reference_manifest():
     return validate_manifest(json.loads(MANIFEST.read_text()))
 
 
+def source_observations(manifest):
+    """Pure mapping of each reviewed source's metadata; no pin bypass or writes."""
+    evidence = manifest["evidence"]
+    common_times = {key: evidence[key] for key in ("retrieved_at", "verified_at")}
+    observations = {
+        "primary": {
+            "url": manifest["official_terms_url"],
+            "source_type": "pdf",
+            "title_or_version": f"Sony BRAVIA Autumn Cashback terms — {evidence['terms_version']}",
+            **common_times,
+        },
+        "claim": {
+            "url": manifest["claim_url"],
+            "source_type": "web_page",
+            "title_or_version": evidence["claim_source_title"],
+            **common_times,
+        },
+        "supporting": dict(evidence["supporting_source"]),
+    }
+    if (
+        observations["supporting"]["url"] != manifest["dealer_list_url"]
+        or observations["supporting"]["source_type"] != "pdf"
+    ):
+        raise ValueError("Inconsistent supporting dealer evidence")
+    for observation in observations.values():
+        try:
+            times = [
+                datetime.fromisoformat(observation[key]) for key in ("retrieved_at", "verified_at")
+            ]
+        except (ValueError, TypeError):
+            raise ValueError("Observed source timestamps must be valid ISO timestamps") from None
+        if any(value.tzinfo is None or value.utcoffset() is None for value in times):
+            raise ValueError("Observed source timestamps must be timezone-aware")
+        if times[1] < times[0]:
+            raise ValueError("Observed source verification must not precede retrieval")
+    return observations
+
+
 def construct_reference(session):
     """Construct in review; callers publish through the persisted publication gate."""
     if session.new or session.dirty or session.deleted:
         raise ValueError("Reference construction requires a session without pending changes")
     f = reference_manifest()
+    observations = source_observations(f)
     with session.begin_nested():
         resolver = IdentityResolver(SqlAlchemyIdentityRepository(session))
         maker = _resolve_current(
@@ -101,11 +144,12 @@ def construct_reference(session):
             .with_for_update()
             .execution_options(populate_existing=True)
         )
-        shop = _resolve_current(
+        shop = _resolve_retailer_with_alias(
             session,
-            resolver.resolve_retailer(f["retailer"]),
-            Retailer,
-            {"name": f["retailer"], "slug": "currys-uk"},
+            resolver,
+            canonical_name="Currys",
+            canonical_slug="currys",
+            observed_name=f["retailer"],
             allow_create=existing is None,
         )
         product = _resolve_current(
@@ -156,42 +200,10 @@ def construct_reference(session):
                 ],
             )
         ]
-        evidence = f["evidence"]
-        retrieved_at = datetime.fromisoformat(evidence["retrieved_at"])
-        verified_at = datetime.fromisoformat(evidence["verified_at"])
-        # Resolve and flush source observations before creating any transient links.
-        # FK-only links avoid appending an unsaved graph to persistent source backrefs.
+        # Flush source observations before transient FK-only associations.
         sources = {
-            role: _verified_source(
-                session,
-                {
-                    "url": url,
-                    "source_type": source_type,
-                    "title_or_version": title,
-                    "retrieved_at": retrieved_at.isoformat(),
-                    "verified_at": verified_at.isoformat(),
-                },
-            )
-            for role, url, title, source_type in (
-                (
-                    "primary",
-                    f["official_terms_url"],
-                    f"Sony BRAVIA Autumn Cashback terms — {evidence['terms_version']}",
-                    "pdf",
-                ),
-                (
-                    "claim",
-                    f["claim_url"],
-                    evidence["claim_source_title"],
-                    "web_page",
-                ),
-                (
-                    "supporting",
-                    f["dealer_list_url"],
-                    evidence["supporting_source"]["title_or_version"],
-                    "pdf",
-                ),
-            )
+            role: _verified_source(session, observation)
+            for role, observation in observations.items()
         }
         expected.source_links = [
             PromotionSource(role=role, source_id=source.id) for role, source in sources.items()

@@ -4,7 +4,7 @@ from functools import partial
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, tuple_, update
 from sqlalchemy.orm import sessionmaker
 
 from app.api.eligibility import uk_evaluation_date
@@ -15,7 +15,15 @@ from app.application.promotions import (
 from app.application.purchase_check import CheckPurchaseRequest, check_purchase
 from app.application.purchase_check_details import CheckPurchaseResult
 from app.core.config import Settings
-from app.db.models import BenefitReward, Manufacturer, Product, Promotion, Retailer, Source
+from app.db.models import (
+    BenefitReward,
+    Manufacturer,
+    Product,
+    Promotion,
+    Retailer,
+    RetailerAlias,
+    Source,
+)
 from app.db.repositories.promotions import (
     promotion_transaction,
     purchase_check_snapshot,
@@ -61,6 +69,9 @@ def reference(postgres_engine, migrated_test_database):
     with factory.begin() as session:
         owned_types = (Promotion, Source, Product, Retailer, Manufacturer)
         before = {kind: set(session.scalars(select(kind.id))) for kind in owned_types}
+        before_aliases = set(
+            session.execute(select(RetailerAlias.retailer_id, RetailerAlias.normalised_alias))
+        )
         promotion = construct_reference(session)
         promotion_id = promotion.id
         wrong_product = Product(
@@ -73,6 +84,10 @@ def reference(postgres_engine, migrated_test_database):
         session.add_all([wrong_product, wrong_retailer])
         session.flush()
         owned = {kind: set(session.scalars(select(kind.id))) - before[kind] for kind in owned_types}
+        owned[RetailerAlias] = (
+            set(session.execute(select(RetailerAlias.retailer_id, RetailerAlias.normalised_alias)))
+            - before_aliases
+        )
     try:
         yield factory, promotion_id
     finally:
@@ -82,6 +97,14 @@ def reference(postgres_engine, migrated_test_database):
 
 def delete_owned_rows(session, owned):
     """Delete only fixture-owned graph/identity rows in FK-safe order."""
+    if owned.get(RetailerAlias):
+        session.execute(
+            delete(RetailerAlias).where(
+                tuple_(RetailerAlias.retailer_id, RetailerAlias.normalised_alias).in_(
+                    owned[RetailerAlias]
+                )
+            )
+        )
     for kind in (Promotion, Source, Product, Retailer, Manufacturer):
         if owned[kind]:
             session.execute(delete(kind).where(kind.id.in_(owned[kind])))
@@ -349,9 +372,12 @@ def _graph_ids(session):
             Source,
         )
     } | {
+        "retailer_aliases": set(
+            session.execute(select(RetailerAlias.retailer_id, RetailerAlias.normalised_alias))
+        ),
         "promotion_sources": set(
             session.execute(select(PromotionSource.promotion_id, PromotionSource.source_id))
-        )
+        ),
     }
 
 
@@ -380,7 +406,7 @@ def test_canonical_aliases_reuse_existing_owned_product(db_session):
     from app.db.models import ManufacturerAlias, RetailerAlias
 
     maker = Manufacturer(name="Sony UK", slug="sony-uk")
-    shop = Retailer(name="Currys - UK UK", slug="currys-uk-uk")
+    shop = Retailer(name="Currys", slug="currys")
     product = Product(
         manufacturer=maker,
         name="Existing TV",
@@ -410,7 +436,7 @@ def test_exact_model_reuses_product_with_different_display_name(db_session):
     from app.db.models import ManufacturerAlias, RetailerAlias
 
     maker = Manufacturer(name="Sony UK", slug="sony-uk")
-    shop = Retailer(name="Currys - UK UK", slug="currys-uk-uk")
+    shop = Retailer(name="Currys", slug="currys")
     product = Product(
         manufacturer=maker,
         name="Different approved product display name",
@@ -434,7 +460,7 @@ def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
     from app.db.models import ManufacturerAlias, RetailerAlias
 
     maker = Manufacturer(name="Sony Shared", slug="sony-shared")
-    shop = Retailer(name="Currys - UK Shared", slug="currys-uk-shared")
+    shop = Retailer(name="Currys", slug="currys")
     product = Product(
         manufacturer=maker,
         name="Shared different display",
@@ -479,7 +505,7 @@ def test_cleanup_preserves_reused_shared_identities_and_source(db_session):
 
 def test_same_url_different_source_metadata_is_not_reused_or_mutated(db_session):
     maker = Manufacturer(name="Sony", slug="sony")
-    shop = Retailer(name="Currys - UK", slug="currys-uk")
+    shop = Retailer(name="Currys", slug="currys")
     source = Source(
         url=reference_manifest()["official_terms_url"],
         source_type="web_page",
@@ -500,7 +526,7 @@ def test_same_url_different_source_metadata_is_not_reused_or_mutated(db_session)
 
 def test_same_display_name_with_wrong_canonical_model_is_rejected(db_session):
     maker = Manufacturer(name="Sony UK", slug="sony-uk")
-    shop = Retailer(name="Currys - UK UK", slug="currys-uk-uk")
+    shop = Retailer(name="Currys", slug="currys")
     product = Product(
         manufacturer=maker,
         name=reference_manifest()["product"]["name"],
@@ -774,13 +800,13 @@ def test_known_unlinked_identity_is_no_match_and_unknown_is_unresolved(reference
         )
         assert known_retailer.promotions == ()
         assert known_retailer.no_match_reason == "no_matching_published_promotions"
-        result = check(factory, date(2026, 10, 1), date(2026, 12, 2), model="UNKNOWN-HOTPOINT")
+        result = check(factory, date(2026, 10, 1), date(2026, 12, 2), model="UNKNOWN-SONY")
         from app.application.promotion_candidate_matching import UnresolvedPurchaseIdentity
 
         assert isinstance(result, UnresolvedPurchaseIdentity)
         for kwargs in (
-            {"brand": "UNKNOWN-HOTPOINT"},
-            {"retailer": "UNKNOWN-WREN"},
+            {"brand": "UNKNOWN-SONY"},
+            {"retailer": "UNKNOWN-CURRYS"},
             {"model": "K55XR75M2PB"},
         ):
             unresolved = check(factory, date(2026, 10, 1), date(2026, 12, 2), **kwargs)
@@ -813,7 +839,7 @@ def test_ambiguous_or_mislabelled_product_is_rejected(db_session, case):
     from app.db.models import ProductModelAlias
 
     maker = Manufacturer(name="Sony", slug="sony")
-    shop = Retailer(name="Currys - UK", slug="currys-uk")
+    shop = Retailer(name="Currys", slug="currys")
     first = Product(
         manufacturer=maker,
         name="Existing TV",
@@ -872,7 +898,7 @@ def test_limitations_are_recorded_and_exposed_without_claiming_runtime_wait(refe
         assert len(candidate.variants) == 1
         variant = candidate.variants[0]
         assert variant.product_links[0].product.model_number == "K55XR75M2B"
-        assert variant.retailer.name == "Currys - UK"
+        assert variant.retailer.name == "Currys"
         claim = next(link.source for link in candidate.source_links if link.role == "claim")
         assert claim.title == f["evidence"]["claim_source_title"]
         assert "no claim submitted" in claim.title
@@ -980,3 +1006,165 @@ def test_ambiguous_retailer_retains_unresolved_behavior(reference):
         with factory.begin() as session:
             session.execute(delete(RetailerAlias).where(RetailerAlias.retailer_id == other_id))
             session.execute(delete(Retailer).where(Retailer.id == other_id))
+
+
+def _ownership_snapshot(session):
+    return {
+        kind: set(session.scalars(select(kind.id)))
+        for kind in (Promotion, Source, Product, Retailer, Manufacturer)
+    } | {
+        RetailerAlias: set(
+            session.execute(select(RetailerAlias.retailer_id, RetailerAlias.normalised_alias))
+        )
+    }
+
+
+@pytest.mark.parametrize("order", ["hisense_first", "sony_first"])
+def test_sony_and_hisense_share_currys_in_both_orders(
+    postgres_engine, migrated_test_database, order
+):
+    from tests.hisense_reference import construct_reference as construct_hisense
+    from tests.reference_helpers import _fingerprint
+
+    factory = sessionmaker(postgres_engine)
+    with factory.begin() as session:
+        before = _ownership_snapshot(session)
+        if order == "hisense_first":
+            hisense = construct_hisense(session)
+            change_promotion_status(
+                partial(transaction, session), hisense.id, PromotionStatus.ACTIVE
+            )
+            session.refresh(hisense)
+            hisense_before = _fingerprint(hisense)
+            sony = construct_reference(session)
+            assert _fingerprint(hisense) == hisense_before
+            assert hisense.status == PromotionStatus.ACTIVE
+        else:
+            sony = construct_reference(session)
+            hisense = construct_hisense(session)
+        assert sony.variants[0].retailer_id == hisense.variants[0].retailer_id
+        canonical_id = sony.variants[0].retailer_id
+        assert session.get(Retailer, canonical_id).name == "Currys"
+        after_first = _graph_ids(session)
+        assert construct_reference(session).id == sony.id
+        assert _graph_ids(session) == after_first
+        assert session.get(RetailerAlias, (canonical_id, "currys - uk")) is not None
+        assert len(set(session.scalars(select(Retailer.id))) - before[Retailer]) <= 1
+        sony_id = sony.id
+        after = _ownership_snapshot(session)
+        owned = {kind: after[kind] - before[kind] for kind in before}
+    try:
+        publish(factory, sony_id)
+        canonical = check(factory, date(2026, 10, 27), date(2026, 12, 1), retailer="Currys")
+        observed = check(factory, date(2026, 10, 27), date(2026, 12, 1), retailer="Currys - UK")
+        assert canonical == observed
+        assert canonical.resolved_identity.retailer_id == canonical_id
+        assert len(canonical.promotions) == 1
+        offer = canonical.promotions[0]
+        assert offer.promotion_id == sony_id
+        assert offer.eligibility.classification == "ELIGIBLE"
+        assert offer.benefits[0].cashback_reward_gbp == Decimal("150.00")
+    finally:
+        with factory.begin() as session:
+            delete_owned_rows(session, owned)
+            assert _ownership_snapshot(session) == before
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "alias_without_canonical",
+        "foreign_alias",
+        "distinct_dealer",
+        "ambiguous_canonical",
+        "ambiguous_dealer",
+    ],
+)
+def test_conflicting_currys_identity_or_alias_rolls_back_owned_writes(db_session, case):
+    from app.domain.identity_normalisation import normalise_text
+
+    marker = Retailer(name="Caller retained shop", slug="caller-retained-shop")
+    db_session.add(marker)
+    if case != "alias_without_canonical":
+        db_session.add(Retailer(name="Currys", slug="currys"))
+    if case == "distinct_dealer":
+        db_session.add(Retailer(name="Currys - UK", slug="currys-uk"))
+    if case == "ambiguous_canonical":
+        db_session.add(Retailer(name="Currys", slug="other-currys"))
+    db_session.flush()
+    if case in ("alias_without_canonical", "foreign_alias", "ambiguous_dealer"):
+        db_session.add(RetailerAlias(retailer_id=marker.id, alias="Currys - UK"))
+    if case == "ambiguous_dealer":
+        canonical = db_session.scalar(select(Retailer).where(Retailer.slug == "currys"))
+        db_session.add(RetailerAlias(retailer_id=canonical.id, alias="Currys - UK"))
+    db_session.flush()
+    before = _graph_ids(db_session)
+    names = {(row.id, row.name, row.slug) for row in db_session.scalars(select(Retailer))}
+    with pytest.raises(
+        ValueError, match="Ambiguous reference retailer|Conflicting reference retailer"
+    ):
+        construct_reference(db_session)
+    assert _graph_ids(db_session) == before
+    assert {(row.id, row.name, row.slug) for row in db_session.scalars(select(Retailer))} == names
+    if case in ("alias_without_canonical", "foreign_alias", "ambiguous_dealer"):
+        assert db_session.get(RetailerAlias, (marker.id, normalise_text("Currys - UK"))) is not None
+
+
+def test_sony_cleanup_preserves_published_hisense_and_shared_currys(db_session):
+    from tests.hisense_reference import construct_reference as construct_hisense
+    from tests.reference_helpers import _fingerprint
+
+    hisense = construct_hisense(db_session)
+    change_promotion_status(partial(transaction, db_session), hisense.id, PromotionStatus.ACTIVE)
+    db_session.refresh(hisense)
+    before = _ownership_snapshot(db_session)
+    hisense_graph = _fingerprint(hisense)
+    canonical_id = hisense.variants[0].retailer_id
+    sony = construct_reference(db_session)
+    after = _ownership_snapshot(db_session)
+    owned = {kind: after[kind] - before[kind] for kind in before}
+    assert sony.variants[0].retailer_id == canonical_id
+    assert owned[Retailer] == set()
+    assert owned[RetailerAlias] == {(canonical_id, "currys - uk")}
+    delete_owned_rows(db_session, owned)
+    db_session.expire_all()
+    assert _ownership_snapshot(db_session) == before
+    assert _fingerprint(hisense) == hisense_graph
+    assert hisense.status == PromotionStatus.ACTIVE
+    assert db_session.get(Retailer, canonical_id).name == "Currys"
+
+
+def test_synthetic_distinct_source_times_persist_and_replay_without_changing_manifest(db_session):
+    from copy import deepcopy
+
+    from tests.reference_helpers import _verified_source
+    from tests.sony_reference import source_observations, validate_manifest
+
+    original = reference_manifest()
+    synthetic = deepcopy(original)
+    synthetic["evidence"]["supporting_source"].update(
+        retrieved_at="2000-01-01T12:00:00Z", verified_at="2000-01-02T12:00:00Z"
+    )
+    observations = source_observations(synthetic)
+    sources = {
+        role: _verified_source(db_session, observation)
+        for role, observation in observations.items()
+    }
+    supporting = sources["supporting"]
+    assert supporting.retrieved_at == datetime.fromisoformat("2000-01-01T12:00:00Z")
+    assert supporting.verified_at == datetime.fromisoformat("2000-01-02T12:00:00Z")
+    assert supporting.retrieved_at != sources["primary"].retrieved_at
+    assert supporting.source_type == observations["supporting"]["source_type"] == "pdf"
+    assert supporting.title == observations["supporting"]["title_or_version"]
+    before = _graph_ids(db_session)
+    replay = {
+        role: _verified_source(db_session, observation)
+        for role, observation in source_observations(synthetic).items()
+    }
+    assert {role: source.id for role, source in replay.items()} == {
+        role: source.id for role, source in sources.items()
+    }
+    assert _graph_ids(db_session) == before
+    assert reference_manifest() == original
+    with pytest.raises(ValueError, match="pinned"):
+        validate_manifest(synthetic)

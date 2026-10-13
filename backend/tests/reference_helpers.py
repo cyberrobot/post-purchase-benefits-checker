@@ -120,3 +120,43 @@ def _verified_source(session, observation):
     session.add(source)
     session.flush()
     return source
+
+
+def _resolve_retailer_with_alias(
+    session, resolver, *, canonical_name, canonical_slug, observed_name, allow_create=True
+):
+    """Bind a reviewed dealer label to one canonical identity, never merge owners."""
+    from app.db.models import Retailer, RetailerAlias
+    from app.domain.identity_normalisation import normalise_text
+
+    canonical = resolver.resolve_retailer(canonical_name)
+    observed = resolver.resolve_retailer(observed_name)
+    if MatchStatus.AMBIGUOUS in (canonical.status, observed.status):
+        raise ValueError("Ambiguous reference retailer identity")
+    if observed.status == MatchStatus.MATCHED and (
+        canonical.status != MatchStatus.MATCHED or observed.canonical_id != canonical.canonical_id
+    ):
+        raise ValueError("Conflicting reference retailer identities or dealer alias")
+    retailer = _resolve(
+        session,
+        canonical,
+        Retailer,
+        {"name": canonical_name, "slug": canonical_slug},
+        allow_create=allow_create,
+    )
+    # Serialize alias creation on the canonical owner for fixture participants.
+    session.refresh(retailer, with_for_update=True)
+    observed = resolver.resolve_retailer(observed_name)
+    if observed.status == MatchStatus.AMBIGUOUS:
+        raise ValueError("Ambiguous reference retailer identity")
+    if observed.status == MatchStatus.MATCHED and observed.canonical_id != retailer.id:
+        raise ValueError("Conflicting reference retailer identities or dealer alias")
+    alias_key = normalise_text(observed_name)
+    if observed.status == MatchStatus.NOT_FOUND:
+        session.add(RetailerAlias(retailer_id=retailer.id, alias=observed_name))
+        session.flush()
+    elif session.get(RetailerAlias, (retailer.id, alias_key)) is None:
+        # A canonical name/slug match already resolves the label; no alias is needed.
+        if alias_key not in (normalise_text(retailer.name), normalise_text(retailer.slug)):
+            raise ValueError("Conflicting reference retailer alias")
+    return retailer

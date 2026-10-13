@@ -304,6 +304,11 @@ uv run pytest tests/integration/test_hotpoint_reference_promotion.py
 **K55XR75M2B (55-inch BRAVIA 7 II)**, purchased directly from **Currys - UK**
 from **30 September through 27 October 2026**, for **GBP 150.00** cashback.
 `K55XR75M2PB` is a distinct model; no other model or retailer is assessed.
+The observed Sony dealer label remains `Currys - UK` in the pinned evidence.
+Construction uses shared canonical `Currys` (also used by Hisense) and a curated
+`RetailerAlias` for `Currys - UK`; both input names match the same ID. Conflicting
+or ambiguous owners fail without merging or renaming records. Cleanup tracks newly
+created aliases and preserves shared Hisense/Currys data.
 `tests.sony_reference` validates the complete local JSON semantic SHA-256 before
 writes and constructs only a review-state graph in the caller's savepoint.
 Activation occurs through the existing persisted publication gate in isolated
@@ -328,7 +333,12 @@ The semantic pin covers the whole manifest, including evidence and limitations.
 | One claim per model, two total | Terms section 13; conflicting FAQ wording does not override official terms |
 
 The persisted sources are a verified `primary` terms PDF, verified `claim`
-campaign web page and a separately versioned `supporting` dealer PDF. Inspecting
+campaign web page and a separately versioned `supporting` dealer PDF. Each source
+uses its documented observation times; the supporting PDF uses its own metadata
+even when its recorded times equal the terms/page times. A pure mapping validates
+aware, ordered timestamps for all roles. Tests use deliberately different
+**synthetic** timestamps to prove mapping/reuse; recorded observations and the
+semantic digest remain unchanged. Inspecting
 the claim destination is not evidence that a customer submitted or received a
 claim. Unlisted third-party or Currys Marketplace sellers are not assumed authorised.
 Receipt and serial-number requirements describe the screen serial/device-ID
