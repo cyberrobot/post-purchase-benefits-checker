@@ -140,12 +140,99 @@ class Promotion(BaseModel):
     claim_window: ClaimWindow | None
     benefits: list[Benefit]
     requirements: list[Requirement]
+    last_verified_at: datetime = Field(
+        description="Recorded successful verification of the official PRIMARY source; "
+        "equals provenance.verified_at and does not imply current freshness."
+    )
     provenance: Provenance
     sources: list[Source]
     explanation: list[str]
 
 
 class ResolvedResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "outcome": "resolved",
+                "evaluation_date": "2026-10-08",
+                "resolved_identity": {
+                    "manufacturer_id": "00000000-0000-0000-0000-000000000001",
+                    "retailer_id": "00000000-0000-0000-0000-000000000002",
+                    "product_id": "00000000-0000-0000-0000-000000000003",
+                },
+                "promotions": [
+                    {
+                        "promotion_id": "00000000-0000-0000-0000-000000000004",
+                        "promotion_variant_id": "00000000-0000-0000-0000-000000000005",
+                        "promotion_name": "Example cashback",
+                        "variant_name": None,
+                        "promotion_status": "active",
+                        "eligibility": {
+                            "classification": "POTENTIALLY_ELIGIBLE",
+                            "reasons": [
+                                {"code": "all_configured_rules_satisfied", "rule_kind": None},
+                                {"code": "claim_window_unspecified", "rule_kind": None},
+                            ],
+                            "rule_evaluations": [
+                                {
+                                    "kind": "product",
+                                    "status": "satisfied",
+                                    "reason_code": "product_match",
+                                }
+                            ],
+                            "claim_window_status": None,
+                        },
+                        "claim_window": None,
+                        "benefits": [
+                            {
+                                "benefit_id": "00000000-0000-0000-0000-000000000006",
+                                "benefit_type": "cashback",
+                                "name": "Cashback",
+                                "description": None,
+                                "cashback_reward_gbp": "10",
+                                "reward_unavailable_reason": None,
+                                "reward_unavailable_explanation": None,
+                            }
+                        ],
+                        "requirements": [],
+                        "last_verified_at": "2026-10-02T00:00:00Z",
+                        "provenance": {
+                            "official_source_url": "https://example.com/offer",
+                            "source_type": "web_page",
+                            "retrieved_at": "2026-10-01T00:00:00Z",
+                            "verified_at": "2026-10-02T00:00:00Z",
+                            "claim_url": "https://example.com/claim",
+                        },
+                        "sources": [
+                            {
+                                "source_id": "00000000-0000-0000-0000-000000000007",
+                                "role": "primary",
+                                "url": "https://example.com/offer",
+                                "source_type": "web_page",
+                                "retrieved_at": "2026-10-01T00:00:00Z",
+                                "verified_at": "2026-10-02T00:00:00Z",
+                            },
+                            {
+                                "source_id": "00000000-0000-0000-0000-000000000008",
+                                "role": "claim",
+                                "url": "https://example.com/claim",
+                                "source_type": "web_page",
+                                "retrieved_at": "2026-10-01T00:00:00Z",
+                                "verified_at": "2026-10-03T00:00:00Z",
+                            },
+                        ],
+                        "explanation": [
+                            "The recorded eligibility rules match this purchase.",
+                            "The claim period is not available.",
+                        ],
+                    }
+                ],
+                "no_match_reason": None,
+                "explanation": [],
+            }
+        }
+    )
+
     outcome: Literal["resolved"]
     evaluation_date: date
     resolved_identity: Identity
@@ -228,6 +315,7 @@ def map_result(result, evaluation_date):
                 requirements=[
                     Requirement.model_validate(x, from_attributes=True) for x in p.requirements
                 ],
+                last_verified_at=p.last_verified_at,
                 provenance=Provenance.model_validate(p.provenance, from_attributes=True),
                 sources=[Source.model_validate(x, from_attributes=True) for x in p.sources],
                 explanation=list(p.explanation),

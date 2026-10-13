@@ -28,6 +28,8 @@ from app.domain.eligibility_result import EligibilityClassification
 pytestmark = pytest.mark.integration
 DAY = date(2024, 2, 29)
 STAMP = datetime(2024, 1, 1, tzinfo=UTC)
+CLAIM_STAMP = datetime(2024, 1, 3, tzinfo=UTC)
+SUPPORTING_STAMP = datetime(2024, 1, 4, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -46,7 +48,11 @@ def published_graph(postgres_engine, migrated_test_database):
                 url=f"https://example.com/{tag}/{role}",
                 source_type="web_page",
                 retrieved_at=STAMP,
-                verified_at=STAMP,
+                verified_at={
+                    "primary": STAMP,
+                    "claim": CLAIM_STAMP,
+                    "supporting": SUPPORTING_STAMP,
+                }[role],
             )
             for role in ("primary", "claim", "supporting")
         ]
@@ -171,7 +177,26 @@ def test_complete_snapshot_materialised_no_writes(postgres_engine, published_gra
             assert len(offer.benefits) == 3
             assert len(offer.requirements) == 3
             assert len(offer.sources) == 3
-            assert offer.provenance.verified_at == STAMP
+            assert offer.last_verified_at == offer.provenance.verified_at == STAMP
+            assert offer.provenance.official_source_url.endswith("/primary")
+            assert {s.role.value: s.verified_at for s in offer.sources} == {
+                "primary": STAMP,
+                "claim": CLAIM_STAMP,
+                "supporting": SUPPORTING_STAMP,
+            }
+            expected_kinds = ["manufacturer", "product"]
+            if offer.promotion_variant_id != variants[1]:
+                expected_kinds.append("retailer")
+            expected_kinds.append("purchase_date")
+            assert [r.kind.value for r in offer.eligibility.rule_evaluations] == expected_kinds
+            assert [r.code.value for r in offer.eligibility.reasons] == [
+                "all_configured_rules_satisfied",
+                "claim_window_open",
+            ]
+            assert offer.explanation == (
+                "The recorded eligibility rules match this purchase.",
+                "The claim window is open.",
+            )
             assert offer.claim_window.opens_on == DAY
         amounts = {
             benefit.cashback_reward_gbp

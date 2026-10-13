@@ -536,3 +536,34 @@ def test_repository_projection_failure_is_classified_and_chained(sql_failure):
     if not sql_failure:
         assert caught.value.code == "invalid_published_projection"
     assert logs == []
+
+
+@pytest.mark.parametrize("evaluation", [DAY, date(2024, 2, 28), date(2024, 4, 1)])
+def test_primary_verification_and_complete_evidence_survive_claim_classification(evaluation):
+    from datetime import timedelta, timezone
+
+    primary_time = datetime(2024, 1, 2, 14, 30, tzinfo=timezone(timedelta(hours=2)))
+    sources = (
+        replace(SOURCES[0], verified_at=primary_time),
+        replace(SOURCES[1], verified_at=datetime(2024, 1, 4, tzinfo=UTC)),
+        replace(SOURCES[2], verified_at=datetime(2024, 1, 5, tzinfo=UTC)),
+    )
+    offer = run(replace(DETAIL, sources=sources), evaluation_date=evaluation).promotions[0]
+    assert (offer.promotion_id, offer.promotion_variant_id) == (PROMO, VARIANT)
+    assert (offer.promotion_name, offer.variant_name) == ("Offer", "Variant")
+    assert offer.last_verified_at == offer.provenance.verified_at == primary_time
+    assert offer.last_verified_at.utcoffset() is not None
+    assert {s.role.value: s.verified_at for s in offer.sources} == {
+        s.role.value: s.verified_at for s in sources
+    }
+    assert [r.kind.value for r in offer.eligibility.rule_evaluations] == [
+        "manufacturer",
+        "product",
+        "retailer",
+        "purchase_date",
+    ]
+    assert all(r.status.value == "satisfied" for r in offer.eligibility.rule_evaluations)
+    assert offer.eligibility.reasons and len(offer.explanation) == len(offer.eligibility.reasons)
+    assert offer.provenance.official_source_url == sources[0].url
+    with pytest.raises(FrozenInstanceError):
+        offer.last_verified_at = STAMP

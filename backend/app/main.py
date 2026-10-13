@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.eligibility import router as eligibility_router
 from app.api.health import router as health_router
+from app.api.schemas.eligibility import ResolvedResponse
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.sentry import initialise_sentry
@@ -40,6 +41,19 @@ def create_app(
     app.state.session_factory = session_factory
     app.include_router(health_router)
     app.include_router(eligibility_router)
+
+    original_openapi = app.openapi
+
+    def openapi_with_complete_examples():
+        schema = original_openapi()
+        # FastAPI drops explicit nulls in examples. Restore the complete wire example
+        # after generation so required nullable fields remain documented accurately.
+        schema["components"]["schemas"]["ResolvedResponse"]["example"] = (
+            ResolvedResponse.model_json_schema()["example"]
+        )
+        return schema
+
+    app.openapi = openapi_with_complete_examples
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:

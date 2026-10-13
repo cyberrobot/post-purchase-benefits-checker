@@ -1,7 +1,7 @@
 """Immutable purchase-check read projection and application results."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol
@@ -170,6 +170,11 @@ class CheckPurchasePromotionResult:
     provenance: PublishedProvenance
     sources: tuple[PromotionSourceRecord, ...]
     explanation: tuple[str, ...]
+
+    @property
+    def last_verified_at(self) -> datetime:
+        """Recorded verification of the official primary source; no freshness check."""
+        return self.provenance.verified_at
 
 
 @dataclass(frozen=True, slots=True)

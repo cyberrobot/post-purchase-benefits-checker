@@ -1,7 +1,7 @@
 import json
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import Mock
 from uuid import UUID
@@ -159,6 +159,9 @@ def test_strict_request_mapping_and_complete_response(harness, price):
     result = data["promotions"][0]
     assert result["benefits"][0]["cashback_reward_gbp"] == "12.50"
     assert [x["cashback_reward_gbp"] for x in result["benefits"][1:]] == [None, None]
+    assert (
+        result["last_verified_at"] == result["provenance"]["verified_at"] == "2026-10-01T00:00:00Z"
+    )
     assert result["sources"][0]["verified_at"] is None
     assert result["provenance"]["retrieved_at"] == "2026-10-01T00:00:00Z"
     assert result["claim_window"] == {
@@ -308,13 +311,30 @@ def test_no_match_and_missing_price(harness):
         data["promotions"] == [] and data["no_match_reason"] == "no_matching_published_promotions"
     )
     assert state["calls"][0][0].purchase_price is None
+    assert "last_verified_at" not in data and "provenance" not in data
 
 
 @pytest.mark.parametrize("classification", list(EligibilityClassification))
 def test_classifications_and_order_preserved(harness, classification):
     client, state = harness
     first = offer()
-    first = replace(first, eligibility=replace(first.eligibility, classification=classification))
+    rules = first.eligibility.rule_evaluations
+    window_status = {
+        EligibilityClassification.ELIGIBLE: ClaimWindowStatus.OPEN,
+        EligibilityClassification.CLAIM_NOT_YET_OPEN: ClaimWindowStatus.NOT_YET_OPEN,
+        EligibilityClassification.EXPIRED: ClaimWindowStatus.EXPIRED,
+    }.get(classification, ClaimWindowStatus.OPEN)
+    if classification == EligibilityClassification.NOT_ELIGIBLE:
+        rules += (
+            RuleEvaluation(
+                RuleKind.RETAILER, RuleStatus.NOT_SATISFIED, RuleReasonCode.RETAILER_MISMATCH
+            ),
+        )
+    if classification == EligibilityClassification.POTENTIALLY_ELIGIBLE:
+        rules += (
+            RuleEvaluation(RuleKind.COUNTRY, RuleStatus.UNKNOWN, RuleReasonCode.COUNTRY_UNKNOWN),
+        )
+    first = replace(first, eligibility=classify_eligibility(rules, window_status))
     second = replace(
         first,
         promotion_variant_id=UUID(int=2),
@@ -333,6 +353,18 @@ def test_classifications_and_order_preserved(harness, classification):
     data = client.post(PATH, json=BODY).json()["promotions"]
     assert [x["promotion_variant_id"] for x in data] == [str(UUID(int=5)), str(UUID(int=2))]
     assert data[0]["eligibility"]["classification"] == classification.value
+    for item, original in zip(data, (first, second), strict=True):
+        assert item["last_verified_at"] == item["provenance"]["verified_at"]
+        assert item["explanation"] == list(original.explanation)
+        assert item["eligibility"]["rule_evaluations"] == [
+            {"kind": r.kind.value, "status": r.status.value, "reason_code": r.reason_code.value}
+            for r in original.eligibility.rule_evaluations
+        ]
+        assert item["eligibility"]["reasons"] == [
+            {"code": r.code.value, "rule_kind": r.rule_kind.value if r.rule_kind else None}
+            for r in original.eligibility.reasons
+        ]
+    assert len(state["calls"]) == 1
     assert data[1]["claim_window"] is None
     assert data[1]["eligibility"]["claim_window_status"] is None
     assert (
@@ -393,6 +425,10 @@ def test_openapi_contract(harness):
     assert schema["components"]["schemas"]["EligibilityClassification"]["enum"] == [
         x.value for x in EligibilityClassification
     ]
+    promotion = schema["components"]["schemas"]["Promotion"]
+    assert "last_verified_at" in promotion["required"]
+    assert promotion["properties"]["last_verified_at"]["type"] == "string"
+    assert promotion["properties"]["last_verified_at"]["format"] == "date-time"
     from app.api.schemas.eligibility import PurchaseRequest
 
     PurchaseRequest.model_validate(schema["components"]["schemas"]["PurchaseRequest"]["example"])
@@ -423,6 +459,14 @@ def test_openapi_response_examples_validate(harness):
     ]["application/json"]["examples"]
     for example in examples.values():
         TypeAdapter(CheckResponse).validate_python(example["value"])
+    matched = client.get("/openapi.json").json()["components"]["schemas"]["ResolvedResponse"][
+        "example"
+    ]
+    TypeAdapter(CheckResponse).validate_python(matched)
+    assert (
+        matched["promotions"][0]["last_verified_at"]
+        == matched["promotions"][0]["provenance"]["verified_at"]
+    )
 
 
 def test_unexpected_exception_reporting_preserves_context_and_safe_response(
@@ -551,3 +595,40 @@ def test_disabled_sentry_does_not_report(harness, sentry_capture):
     state["error"] = RuntimeError("private")
     assert client.post(PATH, json=BODY).status_code == 500
     sentry_capture.assert_not_called()
+
+
+def test_offset_primary_timestamp_is_authoritative_and_other_evidence_is_preserved(harness):
+    client, state = harness
+    primary = datetime(2026, 10, 2, 14, 30, tzinfo=timezone(timedelta(hours=2)))
+    original = offer()
+    sources = (
+        PromotionSourceRecord(
+            UUID(int=10),
+            "claim",
+            "https://example.org/claim",
+            "web_page",
+            STAMP,
+            datetime(2026, 10, 4, tzinfo=UTC),
+        ),
+        PromotionSourceRecord(
+            UUID(int=11),
+            "terms",
+            "https://example.org/terms",
+            "pdf",
+            STAMP,
+            datetime(2026, 10, 5, tzinfo=UTC),
+        ),
+        *original.sources,
+    )
+    changed = replace(
+        original, provenance=replace(original.provenance, verified_at=primary), sources=sources
+    )
+    state["result"] = CheckPurchaseResult(DAY, IDENTITY, (changed,))
+    item = client.post(PATH, json=BODY).json()["promotions"][0]
+    assert item["last_verified_at"] == item["provenance"]["verified_at"] == primary.isoformat()
+    assert [s["role"] for s in item["sources"]] == ["claim", "terms", "supporting"]
+    assert [s["verified_at"] for s in item["sources"]] == [
+        "2026-10-04T00:00:00Z",
+        "2026-10-05T00:00:00Z",
+        None,
+    ]
