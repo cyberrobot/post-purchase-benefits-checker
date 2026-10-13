@@ -624,6 +624,31 @@ independently accessed. Eligibility explains only configured purchase rules and 
 not guarantee claimant eligibility, claim acceptance or payment; claimant and proof
 checks remain part of Hisense's claim process.
 
+## Per-variant explainability contract
+
+Every matched promotion variant includes its stable promotion/variant IDs and names,
+all configured rule evaluations (including satisfied non-decisive rules), final
+classification, ordered decisive reason codes and deterministic explanation items.
+The API copies the canonical application result without evaluating rules again.
+Official promotion-level evidence appears in `provenance` and ordered `sources`;
+the stored model does not provide individual rule passage citations.
+
+Each v1 `promotions[]` item includes required, non-null `last_verified_at`, an
+RFC 3339 aware timestamp equal to `provenance.verified_at`. The immutable application
+result exposes the same value through a computed property. It comes from the unique
+validated PRIMARY official source, even when claim or supporting sources were
+verified later. Each source retains its own timestamp, including unverified `null`
+values. This records successful saved verification; it is not a live website check,
+freshness assurance, manufacturer claim approval or immutable historical evidence.
+
+All five classifications retain the same explanation/evidence fields. An expired
+promotion lifecycle does not itself expire a customer's claim. Candidate filtering
+can yield resolved `promotions: []` with a no-match reason; unresolved identity has
+no promotions field. Neither outcome invents rule verdicts, sources or verification
+timestamps. Invalid published primary/claim evidence fails with the existing safe
+500 response rather than partial success. Requests, existing response fields,
+errors, source storage and database schema are unchanged.
+
 ## Sony BRAVIA Autumn Cashback 2026 reference
 
 The [Sony reference manifest and evidence ledger](tests/fixtures/promotions/README.md)

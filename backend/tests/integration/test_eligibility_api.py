@@ -1,15 +1,16 @@
 from dataclasses import asdict
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, event
+from sqlalchemy import delete, event, select
 
 from app.api.eligibility import uk_evaluation_date
 from app.core.config import Settings
-from app.db.models import PromotionSource
+from app.db.models import PromotionSource, Source
 from app.main import create_app
-from tests.integration.test_check_purchase import DAY
+from tests.integration.test_check_purchase import CLAIM_STAMP, DAY, STAMP, SUPPORTING_STAMP
 from tests.integration.test_check_purchase import published_graph as published_graph
 
 pytestmark = pytest.mark.integration
@@ -65,6 +66,22 @@ def test_http_real_snapshot_complete_projection_and_no_writes(
                 len(offer["benefits"]) == len(offer["requirements"]) == len(offer["sources"]) == 3
             )
             assert offer["provenance"]["claim_url"].endswith("/claim")
+            assert offer["last_verified_at"] == offer["provenance"]["verified_at"]
+            assert datetime.fromisoformat(offer["last_verified_at"]) == STAMP
+            assert offer["provenance"]["official_source_url"].endswith("/primary")
+            assert {
+                s["role"]: datetime.fromisoformat(s["verified_at"]) for s in offer["sources"]
+            } == {"primary": STAMP, "claim": CLAIM_STAMP, "supporting": SUPPORTING_STAMP}
+            assert offer["eligibility"]["reasons"] == [
+                {"code": "all_configured_rules_satisfied", "rule_kind": None},
+                {"code": "claim_window_open", "rule_kind": None},
+            ]
+            expected_kinds = ["manufacturer", "product"]
+            if offer["promotion_variant_id"] != str(variants[1]):
+                expected_kinds.append("retailer")
+            expected_kinds.append("purchase_date")
+            assert [r["kind"] for r in offer["eligibility"]["rule_evaluations"]] == expected_kinds
+            assert all(r["status"] == "satisfied" for r in offer["eligibility"]["rule_evaluations"])
         assert {
             b["cashback_reward_gbp"]
             for p in data["promotions"]
@@ -147,6 +164,18 @@ def test_http_uses_read_only_repeatable_snapshot_during_concurrent_change(
                         .where(Promotion.id == promotions[0])
                         .values(name="Changed concurrently")
                     )
+                    connection.execute(
+                        update(Source)
+                        .where(
+                            Source.id.in_(
+                                select(PromotionSource.source_id).where(
+                                    PromotionSource.promotion_id == promotions[0],
+                                    PromotionSource.role == "primary",
+                                )
+                            )
+                        )
+                        .values(verified_at=SUPPORTING_STAMP)
+                    )
                 return candidates
 
             repository.find_promotion_candidates = change_after_candidates
@@ -156,7 +185,7 @@ def test_http_uses_read_only_repeatable_snapshot_during_concurrent_change(
     response = http_client.post(PATH, json=body(request))
     assert response.status_code == 200
     assert all(
-        p["promotion_name"] == "Offer 0"
+        datetime.fromisoformat(p["last_verified_at"]) == STAMP and p["promotion_name"] == "Offer 0"
         for p in response.json()["promotions"]
         if p["promotion_id"] == str(promotions[0])
     )
