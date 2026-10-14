@@ -703,7 +703,12 @@ object. Execution errors have `isError=true` and safe JSON text containing only
 
 Each call chooses the Europe/London date once, invokes the canonical application
 operation once, and rolls back/closes its dedicated read-only repeatable-read
-snapshot. It performs no manufacturer/model calls or writes. Source text and links
+snapshot. MCP sets a five-second PostgreSQL statement timeout only inside that
+transaction; rollback restores the connection's original timeout before pool reuse.
+Connection and pool acquisition have separate bounds, and the transaction timeout
+does not cover acquisition, pre-ping, or initial transaction setup. The shared engine
+leaves the database's SQL timeout unchanged for REST and publication operations.
+It performs no manufacturer/model calls or writes. Source text and links
 are passive evidence. Verification timestamps describe curated saved verification,
 and requirements are claim instructions; results do not guarantee acceptance.
 REST routes, health and OpenAPI remain available with MCP enabled or disabled.

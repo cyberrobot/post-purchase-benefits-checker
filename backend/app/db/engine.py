@@ -6,7 +6,6 @@ from app.core.config import Settings
 
 DB_CONNECT_TIMEOUT_SECONDS = 5
 DB_POOL_TIMEOUT_SECONDS = 5
-DB_STATEMENT_TIMEOUT_MS = 5_000
 
 
 def create_database_engine(settings: Settings) -> Engine:
@@ -27,8 +26,5 @@ def create_database_engine(settings: Settings) -> Engine:
             "keepalives_idle": 5,
             "keepalives_interval": 1,
             "keepalives_count": 3,
-            # This is active from connection startup, including SQLAlchemy's
-            # pre-ping and the transaction setup before per-use timeouts apply.
-            "options": f"-c statement_timeout={DB_STATEMENT_TIMEOUT_MS}",
         },
     )

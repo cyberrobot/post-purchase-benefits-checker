@@ -2,7 +2,7 @@ import app.db.engine as database_engine
 from app.core.config import Settings
 
 
-def test_database_engine_bounds_connection_pool_and_initial_queries(monkeypatch):
+def test_database_engine_bounds_connection_and_pool_without_global_sql_timeout(monkeypatch):
     captured = {}
 
     def create_engine(url, **kwargs):
@@ -24,5 +24,4 @@ def test_database_engine_bounds_connection_pool_and_initial_queries(monkeypatch)
         "keepalives_idle": 5,
         "keepalives_interval": 1,
         "keepalives_count": 3,
-        "options": "-c statement_timeout=5000",
     }

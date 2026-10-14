@@ -261,3 +261,65 @@ def test_mounted_protocol_disconnect_bounds_query_and_closes_snapshot(
             assert postgres_engine.pool.checkedout() == 0
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "outcome", ["success", "application_error", "sql_error", "timeout", "cancel"]
+)
+def test_mcp_transaction_timeout_restores_baseline_on_reused_connection(database_url, outcome):
+    from threading import Event
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.application.promotions import PromotionPersistenceError
+    from app.db.engine import create_database_engine
+    from app.db.repositories.promotions import PurchaseCheckCancelled, purchase_check_snapshot
+
+    # Exercise production engine construction rather than the fixture's separate engine.
+    engine = create_database_engine(Settings(_env_file=None, DATABASE_URL=database_url))
+    factory = sessionmaker(bind=engine)
+    cancellation = Event()
+    expected_error = {
+        "application_error": RuntimeError,
+        "sql_error": PromotionPersistenceError,
+        "timeout": PromotionPersistenceError,
+        "cancel": PurchaseCheckCancelled,
+    }.get(outcome)
+
+    def snapshot():
+        with purchase_check_snapshot(
+            factory, statement_timeout_ms=5_000, cancellation_event=cancellation
+        ) as (_, repository):
+            session = repository.session
+            assert session.scalar(text("SHOW statement_timeout")) == "5s"
+            assert session.scalar(text("SELECT pg_backend_pid()")) == baseline_pid
+            assert session.scalar(text("SHOW transaction_read_only")) == "on"
+            assert session.scalar(text("SHOW transaction_isolation")) == "repeatable read"
+            if outcome == "application_error":
+                raise RuntimeError("application failure")
+            if outcome == "sql_error":
+                session.execute(text("SELECT 1 / 0"))
+            if outcome == "timeout":
+                # Exercise real PostgreSQL timeout without waiting five seconds.
+                session.execute(text("SELECT set_config('statement_timeout', '1ms', true)"))
+                session.execute(text("SELECT pg_sleep(30)"))
+            if outcome == "cancel":
+                cancellation.set()
+                session.execute(text("SELECT 1"))
+
+    try:
+        with engine.connect() as connection:
+            baseline = connection.scalar(text("SHOW statement_timeout"))
+            baseline_pid = connection.scalar(text("SELECT pg_backend_pid()"))
+        if expected_error is None:
+            snapshot()
+        else:
+            with pytest.raises(expected_error):
+                snapshot()
+        assert engine.pool.checkedout() == 0
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT pg_backend_pid()")) == baseline_pid
+            assert connection.scalar(text("SHOW statement_timeout")) == baseline
+        assert engine.pool.checkedout() == 0
+    finally:
+        engine.dispose()
