@@ -3,9 +3,10 @@
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import date
+from threading import Event
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import event, or_, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -22,6 +23,10 @@ from app.db.models import (
 )
 from app.domain.promotion_lifecycle import HISTORICAL_PUBLISHED_STATUSES, PromotionStatus
 from app.domain.promotion_provenance import PromotionSourceRecord
+
+
+class PurchaseCheckCancelled(Exception):
+    """Cooperative cancellation for a read-only purchase-check worker."""
 
 
 def _record(row: Promotion) -> PromotionRecord:
@@ -474,7 +479,12 @@ def _check_details(variant):
 
 
 @contextmanager
-def purchase_check_snapshot(session_factory):
+def purchase_check_snapshot(
+    session_factory,
+    *,
+    statement_timeout_ms: int | None = None,
+    cancellation_event: Event | None = None,
+):
     """Dedicated read-only repeatable-read session shared by identity/candidate/detail reads.
 
     Always rollback; never flush or commit. Reject reused/pending sessions before SQL.
@@ -486,19 +496,38 @@ def purchase_check_snapshot(session_factory):
         with session_factory() as session:
             if session.in_transaction() or session.new or session.dirty or session.deleted:
                 raise ValueError("Purchase check requires a fresh dedicated session")
+
+            def raise_if_cancelled(*_args, **_kwargs):
+                if cancellation_event is not None and cancellation_event.is_set():
+                    raise PurchaseCheckCancelled
+
+            # Check before ORM statements reach the connection so cancellation
+            # prevents later queries, not only the request task's await.
+            event.listen(session, "do_orm_execute", raise_if_cancelled)
             try:
+                raise_if_cancelled()
                 session.connection(
                     execution_options={
                         "isolation_level": "REPEATABLE READ",
                         "postgresql_readonly": True,
                     }
                 )
+                if statement_timeout_ms is not None:
+                    if statement_timeout_ms <= 0:
+                        raise ValueError("Statement timeout must be positive")
+                    session.execute(
+                        text("SELECT set_config('statement_timeout', :timeout, true)"),
+                        {"timeout": f"{statement_timeout_ms}ms"},
+                    )
                 with session.no_autoflush:
                     yield (
                         IdentityResolver(SqlAlchemyIdentityRepository(session)),
                         SqlAlchemyPromotionRepository(session),
                     )
             finally:
-                session.rollback()
+                try:
+                    session.rollback()
+                finally:
+                    event.remove(session, "do_orm_execute", raise_if_cancelled)
     except SQLAlchemyError:
         raise PromotionPersistenceError("Purchase check snapshot failed") from None

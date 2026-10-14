@@ -4,6 +4,9 @@ from sqlalchemy.pool import QueuePool
 
 from app.core.config import Settings
 
+DB_CONNECT_TIMEOUT_SECONDS = 5
+DB_POOL_TIMEOUT_SECONDS = 5
+
 
 def create_database_engine(settings: Settings) -> Engine:
     """Create the pooled PostgreSQL engine owned by an application instance."""
@@ -14,4 +17,14 @@ def create_database_engine(settings: Settings) -> Engine:
         url,
         poolclass=QueuePool,
         pool_pre_ping=True,
+        pool_timeout=DB_POOL_TIMEOUT_SECONDS,
+        connect_args={
+            # Bound a fresh connection and dead TCP peers. Psycopg 3/libpq does
+            # not support a socket_timeout connection parameter.
+            "connect_timeout": DB_CONNECT_TIMEOUT_SECONDS,
+            "keepalives": 1,
+            "keepalives_idle": 5,
+            "keepalives_interval": 1,
+            "keepalives_count": 3,
+        },
     )

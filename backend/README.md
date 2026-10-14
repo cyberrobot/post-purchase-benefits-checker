@@ -665,3 +665,50 @@ purchaser cannot submit until 1 December. Combined purchase-relative opening and
 fixed deadline support is required before production use. The manifest and benefit
 description preserve this limitation, evidence and additional Sony claim conditions.
 There are no production seeds, migrations, configuration or public contract changes.
+
+## Optional local MCP purchase checker
+
+The official MCP Python SDK 2.3.0 provides Streamable HTTP at `/mcp` when
+`MCP_HTTP_ENABLED=true` in development/test. It is disabled by default; production
+configuration refuses enablement until a separately reviewed authenticated,
+rate-limited ingress with verified timeouts exists. Run locally on loopback:
+
+```sh
+MCP_HTTP_ENABLED=true uv run uvicorn app.main:app --host 127.0.0.1
+```
+
+Connect an SDK client to `http://127.0.0.1:8000/mcp`; `tools/list` discovers exactly
+one tool, `check_purchase`. Its flat arguments match REST v1:
+
+```json
+{"brand":"Samsung","model":"SM-R640","retailer":"Samsung.com","purchase_date":"2026-06-10","purchase_price":"199.99"}
+```
+
+Price is an exact GBP string or null/omitted; additional fields and client dates
+for evaluation are rejected. Decoded arguments are bounded to 8192 UTF-8 bytes,
+and the protocol envelope to 16384 bytes. SDK localhost host/origin protection
+remains enabled. The mounted MCP boundary accepts only actual ASGI IPv4/IPv6
+loopback peers and fails closed for missing or malformed peer addresses. Forwarding
+headers cannot establish locality. Do not expose MCP through a published Docker
+port, public proxy, tunnel or load balancer. A local reverse proxy can make external
+requests appear to originate from loopback: this check is not production
+authentication. Production MCP remains prohibited pending separately reviewed
+authentication, ingress rate limiting and timeouts.
+
+Success `structuredContent` is the complete REST v1 JSON object, with either
+resolved variants (including no-match) or unresolved identity. The declared schema
+covers both branches. A concise outcome/count text fallback is derived from that
+object. Execution errors have `isError=true` and safe JSON text containing only
+`code`, `message` and UUID `request_id`; protocol errors remain SDK errors.
+
+Each call chooses the Europe/London date once, invokes the canonical application
+operation once, and rolls back/closes its dedicated read-only repeatable-read
+snapshot. MCP sets a five-second PostgreSQL statement timeout only inside that
+transaction; rollback restores the connection's original timeout before pool reuse.
+Connection and pool acquisition have separate bounds, and the transaction timeout
+does not cover acquisition, pre-ping, or initial transaction setup. The shared engine
+leaves the database's SQL timeout unchanged for REST and publication operations.
+It performs no manufacturer/model calls or writes. Source text and links
+are passive evidence. Verification timestamps describe curated saved verification,
+and requirements are claim instructions; results do not guarantee acceptance.
+REST routes, health and OpenAPI remain available with MCP enabled or disabled.

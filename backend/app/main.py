@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request
@@ -28,12 +28,28 @@ def create_app(
     engine = engine_factory(app_settings)
     session_factory = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
 
+    mcp = None
+    mcp_app = None
+    if app_settings.mcp_http_enabled:
+        from app.mcp.local_access import LoopbackOnly
+        from app.mcp.server import PurchaseMCPServer
+
+        mcp = PurchaseMCPServer(session_factory, app_settings)
+        mcp_app = mcp.streamable_http_app(
+            json_response=True, stateless_http=True, max_request_body_size=16384
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("application_started", environment=app_settings.app_env)
-        yield
-        engine.dispose()
-        logger.info("application_stopped")
+        try:
+            async with AsyncExitStack() as stack:
+                if mcp is not None:
+                    await stack.enter_async_context(mcp.session_manager.run())
+                yield
+        finally:
+            engine.dispose()
+            logger.info("application_stopped")
 
     app = FastAPI(title="Post-Purchase Benefits Checker API", lifespan=lifespan)
     app.state.settings = app_settings
@@ -64,6 +80,11 @@ def create_app(
             error_type=type(exc).__name__,
         )
         return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+    if mcp_app is not None:
+        # Last mount preserves all REST, docs and OpenAPI routes; SDK owns /mcp.
+        app.mount("/", LoopbackOnly(mcp_app))
+        app.state.mcp_server = mcp
 
     return app
 
