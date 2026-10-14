@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import PostgresDsn, field_validator
+from pydantic import PostgresDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     database_url: PostgresDsn
     log_level: str = "INFO"
     sentry_dsn: str | None = None
+    mcp_http_enabled: bool = False
+
+    @model_validator(mode="after")
+    def protect_production_mcp(self):
+        if self.app_env == "production" and self.mcp_http_enabled:
+            raise ValueError(
+                "MCP HTTP is prohibited in production until protected ingress is verified"
+            )
+        return self
 
     @field_validator("log_level")
     @classmethod
