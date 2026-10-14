@@ -147,15 +147,25 @@ def test_cancelled_call_releases_postgres_snapshot(
     import anyio
 
     request, _, _, _ = published_graph
-    entered, release = threading.Event(), threading.Event()
+    entered, signalled = threading.Event(), threading.Event()
     original = adapter.check_purchase
+    original_snapshot = adapter.purchase_check_snapshot
+    events = []
+
+    @contextmanager
+    def tracked_snapshot(*args, **kwargs):
+        events.append(kwargs["cancellation_event"])
+        with original_snapshot(*args, **kwargs) as pair:
+            yield pair
 
     def blocked(*args, **kwargs):
         entered.set()
-        assert release.wait(timeout=5)
+        assert events[0].wait(timeout=5)
+        signalled.set()
         return original(*args, **kwargs)
 
     monkeypatch.setattr(adapter, "check_purchase", blocked)
+    monkeypatch.setattr(adapter, "purchase_check_snapshot", tracked_snapshot)
 
     async def run():
         async with mcp_app.router.lifespan_context(mcp_app):
@@ -166,7 +176,8 @@ def test_cancelled_call_releases_postgres_snapshot(
                 assert await anyio.to_thread.run_sync(entered.wait, 5)
                 assert postgres_engine.pool.checkedout() == 1
                 tasks.cancel_scope.cancel()
-                release.set()
+
+            assert signalled.is_set()
             assert postgres_engine.pool.checkedout() == 0
 
     asyncio.run(run())
@@ -196,7 +207,7 @@ def test_cooperative_cancellation_prevents_later_postgres_queries(
     event.listen(postgres_engine, "before_cursor_execute", record)
     try:
         result = mcp_app.state.mcp_server.execute(body(request), cancellation)
-        assert result is None
+        assert result.is_error and result.structured_content is None
         assert any(statement == "SELECT 1" for statement in statements)
         assert not any(statement == "SELECT 2" for statement in statements)
         assert postgres_engine.pool.checkedout() == 0

@@ -69,33 +69,38 @@ class PurchaseMCPServer(MCPServer):
             raise MCPError(-32602, "Unknown tool")
         request_context = getattr(context, "request_context", None)
         request = getattr(request_context, "request", None)
-        if request is None:
-            # Non-HTTP transports have no disconnect signal. The database
-            # statement timeout still bounds the dedicated worker.
-            return await anyio.to_thread.run_sync(self.execute, arguments)
-
         result = None
         cancellation_event = Event()
-        async with anyio.create_task_group() as tasks:
+        try:
+            async with anyio.create_task_group() as tasks:
 
-            async def execute():
-                nonlocal result
-                result = await anyio.to_thread.run_sync(
-                    self.execute,
-                    arguments,
-                    cancellation_event,
-                    abandon_on_cancel=True,
-                )
-                tasks.cancel_scope.cancel()
+                async def execute():
+                    nonlocal result
+                    # Own the worker through rollback/closure; its sibling observes
+                    # parent cancellation while this await is shielded.
+                    with anyio.CancelScope(shield=True):
+                        result = await anyio.to_thread.run_sync(
+                            self.execute, arguments, cancellation_event
+                        )
+                    tasks.cancel_scope.cancel()
 
-            async def watch_disconnect():
-                while not await request.is_disconnected():
-                    await anyio.sleep(DISCONNECT_POLL_INTERVAL_SECONDS)
-                cancellation_event.set()
-                tasks.cancel_scope.cancel()
+                async def watch_disconnect():
+                    try:
+                        if request is None:
+                            await anyio.sleep_forever()
+                        else:
+                            while not await request.is_disconnected():
+                                await anyio.sleep(DISCONNECT_POLL_INTERVAL_SECONDS)
+                            tasks.cancel_scope.cancel()
+                    finally:
+                        cancellation_event.set()
 
-            tasks.start_soon(execute)
-            tasks.start_soon(watch_disconnect)
+                tasks.start_soon(watch_disconnect)
+                tasks.start_soon(execute)
+        finally:
+            cancellation_event.set()
+        if result is None:
+            raise MCPError(-32603, "Purchase check interrupted")
         return result
 
     def execute(self, arguments, cancellation_event: Event | None = None):
@@ -179,7 +184,7 @@ class PurchaseMCPServer(MCPServer):
             )
             return response
         except PurchaseCheckCancelled:
-            return None
+            return failure("eligibility_unavailable", "persistence", "Purchase check interrupted.")
         except PublishedPromotionDataError:
             return failure(
                 "published_data_invalid", "data_integrity", "Unable to check this purchase."

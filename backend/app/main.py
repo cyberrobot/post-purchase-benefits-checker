@@ -31,6 +31,7 @@ def create_app(
     mcp = None
     mcp_app = None
     if app_settings.mcp_http_enabled:
+        from app.mcp.local_access import LoopbackOnly
         from app.mcp.server import PurchaseMCPServer
 
         mcp = PurchaseMCPServer(session_factory, app_settings)
@@ -82,7 +83,7 @@ def create_app(
 
     if mcp_app is not None:
         # Last mount preserves all REST, docs and OpenAPI routes; SDK owns /mcp.
-        app.mount("/", mcp_app)
+        app.mount("/", LoopbackOnly(mcp_app))
         app.state.mcp_server = mcp
 
     return app

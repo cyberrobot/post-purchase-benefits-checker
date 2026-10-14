@@ -26,8 +26,8 @@ from tests.unit.test_eligibility_api import BODY, DAY, IDENTITY, offer
 
 
 @asynccontextmanager
-async def protocol_client(app, mode="legacy"):
-    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app)) as http:
+async def protocol_client(app, mode="legacy", peer=("127.0.0.1", 12345)):
+    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app, client=peer)) as http:
         transport = streamable_http_client("http://localhost:8000/mcp", http_client=http)
         async with Client(transport, mode=mode) as client:
             yield client
@@ -293,3 +293,163 @@ def test_cancellation_waits_for_snapshot_cleanup(harness, monkeypatch):
         assert state["closed"] == 1
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("peer", [("127.0.0.1", 12345), ("::1", 12345)])
+def test_mounted_loopback_protocol(harness, peer):
+    app, state = harness
+
+    async def run():
+        async with app.router.lifespan_context(app), protocol_client(app, peer=peer) as client:
+            assert [tool.name for tool in (await client.list_tools()).tools] == ["check_purchase"]
+            assert not (await client.call_tool("check_purchase", BODY)).is_error
+
+    asyncio.run(run())
+    assert state["entered"] == state["closed"] == 1
+
+
+@pytest.mark.parametrize(
+    "peer",
+    [
+        None,
+        ("192.0.2.1", 80),
+        ("localhost", 80),
+        ("invalid", 80),
+        ("::ffff:192.0.2.1", 80),
+        ("127.0.0.1", "80"),
+        ("127.0.0.1",),
+        ("::1%spoof", 80),
+    ],
+)
+def test_mounted_nonlocal_and_invalid_peers_denied(harness, peer):
+    app, state = harness
+
+    async def run():
+        async with app.router.lifespan_context(app):
+            async with httpx2.AsyncClient(
+                transport=httpx2.ASGITransport(app=app, client=peer),
+                base_url="http://localhost:8000",
+            ) as http:
+                response = await http.post(
+                    "/mcp",
+                    headers={
+                        "Host": "localhost:8000",
+                        "Origin": "http://localhost:8000",
+                        "Forwarded": "for=127.0.0.1",
+                        "X-Forwarded-For": "127.0.0.1",
+                    },
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {"name": "check_purchase", "arguments": BODY},
+                    },
+                )
+                assert response.status_code == 403
+                assert (await http.get("/health")).status_code == 200
+                assert (await http.get("/openapi.json")).status_code == 200
+                assert (await http.get("/docs")).status_code == 200
+                assert (await http.post("/api/v1/eligibility/check", json={})).status_code == 422
+
+    asyncio.run(run())
+    assert state["entered"] == state["check"].call_count == 0
+
+
+def test_parent_cancel_signals_worker_before_disconnect_and_waits_for_cleanup(harness, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    import anyio
+
+    app, state = harness
+    entered, exited = threading.Event(), threading.Event()
+    events = []
+    original_snapshot = adapter.purchase_check_snapshot
+
+    @contextmanager
+    def snapshot(*args, **kwargs):
+        events.append(kwargs["cancellation_event"])
+        with original_snapshot(*args, **kwargs) as pair:
+            yield pair
+
+    def blocked(*args, **kwargs):
+        entered.set()
+        assert events[0].wait(5)
+        exited.set()
+        return state["result"]
+
+    class ConnectedRequest:
+        async def is_disconnected(self):
+            return False
+
+    context = SimpleNamespace(request_context=SimpleNamespace(request=ConnectedRequest()))
+    monkeypatch.setattr(adapter, "purchase_check_snapshot", snapshot)
+    monkeypatch.setattr(adapter, "check_purchase", blocked)
+    results = []
+
+    async def run():
+        async with anyio.create_task_group() as tasks:
+
+            async def invoke():
+                results.append(
+                    await app.state.mcp_server.call_tool("check_purchase", BODY, context)
+                )
+
+            tasks.start_soon(invoke)
+            assert await anyio.to_thread.run_sync(entered.wait, 5)
+            tasks.cancel_scope.cancel()
+        assert events[0].is_set() and exited.is_set()
+        assert state["closed"] == 1
+        assert all(result.is_error and result.structured_content is None for result in results)
+
+    asyncio.run(run())
+
+
+def test_cancel_during_connection_acquisition_closes_session():
+    import threading
+    from contextlib import contextmanager
+
+    from sqlalchemy.orm import Session
+
+    from app.db.repositories.promotions import PurchaseCheckCancelled, purchase_check_snapshot
+
+    acquiring = threading.Event()
+    cancellation = threading.Event()
+    cleanup = threading.Event()
+    outcome = []
+
+    class AcquiringSession(Session):
+        def connection(self, *args, **kwargs):
+            acquiring.set()
+            assert cancellation.wait(2)
+            return None
+
+        def close(self):
+            cleanup.set()
+            return super().close()
+
+    @contextmanager
+    def session_factory():
+        with AcquiringSession() as session:
+            yield session
+
+    def run_snapshot():
+        try:
+            with purchase_check_snapshot(
+                session_factory,
+                statement_timeout_ms=100,
+                cancellation_event=cancellation,
+            ):
+                outcome.append("unexpectedly entered")
+        except PurchaseCheckCancelled:
+            outcome.append("cancelled")
+
+    worker = threading.Thread(target=run_snapshot)
+    worker.start()
+    assert acquiring.wait(2)
+    cancellation.set()
+    worker.join(2)
+
+    assert not worker.is_alive()
+    assert outcome == ["cancelled"]
+    assert cleanup.is_set()

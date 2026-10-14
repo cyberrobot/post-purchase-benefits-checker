@@ -687,7 +687,13 @@ one tool, `check_purchase`. Its flat arguments match REST v1:
 Price is an exact GBP string or null/omitted; additional fields and client dates
 for evaluation are rejected. Decoded arguments are bounded to 8192 UTF-8 bytes,
 and the protocol envelope to 16384 bytes. SDK localhost host/origin protection
-remains enabled. No wildcard CORS or production gateway protection is implied.
+remains enabled. The mounted MCP boundary accepts only actual ASGI IPv4/IPv6
+loopback peers and fails closed for missing or malformed peer addresses. Forwarding
+headers cannot establish locality. Do not expose MCP through a published Docker
+port, public proxy, tunnel or load balancer. A local reverse proxy can make external
+requests appear to originate from loopback: this check is not production
+authentication. Production MCP remains prohibited pending separately reviewed
+authentication, ingress rate limiting and timeouts.
 
 Success `structuredContent` is the complete REST v1 JSON object, with either
 resolved variants (including no-match) or unresolved identity. The declared schema

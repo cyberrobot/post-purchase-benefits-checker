@@ -525,7 +525,9 @@ def purchase_check_snapshot(
                         SqlAlchemyPromotionRepository(session),
                     )
             finally:
-                session.rollback()
-                event.remove(session, "do_orm_execute", raise_if_cancelled)
+                try:
+                    session.rollback()
+                finally:
+                    event.remove(session, "do_orm_execute", raise_if_cancelled)
     except SQLAlchemyError:
         raise PromotionPersistenceError("Purchase check snapshot failed") from None
