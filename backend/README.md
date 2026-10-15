@@ -875,3 +875,67 @@ A direct model-API run using that protocol would evaluate only that model/client
 path. Testing the actual ChatGPT app requires a separately scoped, supported
 connector/authentication/deployment path and its own trace and UI evaluation;
 this protocol does not certify OAuth, marketplace review or the ChatGPT product.
+
+### Five-manufacturer MVP acceptance
+
+From `backend/`, using the existing Python 3.13 environment and local Docker:
+
+```sh
+uv sync --locked --extra dev
+uv run pytest tests/integration/test_mvp_end_to_end_acceptance.py -q
+uv run pytest tests/unit/test_mvp_acceptance_cases.py tests/unit/test_eligibility_result.py
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+The named acceptance entry point composes the five pinned reference constructors
+in one migrated PostgreSQL 16 Testcontainer. Immutable cases share a catalogue;
+publication, historical lifecycle, ambiguous alias and synthetic configuration
+checks own separate catalogues and verify full teardown. CI's existing
+`uv run pytest` collects these tests. No provider keys, live source retrieval,
+new schema, API/MCP contract or production configuration is required.
+
+| Coverage | Samsung | LG | Hisense | Hotpoint | Sony |
+| --- | --- | --- | --- | --- | --- |
+| Exact fixed cashback; requirements; source evidence; REST/MCP parity | £50 | £150 | £100 | £75 | £150 |
+| Purchase boundaries; known unlinked model; synthetic excluded retailer | Yes | Yes | Yes | Yes | Yes |
+| Claim expiry; historical expired visibility; supporting tools | Yes | Yes | Yes | Yes | Yes |
+| Not-yet-open after a legitimate purchase | N/A | N/A | Yes | Yes | Yes |
+| Missing/malformed input; unknown identities; optional price | Yes | Yes | Yes | Yes | Yes |
+| Review, failed publication and archived exclusion | Yes | Yes | Yes | Yes | Yes |
+| Production readiness | Narrow model only | Narrow model only | Narrow model only | **BLOCKED** | **BLOCKED** |
+
+The isolated ambiguous curated retailer alias yields unresolved identity. A
+clearly synthetic review promotion with no claim window is rejected at the real
+publication gate (`missing_claim_window`) and remains invisible. This blocks the
+specification’s requested published unspecified-window integration case; no
+publication bypass is used. The existing focused domain/consumer tests cover
+`POTENTIALLY_ELIGIBLE` with `claim_window_unspecified` at their runtime seams.
+Fixed rewards in the five references do not become unknown when price is absent.
+Candidate-filtered exclusions are resolved no-match.
+`NOT_ELIGIBLE` rule precedence remains covered by `test_eligibility_result.py`.
+Repeated successful checks and corrupt-data failures check connection cleanup;
+read snapshots assert PostgreSQL repeatable-read/read-only settings, while the
+read-only replay test observes SQL and unchanged stored graphs. Existing PR 27–29
+regressions cover cancellation/timeouts and remaining transport limits.
+
+**MVP release sign-off remains blocked for Hotpoint and Sony.** Diagnostic tests
+record the current backend's premature `ELIGIBLE` projection for Hotpoint bought
+12 June/evaluated 4 June 2026 and Sony bought 27 October/evaluated 4 November 2026.
+They assert the pinned `status=unmodelled`,
+`production_publication_permitted=false` metadata and emit a blocked readiness
+property. These are test-only references. Hotpoint's 30-day wait and Sony's
+35-day wait require a purchase-relative opening combined with the absolute
+deadline before either reference can support authoritative production claim-now
+advice. A green suite confirms the documented current model, including its
+known limitations; it does not approve those premature claims.
+
+Only the exact five model/retailer slices are covered, not entire campaigns.
+Recorded verification timestamps are historical evidence, not live freshness.
+The five-field purchase request cannot establish claimant age/residency,
+condition, seller/marketplace channel, receipt/serial/registration possession,
+account creation, prior claims or manufacturer approval/payment. Scripted MCP
+journeys exercise explicit fixture decisions, not actual LLM comprehension or a
+live claim portal. Supporting tools inspect stored evidence without reclassifying
+the purchase or fetching the source URLs.
