@@ -6,11 +6,18 @@ from datetime import timedelta
 
 import httpx2
 import pytest
+from jsonschema import validate
 from sqlalchemy import delete, event, text, update
 
 from app.db.models import Promotion, PromotionSource, Requirement
 from app.mcp import server as adapter
-from tests.chatgpt.flow import Scenario, ScriptedConversation, assert_grounded, safe_error_code
+from tests.chatgpt.flow import (
+    Claim,
+    Scenario,
+    ScriptedConversation,
+    assert_grounded,
+    safe_error_code,
+)
 from tests.integration.test_check_purchase import DAY
 from tests.integration.test_check_purchase import published_graph as published_graph
 from tests.integration.test_eligibility_api import PATH, body
@@ -39,6 +46,65 @@ def scenario(request, **changes):
         assertion_focus=("classification", "reward", "source"),
         follow_up="What proof is needed, and where does this offer come from?",
     )
+
+
+def test_independent_answer_claims_grounded_in_protocol_result(
+    mcp_app, postgres_engine, published_graph
+):
+    request, _, variants, _ = published_graph
+
+    async def run():
+        async with mcp_app.router.lifespan_context(mcp_app), protocol_client(mcp_app) as client:
+            tool = next(t for t in (await client.list_tools()).tools if t.name == "check_purchase")
+            result = await client.call_tool("check_purchase", body(request))
+            assert not result.is_error
+            validate(result.structured_content, tool.output_schema)
+            data = result.structured_content
+            offer = next(
+                p for p in data["promotions"] if p["promotion_variant_id"] == str(variants[0])
+            )
+            variant_id = offer["promotion_variant_id"]
+            benefit_id = next(
+                b["benefit_id"] for b in offer["benefits"] if b["benefit_type"] == "cashback"
+            )
+
+            # published_graph records an open 29 Feb–30 Mar window, satisfied rules,
+            # and a £100 fixed cashback for this variant. Only scopes come from data;
+            # answer facts are supplied independently of the returned field values.
+            assert_grounded(
+                (
+                    Claim("classification", "ELIGIBLE", variant_id),
+                    Claim(
+                        "claim_window",
+                        {
+                            "status": "open",
+                            "opens_on": "2024-02-29",
+                            "deadline_on": "2024-03-30",
+                        },
+                        variant_id,
+                    ),
+                ),
+                data,
+            )
+            for fabricated in (
+                Claim("cashback_reward_gbp", "999.99", variant_id, benefit_id),
+                Claim("classification", "NOT_ELIGIBLE", variant_id),
+                Claim(
+                    "claim_window",
+                    {
+                        "status": "open",
+                        "opens_on": "2024-02-29",
+                        "deadline_on": "2099-01-01",
+                    },
+                    variant_id,
+                ),
+            ):
+                with pytest.raises(AssertionError, match="result grounding"):
+                    assert_grounded((fabricated,), data)
+            assert postgres_engine.pool.checkedout() == 0
+
+    asyncio.run(run())
+    assert postgres_engine.pool.checkedout() == 0
 
 
 @pytest.mark.parametrize(
