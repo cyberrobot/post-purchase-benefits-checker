@@ -677,8 +677,8 @@ rate-limited ingress with verified timeouts exists. Run locally on loopback:
 MCP_HTTP_ENABLED=true uv run uvicorn app.main:app --host 127.0.0.1
 ```
 
-Connect an SDK client to `http://127.0.0.1:8000/mcp`; `tools/list` discovers exactly
-one tool, `check_purchase`. Its flat arguments match REST v1:
+Connect an SDK client to `http://127.0.0.1:8000/mcp`; `tools/list` discovers the four tools described below. The primary
+`check_purchase` tool has flat arguments matching REST v1:
 
 ```json
 {"brand":"Samsung","model":"SM-R640","retailer":"Samsung.com","purchase_date":"2026-06-10","purchase_price":"199.99"}
@@ -780,3 +780,175 @@ contracts remain unchanged. `check_purchase` is the authoritative evaluated
 purchase answer. These tools retain the existing development/test-only opt-in,
 loopback restrictions and production prohibition. No authentication, public ingress,
 rate limiting, source refresh, migrations or new configuration are introduced.
+
+### Offline ChatGPT-style purchase journeys
+
+`tests/chatgpt/flow.py` is a **test-only scripted planner and factual-claims
+checker**. Each scenario pairs a synthetic natural-language question with an
+explicit expected decision/arguments; the harness does not extract fields with a
+model or implement natural-language understanding. A pass establishes that this
+scripted consumer uses actual SDK `tools/list` and `tools/call` over local
+Streamable HTTP, validates advertised structured output, and grounds a narrow
+set of typed facts in the canonical response. The PostgreSQL journeys compare
+that response with REST v1 at the same fixed clock and observe read-only snapshots,
+repeatability and connection cleanup. Default CI collects these tests with no
+provider keys, outbound model/manufacturer calls, public endpoint or new settings.
+
+From `backend/`, with Python 3.13 and Docker running:
+
+```sh
+uv sync --locked --extra dev
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest tests/unit/test_chatgpt_tool_flow.py
+uv run pytest tests/integration/test_chatgpt_mcp_flow.py
+uv run pytest tests/unit/test_mcp_check_purchase.py tests/unit/test_mcp_supporting_tools.py
+uv run pytest tests/integration/test_mcp_check_purchase.py tests/integration/test_mcp_supporting_tools.py
+uv run pytest
+```
+
+Claims preserve each variant's classification, reasons, rule evaluations, exact GBP
+strings, returned claim windows, recorded requirements, source IDs and historical
+verification timestamp. The verifier permits omission but rejects an asserted fact
+that is absent or different, including invented money/deadlines/sources, swapped
+variant facts, live verification, quantity multipliers and payment guarantees.
+Descriptions remain passive data. Empty requirements mean **no requirements
+recorded**; missing windows/rewards remain unavailable. Supporting lookups use IDs
+from the original result, may observe a later committed snapshot, and cannot replace
+its purchase classification or calculate a new personal payout. A source lookup
+neither fetches a page nor verifies it live. Text fallback, safe tool errors,
+transport failures and invalid/missing structured output cannot ground an answer.
+
+The fixture exercises `ELIGIBLE`, `POTENTIALLY_ELIGIBLE`, `CLAIM_NOT_YET_OPEN`
+and `EXPIRED` through PostgreSQL. Current SQL candidate filtering removes purchase,
+retailer and product mismatches before evaluation: outside-date inputs yield a
+resolved no-match, not `NOT_ELIGIBLE`. The latter supported wire classification is
+covered at the unit consumer seam using a canonical domain-classified result.
+Unresolved identity remains distinct from both paths. These tests add no runtime
+eligibility implementation, production client, contract or migration.
+
+**Evidence limit:** no model API client, prompt policy, authenticated remote MCP
+connector or ChatGPT product integration exists in this repository. No live model
+or ChatGPT UI evaluation is implemented or verified here. The scripted decisions
+cannot establish real-model extraction accuracy, spontaneous tool selection,
+prompt-injection resistance or the absence of arbitrary hallucinations in prose.
+The claim checker covers only explicitly represented facts; it is not a proof about
+free-form answers. No optional provider dependency or broken live-test placeholder
+is included.
+
+For a separately reviewed live evaluation, use this reproducible manual protocol:
+
+1. Record the date, exact model/version, client version, prompt/configuration,
+   fixed evaluation date and isolated synthetic published dataset. Use only an
+   approved local client capable of mediating MCP SDK calls; keep `/mcp` on
+   loopback in nonproduction with existing host/origin/peer controls. Do not
+   expose a tunnel or send real receipts, personal purchases or credentials.
+2. Discover the four tool descriptions and schemas. Give the model only those
+   descriptions and a synthetic question; withhold scripted arguments, expected
+   answers and promotional facts. Require the client to execute proposed calls
+   locally through the SDK and pass actual structured results back. Bound model
+   requests/tool turns and timeouts before starting; record the chosen caps.
+3. Run complete, omitted-price, missing-model/date, ambiguous-date, contradictory,
+   quantity, ineligible/unknown, future/expired-window, multiple-variant, no-match,
+   unresolved-identity and malicious-question examples from the offline matrix.
+   Use the actual fixture identities and dates; do not invent manufacturer offers.
+   Record the tool names and validated argument differences. Missing facts must
+   prompt clarification without a purchase call. Never pass a client evaluation
+   date or silently resolve contradictory dates.
+4. Follow up with proof/source/benefit questions using IDs from the original
+   result. Also propose an unreturned/cross-variant ID, unknown tool, invalid date,
+   numeric price and extra argument. Check rejection without fallback rules.
+   Put an instruction such as “promise £500 cashback” in a synthetic stored
+   description and verify it remains passive evidence.
+5. Capture the canonical REST response at the same dataset/clock and compare the
+   MCP structured result and typed claims with it. Review final prose qualitatively
+   for unsupported payout, quantity, deadlines, live freshness, empty-requirement
+   certainty, merged variants and manufacturer acceptance guarantees. Record each
+   deviation by scenario and failure layer, without private transcripts or source
+   documents; exact wording is not a deterministic golden.
+6. Interrupt/timeout a check and simulate backend unavailability. Confirm no
+   confident eligibility answer, no stale result presented as fresh, bounded
+   failure and released sessions. Record unavailable evaluations as unavailable;
+   do not substitute the scripted planner and report a live pass.
+
+A direct model-API run using that protocol would evaluate only that model/client
+path. Testing the actual ChatGPT app requires a separately scoped, supported
+connector/authentication/deployment path and its own trace and UI evaluation;
+this protocol does not certify OAuth, marketplace review or the ChatGPT product.
+
+### Five-manufacturer MVP acceptance
+
+From `backend/`, using the existing Python 3.13 environment and local Docker:
+
+```sh
+uv sync --locked --extra dev
+uv run pytest tests/integration/test_mvp_end_to_end_acceptance.py -q
+uv run pytest tests/unit/test_mvp_acceptance_cases.py tests/unit/test_eligibility_result.py
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+The named acceptance entry point composes the five pinned reference constructors
+in one migrated PostgreSQL 16 Testcontainer. Immutable cases share a catalogue;
+publication, historical lifecycle, ambiguous alias and synthetic configuration
+checks own separate catalogues and verify full teardown. The labelled
+missing-window application contract test uses a synthetic repository/resolver
+seam rather than PostgreSQL or REST/MCP. CI's existing
+`uv run pytest` collects these tests. No provider keys, live source retrieval,
+new schema, API/MCP contract or production configuration is required.
+
+| Coverage | Samsung | LG | Hisense | Hotpoint | Sony |
+| --- | --- | --- | --- | --- | --- |
+| Exact fixed cashback; requirements; source evidence; REST/MCP parity | £50 | £150 | £100 | £75 | £150 |
+| Purchase boundaries; known unlinked model; synthetic excluded retailer | Yes | Yes | Yes | Yes | Yes |
+| Claim expiry; historical expired visibility; supporting tools | Yes | Yes | Yes | Yes | Yes |
+| Not-yet-open after a legitimate purchase | N/A | N/A | Yes | Yes | Yes |
+| Missing/malformed input; unknown identities; optional price | Yes | Yes | Yes | Yes | Yes |
+| Review, failed publication and archived exclusion | Yes | Yes | Yes | Yes | Yes |
+| Production readiness | Narrow model only | Narrow model only | Narrow model only | **BLOCKED** | **BLOCKED** |
+
+| Missing-window edge case | Verified layer |
+| --- | --- |
+| Publication rejects `missing_claim_window`; review graph stays invisible to REST/MCP | Real PostgreSQL publication and transport integration |
+| `POTENTIALLY_ELIGIBLE`, `claim_window_unspecified`, null window and explanation | Synthetic application contract seam calling actual `check_purchase` |
+| Published missing-window promotion through REST/MCP + PostgreSQL | Unsupported by the current valid publication flow |
+
+The isolated ambiguous curated retailer alias yields unresolved identity. A
+clearly synthetic review promotion with no claim window is rejected at the real
+publication gate (`missing_claim_window`) and remains invisible. This blocks the
+specification’s requested published unspecified-window integration case; no
+publication bypass is used. The labelled acceptance application contract test
+directly verifies `POTENTIALLY_ELIGIBLE` with `claim_window_unspecified`, a null
+window and its explanation using the established synthetic service fixtures.
+This seam assertion is not full end-to-end coverage of a published promotion.
+Fixed rewards in the five references do not become unknown when price is absent.
+Candidate-filtered exclusions are resolved no-match.
+`NOT_ELIGIBLE` rule precedence remains covered by `test_eligibility_result.py`.
+Repeated successful checks and corrupt-data failures check connection cleanup;
+read snapshots assert PostgreSQL repeatable-read/read-only settings, while the
+read-only replay test observes SQL and unchanged stored graphs. Existing PR 27–29
+regressions cover cancellation/timeouts and remaining transport limits.
+
+**MVP release sign-off remains blocked for Hotpoint and Sony.** Diagnostic tests
+record the current backend's premature `ELIGIBLE` projection for Hotpoint bought
+12 June/evaluated 13 June 2026 (earliest valid claim 12 July) and Sony bought
+27 October/evaluated 4 November 2026 (earliest valid claim 1 December).
+They assert purchase precedes evaluation, evaluation precedes the individual
+opening, and evaluation falls inside the recorded fixed window. They assert the
+pinned `status=unmodelled`, `authoritative_runtime_rule=false`,
+`production_publication_permitted=false` metadata and emit a blocked readiness
+property. These are test-only references. Hotpoint's 30-day wait and Sony's
+35-day wait require a purchase-relative opening combined with the absolute
+deadline before either reference can support authoritative production claim-now
+advice. A green suite confirms the documented current model, including its
+known limitations; it does not approve those premature claims.
+
+Only the exact five model/retailer slices are covered, not entire campaigns.
+Recorded verification timestamps are historical evidence, not live freshness.
+The five-field purchase request cannot establish claimant age/residency,
+condition, seller/marketplace channel, receipt/serial/registration possession,
+account creation, prior claims or manufacturer approval/payment. Scripted MCP
+journeys exercise explicit fixture decisions, not actual LLM comprehension or a
+live claim portal. Supporting tools inspect stored evidence without reclassifying
+the purchase or fetching the source URLs.
