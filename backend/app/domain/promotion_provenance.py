@@ -62,25 +62,28 @@ def _aware(value: object) -> bool:
     )
 
 
+def is_valid_source_url(url: object) -> bool:
+    """Check passive evidence URL structure without resolving or retrieving it."""
+    if not isinstance(url, str) or not url:
+        return False
+    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+        return False
+    try:
+        parsed = urlsplit(url)
+        return (
+            parsed.scheme in {"http", "https"}
+            and bool(parsed.hostname)
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port != 0
+        )
+    except ValueError:
+        return False
+
+
 def _validate_source(source: PromotionSourceRecord) -> None:
     role = source.role.value
-    valid_url = False
-    if isinstance(source.url, str):
-        url = source.url.strip()
-        try:
-            parsed = urlsplit(url)
-            valid_url = (
-                bool(url)
-                and not any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url)
-                and parsed.scheme in {"http", "https"}
-                and bool(parsed.hostname)
-                and parsed.username is None
-                and parsed.password is None
-                and parsed.port != 0
-            )
-        except ValueError:
-            pass
-    if not valid_url:
+    if not is_valid_source_url(source.url):
         raise PromotionProvenanceError(f"invalid_{role}_url")
     if not _aware(source.retrieved_at):
         raise PromotionProvenanceError("invalid_retrieval_timestamp")

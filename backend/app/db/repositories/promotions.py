@@ -142,6 +142,25 @@ class SqlAlchemyPromotionRepository:
                 code=PublishedDataErrorCode.INVALID_PROJECTION
             ) from error
 
+    def load_published_variant(self, variant_id):
+        """Gate publication before materialising any private associated graph."""
+        try:
+            with self.session.no_autoflush:
+                visible = self.session.scalar(
+                    select(PromotionVariant.id)
+                    .join(Promotion, Promotion.id == PromotionVariant.promotion_id)
+                    .where(
+                        PromotionVariant.id == variant_id,
+                        Promotion.status.in_([PromotionStatus.ACTIVE, PromotionStatus.EXPIRED]),
+                    )
+                )
+        except SQLAlchemyError as error:
+            raise PromotionPersistenceError("Published details query failed") from error
+        if visible is None:
+            return None
+        details = self.load_check_purchase_candidates((variant_id,))
+        return details[0] if details else None
+
     def get_publication_snapshot_for_update(self, promotion_id):
         """Lock parent first; cooperating graph writers must acquire this same lock."""
         from app.domain.benefits import Benefit as BenefitValue

@@ -712,3 +712,71 @@ It performs no manufacturer/model calls or writes. Source text and links
 are passive evidence. Verification timestamps describe curated saved verification,
 and requirements are claim instructions; results do not guarantee acceptance.
 REST routes, health and OpenAPI remain available with MCP enabled or disabled.
+
+### MCP supporting lookups
+
+When the existing local MCP transport is enabled, `tools/list` returns, in order,
+`check_purchase`, `get_benefit`, `get_claim_requirements`, and `get_promotion_source`.
+The three supporting tools use independent, read-only repeatable-read PostgreSQL
+snapshots. They accept only exact UUIDs and expose active or expired published
+variants. Archived records are hidden because that state does not establish prior
+publication. Benefits must belong to the variant; sources must be linked to its
+parent promotion. A prior `check_purchase` call is optional.
+
+Example `tools/call` argument objects (replace illustrative IDs with returned IDs):
+
+```json
+{"name":"get_benefit","arguments":{"promotion_variant_id":"00000000-0000-0000-0000-000000000005","benefit_id":"00000000-0000-0000-0000-000000000006","product_id":null}}
+```
+
+`get_benefit` returns `promotion_id`, `promotion_variant_id`, `promotion_status`,
+`benefit_id`, `benefit_type`, `name`, `description`, and nullable `reward`.
+Stored rewards contain `reward_type`, `fixed_amount_gbp`, `percentage`, `product_id`,
+`product_amount_gbp`, and `product_lookup_status`. Decimal values are exact plain
+strings. Fixed amounts and percentages have status `not_applicable`; they reject a
+non-null product ID. Product-specific rules have `product_id_required` until one
+linked canonical `product_id` is supplied, then `configured` and its single stored
+amount. No full product map or purchase-specific payout is returned. Missing stored
+reward data is null; missing required product reward coverage fails closed.
+
+```json
+{"name":"get_claim_requirements","arguments":{"promotion_variant_id":"00000000-0000-0000-0000-000000000005"}}
+```
+
+`get_claim_requirements` returns promotion/variant identity and status, the curated
+`claim_url`, `requirements_recorded`, and `requirements` sorted by requirement UUID.
+Each requirement has `requirement_id`, `requirement_type`, and nullable `description`.
+An empty list sets `requirements_recorded=false`: no requirements recorded in this
+dataset, rather than assurance that the manufacturer requires nothing. The server
+neither uploads evidence nor evaluates a claim window in these lookups.
+
+```json
+{"name":"get_promotion_source","arguments":{"promotion_variant_id":"00000000-0000-0000-0000-000000000005","source_id":"00000000-0000-0000-0000-000000000008"}}
+```
+
+`get_promotion_source` returns promotion/variant identity and status, `source_id`,
+`role`, `url`, `source_type`, `retrieved_at`, `verified_at`,
+`is_official_primary_source`, and `last_verified_at`. Official-primary is true only
+for the validated primary association. `last_verified_at` always describes the
+promotion's curated primary evidence; the requested source keeps its own timestamp,
+including null for unverified supporting/terms material. Timestamps are recorded
+successful verifications, with no assurance of live freshness or claim acceptance.
+URLs and descriptions are passive untrusted display data; the server does not fetch
+or execute them.
+
+Arguments reject extra properties, malformed UUIDs and non-string IDs before a
+snapshot is opened; the existing 8192-byte argument and 16384-byte transport-envelope
+limits remain. Supporting responses have a 65536-byte JSON ceiling because descriptions
+have no database length ceiling (source URLs are bounded to 2048 characters). Overflow fails explicitly
+without truncating evidence. Success includes schema-valid `structuredContent` and
+brief derived text. Errors contain only `code`, `message`, and `request_id` in JSON
+text, with no structured result: `invalid_lookup_request`, `request_too_large`,
+`not_found`, `published_data_invalid`, `lookup_unavailable`, or `internal_server_error`.
+Unknown/nonpublished variants and unrelated association IDs share `not_found`.
+
+Each lookup can observe a newer committed update than a previous call; multiple
+calls do not share a snapshot or cache. The original REST and `check_purchase`
+contracts remain unchanged. `check_purchase` is the authoritative evaluated
+purchase answer. These tools retain the existing development/test-only opt-in,
+loopback restrictions and production prohibition. No authentication, public ingress,
+rate limiting, source refresh, migrations or new configuration are introduced.
