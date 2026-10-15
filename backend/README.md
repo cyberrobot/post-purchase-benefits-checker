@@ -892,7 +892,9 @@ uv run pytest
 The named acceptance entry point composes the five pinned reference constructors
 in one migrated PostgreSQL 16 Testcontainer. Immutable cases share a catalogue;
 publication, historical lifecycle, ambiguous alias and synthetic configuration
-checks own separate catalogues and verify full teardown. CI's existing
+checks own separate catalogues and verify full teardown. The labelled
+missing-window application contract test uses a synthetic repository/resolver
+seam rather than PostgreSQL or REST/MCP. CI's existing
 `uv run pytest` collects these tests. No provider keys, live source retrieval,
 new schema, API/MCP contract or production configuration is required.
 
@@ -906,12 +908,20 @@ new schema, API/MCP contract or production configuration is required.
 | Review, failed publication and archived exclusion | Yes | Yes | Yes | Yes | Yes |
 | Production readiness | Narrow model only | Narrow model only | Narrow model only | **BLOCKED** | **BLOCKED** |
 
+| Missing-window edge case | Verified layer |
+| --- | --- |
+| Publication rejects `missing_claim_window`; review graph stays invisible to REST/MCP | Real PostgreSQL publication and transport integration |
+| `POTENTIALLY_ELIGIBLE`, `claim_window_unspecified`, null window and explanation | Synthetic application contract seam calling actual `check_purchase` |
+| Published missing-window promotion through REST/MCP + PostgreSQL | Unsupported by the current valid publication flow |
+
 The isolated ambiguous curated retailer alias yields unresolved identity. A
 clearly synthetic review promotion with no claim window is rejected at the real
 publication gate (`missing_claim_window`) and remains invisible. This blocks the
 specification’s requested published unspecified-window integration case; no
-publication bypass is used. The existing focused domain/consumer tests cover
-`POTENTIALLY_ELIGIBLE` with `claim_window_unspecified` at their runtime seams.
+publication bypass is used. The labelled acceptance application contract test
+directly verifies `POTENTIALLY_ELIGIBLE` with `claim_window_unspecified`, a null
+window and its explanation using the established synthetic service fixtures.
+This seam assertion is not full end-to-end coverage of a published promotion.
 Fixed rewards in the five references do not become unknown when price is absent.
 Candidate-filtered exclusions are resolved no-match.
 `NOT_ELIGIBLE` rule precedence remains covered by `test_eligibility_result.py`.
@@ -922,8 +932,11 @@ regressions cover cancellation/timeouts and remaining transport limits.
 
 **MVP release sign-off remains blocked for Hotpoint and Sony.** Diagnostic tests
 record the current backend's premature `ELIGIBLE` projection for Hotpoint bought
-12 June/evaluated 4 June 2026 and Sony bought 27 October/evaluated 4 November 2026.
-They assert the pinned `status=unmodelled`,
+12 June/evaluated 13 June 2026 (earliest valid claim 12 July) and Sony bought
+27 October/evaluated 4 November 2026 (earliest valid claim 1 December).
+They assert purchase precedes evaluation, evaluation precedes the individual
+opening, and evaluation falls inside the recorded fixed window. They assert the
+pinned `status=unmodelled`, `authoritative_runtime_rule=false`,
 `production_publication_permitted=false` metadata and emit a blocked readiness
 property. These are test-only references. Hotpoint's 30-day wait and Sony's
 35-day wait require a purchase-relative opening combined with the absolute

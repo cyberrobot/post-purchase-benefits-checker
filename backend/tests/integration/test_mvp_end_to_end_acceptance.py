@@ -5,6 +5,7 @@ These tests certify the recorded model only. Hotpoint/Sony remain release-blocke
 
 import asyncio
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import partial
@@ -20,6 +21,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api import eligibility as rest_adapter
 from app.application.promotions import PromotionPublicationError, change_promotion_status
+from app.application.purchase_check import check_purchase
 from app.core.config import Settings
 from app.db.models import (
     Benefit,
@@ -35,6 +37,7 @@ from app.db.models import (
     Source,
 )
 from app.db.repositories.promotions import promotion_transaction
+from app.domain.eligibility_result import EligibilityClassification
 from app.domain.promotion_lifecycle import PromotionStatus as S
 from app.main import create_app
 from app.mcp import server as mcp_adapter
@@ -49,6 +52,7 @@ from tests.chatgpt.flow import (
 from tests.integration.test_promotion_lifecycle import snapshot
 from tests.integration.test_sony_reference_promotion import _ownership_snapshot, delete_owned_rows
 from tests.unit.test_mcp_check_purchase import protocol_client
+from tests.unit.test_purchase_check import DAY, DETAIL, REQUEST, Repository, Resolver
 
 pytestmark = pytest.mark.integration
 PATH = "/api/v1/eligibility/check"
@@ -523,7 +527,7 @@ class TestMVPAcceptance:
     @pytest.mark.parametrize(
         "brand,purchase,evaluation,earliest,wait",
         [
-            ("Hotpoint", "2026-06-12", "2026-06-04", "2026-07-12", 30),
+            ("Hotpoint", "2026-06-12", "2026-06-13", "2026-07-12", 30),
             ("Sony", "2026-10-27", "2026-11-04", "2026-12-01", 35),
         ],
     )
@@ -536,7 +540,18 @@ class TestMVPAcceptance:
         assert limitation["production_publication_permitted"] is False
         assert limitation["authoritative_runtime_rule"] is False
         assert limitation["minimum_days_after_purchase"] == wait
-        assert date.fromisoformat(evaluation) < date.fromisoformat(earliest)
+        purchased_on = date.fromisoformat(purchase)
+        evaluated_on = date.fromisoformat(evaluation)
+        earliest_on = date.fromisoformat(earliest)
+        assert purchased_on < evaluated_on < earliest_on
+        assert earliest_on == purchased_on + timedelta(days=wait)
+        fixed_window = case.manifest["claim_window"]
+        assert fixed_window["type"] == "fixed"
+        assert (
+            date.fromisoformat(fixed_window["start_date"])
+            <= evaluated_on
+            <= date.fromisoformat(fixed_window["end_date"])
+        )
 
         async def diagnostic(data, *_):
             observed = offer(data, case, catalogue[1])
@@ -710,6 +725,38 @@ def test_mvp_corrupt_published_data_fails_safely(catalogue, journey, postgres_en
                     assert postgres_engine.pool.checkedout() == 0
 
     asyncio.run(run())
+
+
+def test_mvp_missing_claim_window_application_contract_seam():
+    """Acceptance at the application seam only: no persisted publication or transports.
+
+    Reuse the synthetic service fixtures, independently of all five manufacturer
+    references. The separate PostgreSQL test proves this cannot be published.
+    """
+    detail = replace(DETAIL, claim_start_date=None, claim_end_date=None)
+
+    def evaluate():
+        return check_purchase(
+            REQUEST,
+            evaluation_date=DAY,
+            identity_resolver=Resolver(),
+            promotion_repository=Repository((detail,)),
+        )
+
+    result = evaluate()
+    assert evaluate() == result
+    assert len(result.promotions) == 1
+    observed = result.promotions[0]
+    assert observed.eligibility.classification == EligibilityClassification.POTENTIALLY_ELIGIBLE
+    assert [reason.code.value for reason in observed.eligibility.reasons] == [
+        "all_configured_rules_satisfied",
+        "claim_window_unspecified",
+    ]
+    assert observed.claim_window is None
+    assert observed.explanation == (
+        "The recorded eligibility rules match this purchase.",
+        "The claim period is not available.",
+    )
 
 
 def test_mvp_missing_claim_window_synthetic_cannot_bypass_publication(catalogue, journey):
