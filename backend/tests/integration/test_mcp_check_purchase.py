@@ -67,7 +67,12 @@ def test_protocol_rest_full_parity_snapshot_and_cleanup(
             protocol_client(mcp_app, mode) as client,
         ):
             tools = await client.list_tools()
-            assert [t.name for t in tools.tools] == ["check_purchase"]
+            assert [t.name for t in tools.tools] == [
+                "check_purchase",
+                "get_benefit",
+                "get_claim_requirements",
+                "get_promotion_source",
+            ]
             async with httpx2.AsyncClient(
                 transport=httpx2.ASGITransport(app=mcp_app), base_url="http://localhost:8000"
             ) as http:

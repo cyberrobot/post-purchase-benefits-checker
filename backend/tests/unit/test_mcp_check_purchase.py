@@ -76,7 +76,7 @@ def test_real_protocol_discovery_dispatch_and_rest_shape(harness, mode):
     async def run():
         async with app.router.lifespan_context(app), protocol_client(app, mode) as client:
             tools = await client.list_tools()
-            assert len(tools.tools) == 1
+            assert len(tools.tools) == 4
             tool = tools.tools[0]
             assert tool.name == "check_purchase"
             assert tool.title == "Check post-purchase benefits"
@@ -301,7 +301,12 @@ def test_mounted_loopback_protocol(harness, peer):
 
     async def run():
         async with app.router.lifespan_context(app), protocol_client(app, peer=peer) as client:
-            assert [tool.name for tool in (await client.list_tools()).tools] == ["check_purchase"]
+            assert [tool.name for tool in (await client.list_tools()).tools] == [
+                "check_purchase",
+                "get_benefit",
+                "get_claim_requirements",
+                "get_promotion_source",
+            ]
             assert not (await client.call_tool("check_purchase", BODY)).is_error
 
     asyncio.run(run())
