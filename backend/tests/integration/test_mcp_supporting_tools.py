@@ -9,7 +9,14 @@ from jsonschema import validate
 from sqlalchemy import delete, event, select, text, update
 from sqlalchemy.orm import Session
 
-from app.db.models import Benefit, Promotion, PromotionSource, Requirement, Source
+from app.db.models import (
+    Benefit,
+    Promotion,
+    PromotionSource,
+    PromotionVariantProduct,
+    Requirement,
+    Source,
+)
 from app.mcp import server as adapter
 from tests.integration.test_check_purchase import published_graph as published_graph
 from tests.integration.test_eligibility_api import body
@@ -318,3 +325,67 @@ def test_invalid_arguments_do_not_checkout_connections(mcp_app, postgres_engine,
         assert checkouts == []
     finally:
         event.remove(postgres_engine, "checkout", checkout)
+
+
+@pytest.mark.parametrize("association", [Benefit, PromotionVariantProduct])
+def test_removed_published_associations_fail_closed(
+    mcp_app, postgres_engine, published_graph, association
+):
+    _, promotions, variants, _ = published_graph
+    with postgres_engine.begin() as connection:
+        benefit_id = connection.scalar(
+            select(Benefit.id).where(Benefit.promotion_variant_id == variants[0])
+        )
+        source_id = connection.scalar(
+            select(PromotionSource.source_id).where(
+                PromotionSource.promotion_id == promotions[0], PromotionSource.role == "primary"
+            )
+        )
+        connection.execute(
+            delete(association).where(association.promotion_variant_id == variants[0])
+        )
+    for name, extra in (
+        ("get_benefit", {"benefit_id": str(benefit_id)}),
+        ("get_claim_requirements", {}),
+        ("get_promotion_source", {"source_id": str(source_id)}),
+    ):
+        result = mcp_app.state.mcp_server.execute_lookup(
+            (name, {"promotion_variant_id": str(variants[0]), **extra})
+        )
+        assert error_code(result) == "published_data_invalid"
+        assert postgres_engine.pool.checkedout() == 0
+
+
+@pytest.mark.parametrize("role", ["terms", "supporting"])
+def test_optional_source_url_validation_and_unverified_evidence(
+    mcp_app, postgres_engine, published_graph, role
+):
+    _, promotions, variants, _ = published_graph
+    with postgres_engine.begin() as connection:
+        source_id = connection.scalar(
+            select(PromotionSource.source_id).where(
+                PromotionSource.promotion_id == promotions[0], PromotionSource.role == "supporting"
+            )
+        )
+        connection.execute(
+            update(PromotionSource)
+            .where(
+                PromotionSource.promotion_id == promotions[0],
+                PromotionSource.source_id == source_id,
+            )
+            .values(role=role)
+        )
+        connection.execute(update(Source).where(Source.id == source_id).values(verified_at=None))
+    arguments = {"promotion_variant_id": str(variants[0]), "source_id": str(source_id)}
+    result = mcp_app.state.mcp_server.execute_lookup(("get_promotion_source", arguments))
+    assert not result.is_error
+    assert result.structured_content["verified_at"] is None
+    assert postgres_engine.pool.checkedout() == 0
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            update(Source).where(Source.id == source_id).values(url="https://private@example.test/")
+        )
+    result = mcp_app.state.mcp_server.execute_lookup(("get_promotion_source", arguments))
+    assert error_code(result) == "published_data_invalid"
+    assert "private" not in result.content[0].text
+    assert postgres_engine.pool.checkedout() == 0

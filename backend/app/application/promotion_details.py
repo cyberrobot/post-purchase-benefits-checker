@@ -15,6 +15,7 @@ from app.domain.promotion_provenance import (
     PromotionProvenanceError,
     PromotionSourceRecord,
     PublishedProvenance,
+    is_valid_source_url,
     validate_publication_provenance,
 )
 from app.domain.rewards import ProductSpecificReward
@@ -65,12 +66,14 @@ def get_published_details(
         raise PublishedPromotionDataError
     if details.promotion_status not in {PromotionStatus.ACTIVE, PromotionStatus.EXPIRED}:
         raise LookupNotFound
+    if not details.product_ids or not details.benefits:
+        raise PublishedPromotionDataError
     if details.promotion_variant_id != variant_id:
         raise PublishedPromotionDataError
     try:
         provenance = validate_publication_provenance(details.sources)
         for source in details.sources:
-            if not isinstance(source.source_id, UUID) or not isinstance(source.url, str):
+            if not isinstance(source.source_id, UUID) or not is_valid_source_url(source.url):
                 raise PublishedPromotionDataError
             timestamps = (source.retrieved_at,) + (
                 (source.verified_at,) if source.verified_at is not None else ()

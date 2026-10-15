@@ -116,3 +116,52 @@ def test_supported_types_and_timezone_offsets(kind):
         for s in sources()
     ]
     assert validate_publication_provenance(records).source_type == kind
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        None,
+        123,
+        "",
+        "relative/path",
+        "https://",
+        "javascript:alert(1)",
+        "file:///tmp/evidence",
+        "ftp://example.test/file",
+        "https://[bad",
+        "https://example.test:bad",
+        "https://example.test:65536",
+        "https://example.test:0",
+        "https://exa mple.test",
+        " https://example.test",
+        "https://example.test/\n",
+        "https://example.test/\x00",
+        "https://example.test/\x7f",
+        "https://user:password@example.test/path",
+    ],
+)
+def test_source_url_format_validator_rejects_invalid_evidence(url):
+    from app.domain.promotion_provenance import is_valid_source_url
+
+    assert not is_valid_source_url(url)
+    records = sources()
+    records[0] = replace(records[0], url=url)
+    with pytest.raises(PromotionProvenanceError, match="invalid_primary_url"):
+        validate_publication_provenance(records)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.test/path",
+        "https://example.test:8443/a?b=c#d",
+        "https://[::1]/",
+    ],
+)
+def test_source_url_format_validator_accepts_passive_evidence(url):
+    from app.domain.promotion_provenance import is_valid_source_url
+
+    assert is_valid_source_url(url)
+    records = [replace(source, url=url) for source in sources()]
+    assert validate_publication_provenance(records).official_source_url == url

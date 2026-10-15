@@ -398,3 +398,69 @@ def test_parent_cancellation_waits_for_lookup_cleanup(lookup_harness, monkeypatc
         assert state["closed"] == 1
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("name", ARGUMENTS)
+@pytest.mark.parametrize("missing", ["product_ids", "benefits"])
+def test_missing_required_associations_fail_closed(lookup_harness, name, missing):
+    lookup_harness[1]["detail"] = replace(
+        DETAIL, **{missing: frozenset() if missing == "product_ids" else ()}
+    )
+    assert code(execute(lookup_harness, name)) == "published_data_invalid"
+    assert lookup_harness[1]["entered"] == lookup_harness[1]["closed"] == 1
+
+
+@pytest.mark.parametrize("name", ARGUMENTS)
+@pytest.mark.parametrize("role", ["terms", "supporting"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "example.test/path",
+        "https://",
+        "javascript:alert(1)",
+        "file:///tmp/evidence",
+        "ftp://example.test/file",
+        "https://example.test/white space",
+        " https://example.test/path",
+        "https://example.test/path\n",
+        "https://example.test/\x00",
+        "https://example.test/\x7f",
+        "https://example.test:bad/path",
+        "https://example.test:65536/path",
+        "https://example.test:0/path",
+        "https://user:private@example.test/path",
+    ],
+)
+def test_invalid_optional_source_urls_fail_closed(lookup_harness, name, role, url):
+    optional = replace(DETAIL.sources[0], role=role, url=url, verified_at=None)
+    lookup_harness[1]["detail"] = replace(
+        DETAIL,
+        sources=tuple(s for s in DETAIL.sources if s.role != "supporting") + (optional,),
+    )
+    result = execute(lookup_harness, name)
+    assert code(result) == "published_data_invalid"
+    assert url not in result.content[0].text
+    assert lookup_harness[1]["entered"] == lookup_harness[1]["closed"] == 1
+
+
+@pytest.mark.parametrize("role", ["terms", "supporting"])
+@pytest.mark.parametrize("field", ["retrieved_at", "verified_at"])
+def test_optional_source_timestamps_must_be_aware(lookup_harness, role, field):
+    source = DETAIL.sources[0]
+    optional = replace(source, role=role, **{field: source.retrieved_at.replace(tzinfo=None)})
+    lookup_harness[1]["detail"] = replace(
+        DETAIL, sources=tuple(s for s in DETAIL.sources if s.role != "supporting") + (optional,)
+    )
+    assert code(execute(lookup_harness, "get_promotion_source")) == "published_data_invalid"
+
+
+@pytest.mark.parametrize("role", ["terms", "supporting"])
+def test_optional_source_verification_cannot_predate_retrieval(lookup_harness, role):
+    from datetime import timedelta
+
+    source = DETAIL.sources[0]
+    optional = replace(source, role=role, verified_at=source.retrieved_at - timedelta(seconds=1))
+    lookup_harness[1]["detail"] = replace(
+        DETAIL, sources=tuple(s for s in DETAIL.sources if s.role != "supporting") + (optional,)
+    )
+    assert code(execute(lookup_harness, "get_promotion_source")) == "published_data_invalid"
