@@ -257,17 +257,28 @@ legacy published records whose source wait was omitted.
 ### Baseline and decision record
 
 This is a follow-up to the PR31 evidence above, not a rerun of its audit or mutant
-count. The local `main` and `origin/main` were still PR30 (`46d19f0`); remote
-refresh failed with DNS resolution errors. The PR32 branch therefore uses the
-available PR31 tip `62ea8e2` as its prerequisite baseline. The specification reports
-PR31 merged on 16 October; neither the latest remote main, current highest PR
-number, availability of PR number 32 nor remote CI status was independently
-confirmed. No PR number was reserved and no PR was created.
+count.
 
-**Governance decision outstanding:** both the PR31 task amendment and original
-sections of this audit explicitly say maintainer approval of the production and
-migration expansion is pending. No separate approval evidence was available.
-A reported merge is not recorded scope approval. Obtain and record that decision
+**Historical local checkout context (2026-10-16):** at initial implementation,
+local `main`/`origin/main` were at PR30 (`46d19f0`) and a GitHub fetch failed on DNS.
+The new branch was based on the available PR31 tip `62ea8e2`. At that point the
+latest remote `main`, PR numbering, PR32 existence and remote CI status could not
+be confirmed. Those statements describe only that local checkout and are not the
+current GitHub status.
+
+**Verified GitHub state at this review follow-up:** PR [#31](https://github.com/cyberrobot/post-purchase-benefits-checker/pull/31)
+was merged on 16 October 2026 at 12:30:12 UTC as
+`83485cf32c899723d6e0f8f34bf8dc4418119807`. PR
+[#32](https://github.com/cyberrobot/post-purchase-benefits-checker/pull/32) is open,
+targets `main` at that PR31 merge commit, and has head
+`801903f6121fff6d097490ae6a8c5504c835e7e3`. The local PR32 branch head matched
+that SHA when verified. PR32 was created; the earlier local statement that no PR
+was created records the implementation-time state only.
+
+**Governance decision outstanding:** the PR31 task amendment, PR31 description,
+and original sections of this audit explicitly say maintainer approval of the
+production and migration expansion is pending. PR31's merge is not recorded scope
+approval. No separate approval evidence was found; obtain and record that decision
 before relying on the dependent release. PR32 changes no production code,
 manifest, schema, migration, transport contract, configuration or CI workflow.
 
@@ -334,7 +345,12 @@ return ELIGIBLE. That is a configured-rule match, not certified claim entitlemen
 This is a capability/release decision, not a regression to “fix” by a passing
 transport test. Local follow-up scopes PR32-06/07 require supported purchase facts,
 persisted typed constraints, projection, shared evaluation, REST/MCP design and
-source-backed publication review; no external issues/PRs were created.
+source-backed publication review. At initial implementation no external follow-up
+issues were created. During this review, open and closed issue/PR searches found no
+matching actionable tracker; issue creation attempts returned HTTP 403 from the connected
+GitHub integration. Ready-to-file drafts are included below. The existing PR31
+description already records its pending scope decision, so no duplicate governance
+issue draft was created.
 
 For PR32-04/08, source-audit every existing published wait-bearing promotion,
 record source version and expected wait, compare the actual persisted column,
@@ -371,12 +387,12 @@ errors are not counted as kills. Logs were inspected for these exact assertions.
 
 ### PR32 verification status
 
-- `UV_CACHE_DIR=/private/tmp/uv-pr32 uv sync --locked --extra dev`: **could not complete**; locked resolution found 67 packages but editable build could not fetch setuptools==75.8.2 from PyPI because DNS resolution failed. Replacement evidence uses the existing venv with `uv run --no-sync`; fresh install reproducibility remains unverified.
+- `UV_CACHE_DIR=/private/tmp/uv-pr32 uv sync --locked --extra dev`: **could not complete**; locked resolution found 67 packages but editable build could not fetch setuptools==75.8.2 from PyPI because DNS resolution failed. Replacement evidence uses the existing venv with `uv run --no-sync`; fresh install reproducibility was unverified locally at that time; the later remote locked sync passed as recorded below.
 - `UV_CACHE_DIR=/private/tmp/uv-pr32 uv run --no-sync pytest tests/integration/test_mvp_end_to_end_acceptance.py -k individual_wait -q`: sandbox attempt had **2 setup errors**, Docker socket PermissionError; this is not a product failure or mutant kill. With authorised Docker access and `--tb=short`, **2 passed, 48 deselected**, 5.57s.
 - Isolated focused commands and restored results: table above. No full-suite run occurred during implementation.
 - `UV_CACHE_DIR=/private/tmp/uv-pr32 uv run --no-sync ruff check .` and `uv run --no-sync ruff format --check .`: **passed**, 122 files already formatted; `git diff --check`: **passed**.
 - mypy: **N/A**, no configured command. Migration-specific command `uv run pytest tests/integration/test_postgres_migrations.py -q` was not separately run during implementation because no migration interaction changed; the full suite remains the authoritative broader check.
-- Docker image build/startup smoke not rerun: packaging, runtime and CI are unchanged. No live manufacturer/model requests, external accounts, production writes, commits, pushes or PR creation occurred.
+- Docker image build/startup smoke not rerun locally: packaging, runtime and CI are unchanged. No live manufacturer/model requests, external accounts, production writes, commits or pushes occurred.
 
 ### Final independent review and full-suite measurement
 
@@ -384,5 +400,137 @@ errors are not counted as kills. Logs were inspected for these exact assertions.
 - From `backend/`, `UV_CACHE_DIR=/private/tmp/uv-pr32 uv run --no-sync pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml -q`: **2414 passed**, 6 SQLAlchemy warnings, 84.53s. No tests failed or were skipped.
 - This PR32 run measured 2500/2577 statements (97.0120%) and 571/620 branches (92.0968%; 49 missing arcs, 47 partial branches), with 96.0588% combined coverage. Comparing the generated JSON to the preserved PR31 final report `/private/tmp/pr31-ci-final.json` found **the exact same missing-branch arc set**; no branch was newly missed or newly covered. The result is fresh PR32 evidence, despite matching the historical PR31 values.
 - Risk review of the relevant locations found all branches covered in `application/purchase_check.py`, `domain/claim_windows.py`, and `domain/eligibility_rules.py`. Remaining partial arcs are in defensive validation/malformed-data branches across schema and domain constructors, authoring/publication validation, repository reward/source shape checks, and operational guards. Existing tests cover the customer-significant boundaries in those areas, including whole-check rejection of invalid published details, no partial REST/MCP success for corrupted source graphs, publication rejection/retry for malformed claim windows and reward mappings, and real persisted wait/product/reward projections. No additional residual business gap was established from the uncovered arcs. The missing locations and exact arc set are unchanged from PR31; percentages were not used as a test target.
-- Local Ruff lint and format checks passed (122 files already formatted); `git diff --check` passed. mypy is N/A (no configured command). Migration tests were exercised by the full suite; Docker image/startup smoke was not rerun because packaging, runtime and CI were unchanged. No remote CI run was performed.
+- Local Ruff lint and format checks passed (122 files already formatted); `git diff --check` passed. mypy is N/A (no configured command). Migration tests were exercised by the full suite; Docker image/startup smoke was not rerun locally because packaging, runtime and CI were unchanged. Remote CI evidence is recorded in the following section.
 - The independently identified deployment/data audit prerequisites, unsupported customer facts, unavailable immutable source bytes, and pending PR31 maintainer scope decision remain unresolved; coverage does not clear them.
+
+### Current remote CI verification
+
+GitHub Actions [Backend run #93](https://github.com/cyberrobot/post-purchase-benefits-checker/actions/runs/38907810341)
+ran for PR32 head `801903f6121fff6d097490ae6a8c5504c835e7e3` and completed with
+success. The job logs confirm `uv sync --locked --extra dev`, Ruff lint, Ruff format
+(122 files already formatted), diagnostic branch-coverage pytest (**2,414 passed,
+6 warnings**), coverage artifact upload, and backend image build/migration/health
+smoke all passed. The exact test count here is from the remote job log, not inferred
+from the green status. The uploaded
+[backend-branch-coverage artifact](https://github.com/cyberrobot/post-purchase-benefits-checker/actions/runs/38907810341)
+is artifact `backend-branch-coverage` (ID `12049126460`). This remote success is
+separate from the historical local dependency-sync DNS failure and first Docker
+socket permission error recorded above; later authorized local tests passed.
+
+### Follow-up issue drafts (not filed)
+
+| Finding IDs | Ready-to-file follow-up / existing decision record |
+| --- | --- |
+| PR32-06/07 | [Supported restrictions and customer wording draft](#draft-define-supported-manufacturer-eligibility-restrictions-and-customer-wording) |
+| PR32-04/08 | [Legacy claim waits and rollout draft](#draft-audit-legacy-claim-waits-and-verify-mixed-version-rollout) |
+| PR32-05 | [Retained official evidence draft](#draft-retain-replayable-official-promotion-evidence-and-clause-mappings) |
+| PR31 scope amendment | [Existing pending decision in PR31 description](https://github.com/cyberrobot/post-purchase-benefits-checker/pull/31); formal approval remains outstanding |
+
+The connected GitHub integration's initial PR32 description update returned HTTP
+403. The authenticated `gh pr edit` command subsequently succeeded, and the
+updated remote description was verified.
+
+The connected GitHub integration returned HTTP 403, “Resource not accessible by
+integration,” for the three issue-creation attempts. The issue-list/create commands
+through the authenticated `gh` client could not connect to `api.github.com`.
+Searches of open and closed issues found no matching issue. Searches of open and
+closed PRs for restrictions, claim waits/rollout, and source evidence found
+historical implementation PRs (#10, #20, #23, #24, #26, #30 and #31), but none
+tracking these actionable remediation scopes. These are drafts, not issue URLs; no
+tracker is claimed to exist. Apply a suitable existing repository label when filing
+if one is available.
+
+PR #32 now contains the concise verification and follow-up summary. The local
+audit edits in this working tree are not committed or pushed, so the detailed
+repository-state record and draft issue bodies below are not yet in the PR branch.
+
+#### Draft: Define supported manufacturer eligibility restrictions and customer wording
+
+**Evidence and customer risk:** PR32-06/07 record source-backed conditions the
+public five-field purchase request and runtime projection cannot establish,
+including new versus refurbished condition, country/residency, purchase channel or
+marketplace seller, and claimant restrictions. The result can be `ELIGIBLE` under
+configured rules while a manufacturer may still reject the claim. Samsung terms
+clause 7 is recorded as new-product-only, but condition is not a public input.
+Unconditional claim-entitlement presentation for these references is not
+release-certified.
+
+**Scope:** design and implement supported purchase facts and restrictions for
+customer-facing advice while preserving the shared deterministic application check
+and publication boundary.
+
+**Acceptance criteria:**
+
+- Define from reviewed official clauses which purchase/claimant facts are required
+  and how missing or ambiguous facts are represented.
+- Add typed persisted rule forms and publication validation for supported
+  restrictions; unsupported material clauses must not silently publish as fully
+  modelled eligibility.
+- Evaluate supported facts through the canonical application use case used by
+  REST and MCP, with safe uncertainty semantics and consistent contracts.
+- Add independent clause-to-result cases at domain, persisted, REST and MCP
+  boundaries where applicable.
+- Clarify that `ELIGIBLE` means configured rules match unless the product can
+  substantiate broader entitlement wording; update per-reference release
+  certification.
+
+**Non-goals:** do not change PR32's audit scope, infer rules from marketing
+summaries, invent facts for unreviewed sources, or promise manufacturer approval
+or payment.
+
+#### Draft: Audit legacy claim waits and verify mixed-version rollout
+
+**Evidence and customer/release risk:** PR32-04/08 record that migration 0008
+preserves nullable `promotions.claim_min_wait_days`, while older binaries may
+ignore it. A source-backed promotion with a missing persisted wait can permit
+premature readiness advice; mixed versions create the same risk. The production
+dataset and serving fleet were unavailable to the audit, so actual exposure is
+unknown.
+
+**Scope:** complete a source-backed data inventory and verified deployment plan
+before relying on the claim-wait field in production.
+
+**Acceptance criteria:**
+
+- Inventory each currently published promotion whose reviewed terms require a
+  purchase-relative wait.
+- Record source/version/clause, independently expected wait, actual persisted
+  wait and promotion identity.
+- Correct and version, or withdraw, every mismatch with provenance and an
+  auditable transaction; do not infer a manufacturer-wide default.
+- Verify migration/application rollout order and that every serving instance
+  supports the field before wait-bearing rows can be enabled.
+- Record the completed inventory and rollout evidence as release prerequisites.
+
+**Non-goals:** do not add production data mutation or migrations to PR32, invent
+waits without reviewed evidence, or add a new queue/deployment framework solely for
+this audit.
+
+#### Draft: Retain replayable official promotion evidence and clause mappings
+
+**Evidence and customer risk:** PR32-05 records that fixture hashes and
+fixture-to-response assertions establish local consistency, not authority or
+replayability of official terms. The audit found no immutable official bytes for
+most references; a mutable manifest digest can be updated with an incorrect fact.
+Misread evidence can produce wrong dates, rewards, seller restrictions or claim
+advice.
+
+**Scope:** establish evidence retention for each reference promotion so reviewers
+can replay the source version and trace published rules to reviewed clauses.
+
+**Acceptance criteria:**
+
+- Retain an immutable or appropriately archived official source version for each
+  material rule, including retrieval/verification metadata, version identity and
+  content hash.
+- Map each structured rule and customer-facing limitation to its source
+  clause/table and state what the source does not establish.
+- Require independent review of the retained evidence-to-rule mapping before
+  source-level certification.
+- Keep routine tests offline using pinned local evidence; live manufacturer
+  retrieval is not required in CI.
+- Mark references without replayable reviewed evidence as not source-certified.
+
+**Non-goals:** do not treat provenance URLs or mutable fixture hashes as proof of
+reviewed source bytes, scrape or authenticate to manufacturer sites in PR32, or
+include unnecessary source text or customer data in logs/artifacts.
