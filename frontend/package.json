@@ -1,0 +1,52 @@
+{
+  "name": "benefitscout-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": "24.x",
+    "pnpm": "10.34.7"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "format:check": "prettier --check . ../.github/workflows/frontend.yml",
+    "format": "prettier --write . ../.github/workflows/frontend.yml",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "jest --ci --runInBand",
+    "test:watch": "jest --watch",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.2",
+    "jest": "30.5.2",
+    "jest-environment-jsdom": "30.5.2",
+    "prettier": "3.9.10",
+    "tailwindcss": "4.3.3",
+    "ts-node": "10.9.2",
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

@@ -1,0 +1,46 @@
+name: Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+      - '.prettierrc'
+      - '.prettierignore'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+      - '.prettierrc'
+      - '.prettierignore'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.node-version
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm smoke
