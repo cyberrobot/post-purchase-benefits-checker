@@ -531,15 +531,17 @@ class TestMVPAcceptance:
             ("Sony", "2026-10-27", "2026-11-04", "2026-12-01", 35),
         ],
     )
-    def test_mvp_unsupported_claim_delays_are_not_release_approved(
+    def test_mvp_individual_wait_prevents_premature_claim_readiness(
         self, brand, purchase, evaluation, earliest, wait, catalogue, journey, record_property
     ):
         case = next(c for c in CASES if c.brand == brand)
+        # Limitation metadata records the historical source capture, before typed support.
         limitation = case.manifest["claim_delay_limitation"]
         assert limitation["status"] == "unmodelled"
         assert limitation["production_publication_permitted"] is False
         assert limitation["authoritative_runtime_rule"] is False
         assert limitation["minimum_days_after_purchase"] == wait
+        assert case.manifest["claim_window"]["minimum_days_after_purchase"] == wait
         purchased_on = date.fromisoformat(purchase)
         evaluated_on = date.fromisoformat(evaluation)
         earliest_on = date.fromisoformat(earliest)
@@ -554,10 +556,18 @@ class TestMVPAcceptance:
         )
 
         async def diagnostic(data, *_):
-            observed = offer(data, case, catalogue[1])
-            # This is a diagnostic of the known unsafe projection, never a release approval.
-            assert observed["eligibility"]["classification"] == "ELIGIBLE"
-            assert "unmodelled" in observed["benefits"][0]["description"]
+            # P0: the pinned official waiting periods below outrank the broad fixed window.
+            # Both the campaign window and the individual waiting period must be enforced.
+            observed = data["promotions"][0]
+            eligibility = observed["eligibility"]
+            assert eligibility["classification"] == "CLAIM_NOT_YET_OPEN", (
+                f"P0 release blocker: {brand} cannot be claim-ready on {evaluation}; "
+                f"individual opening is {earliest} ({wait} days after purchase)"
+            )
+            assert "claim_window_not_yet_open" in {
+                reason["code"] for reason in eligibility["reasons"]
+            }
+            assert observed["claim_window"]["opens_on"] == earliest
 
         journey[1](
             case,
@@ -573,7 +583,7 @@ class TestMVPAcceptance:
         ]
         assert release_blockers == ["Hotpoint", "Sony"]
         record_property(
-            "production_readiness", f"BLOCKED: {brand} individual {wait}-day wait is unmodelled"
+            "production_readiness", f"VERIFIED: {brand} individual {wait}-day wait is enforced"
         )
 
 

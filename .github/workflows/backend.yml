@@ -36,7 +36,17 @@ jobs:
       - run: uv sync --locked --extra dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pytest
+      - name: Test with diagnostic branch coverage
+        run: uv run pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+      - name: Upload branch coverage diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-branch-coverage
+          path: |
+            backend/coverage.xml
+            backend/htmlcov/
+          if-no-files-found: warn
       - name: Build and smoke-test backend image
         run: |
           set -euo pipefail

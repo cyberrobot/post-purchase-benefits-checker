@@ -9,6 +9,7 @@ from app.domain.benefits import Benefit, BenefitType
 from app.domain.claim_windows import (
     FixedClaimWindow,
     RelativeClaimWindow,
+    evaluate_fixed_claim_window,
     evaluate_relative_claim_window,
 )
 from app.domain.promotion_provenance import (
@@ -130,6 +131,15 @@ def validate_definition(
         latest_purchase = snapshot.purchase_end_date or date.max
         try:
             evaluate_relative_claim_window(snapshot.claim_window, latest_purchase, latest_purchase)
+        except (ValueError, TypeError):
+            add("invalid_claim_window", "/claim_window")
+    if (
+        isinstance(snapshot.claim_window, FixedClaimWindow)
+        and snapshot.claim_window.minimum_days_after_purchase is not None
+    ):
+        latest_purchase = snapshot.purchase_end_date or date.max
+        try:
+            evaluate_fixed_claim_window(snapshot.claim_window, latest_purchase, latest_purchase)
         except (ValueError, TypeError):
             add("invalid_claim_window", "/claim_window")
     if not snapshot.variants:

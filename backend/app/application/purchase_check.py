@@ -225,12 +225,17 @@ def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
         (has_fixed and has_relative)
         or (has_fixed and None in fixed)
         or (has_relative and None in relative)
+        or (detail.claim_min_wait_days is not None and not has_fixed)
     ):
         raise PublishedPromotionDataError(code=PublishedDataErrorCode.CLAIM_WINDOW_INVALID)
     window = None
     try:
         if has_fixed:
-            window = evaluate_fixed_claim_window(FixedClaimWindow(*fixed), evaluation_date)
+            window = evaluate_fixed_claim_window(
+                FixedClaimWindow(*fixed, detail.claim_min_wait_days),
+                evaluation_date,
+                request.purchase_date,
+            )
         elif has_relative:
             window = evaluate_relative_claim_window(
                 RelativeClaimWindow(*relative), request.purchase_date, evaluation_date

@@ -38,7 +38,7 @@ from tests.reference_helpers import (
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/sony-bravia-autumn-cashback-2026-k55xr75m2b.json"
 )
-REVIEWED_SHA256 = "ff5eaa02b2f7c628416447db80d19aca6679f647feebe98886c0b9c83a696816"
+REVIEWED_SHA256 = "8703886a35ba0b3536e7a933b8a709b7e2aab9d5910eb41fb4502e5aa129357b"
 
 
 def _resolve_current(session, match, kind, attributes, *, allow_create=True):
@@ -177,6 +177,7 @@ def construct_reference(session):
             purchase_end_date=date.fromisoformat(f["purchase_end_date"]),
             claim_start_date=date.fromisoformat(f["claim_window"]["start_date"]),
             claim_end_date=date.fromisoformat(f["claim_window"]["end_date"]),
+            claim_min_wait_days=f["claim_window"]["minimum_days_after_purchase"],
         )
         expected.variants = [
             PromotionVariant(
@@ -192,7 +193,14 @@ def construct_reference(session):
                     Benefit(
                         benefit_type="cashback",
                         name="GBP 150.00 cashback",
-                        description=" ".join(f["limitations"]),
+                        description=" ".join(
+                            [
+                                f["limitations"][0],
+                                *f["limitations"][2:],
+                                "The 35-day wait after each purchase is enforced "
+                                "with the fixed campaign deadline.",
+                            ]
+                        ),
                         reward=BenefitReward(
                             reward_type="fixed_amount", fixed_amount=Decimal("150.00")
                         ),

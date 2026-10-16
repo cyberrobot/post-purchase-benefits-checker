@@ -15,7 +15,8 @@
   "claim_window": {
     "type": "fixed",
     "start_date": "2026-11-04",
-    "end_date": "2026-12-31"
+    "end_date": "2026-12-31",
+    "minimum_days_after_purchase": 35
   },
   "benefit": {
     "type": "cashback",

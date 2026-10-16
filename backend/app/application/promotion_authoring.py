@@ -52,6 +52,7 @@ class FixedWindow(CandidateModel):
     type: Literal["fixed"]
     start_date: date
     end_date: date
+    minimum_days_after_purchase: Annotated[int, Field(strict=True, ge=0, le=3652058)] | None = None
 
     @field_validator("start_date", "end_date", mode="before")
     @classmethod
@@ -285,7 +286,7 @@ def validate_candidate_promotion(candidate: CandidatePromotionV1) -> ValidationR
         try:
             w = body.claim_window
             window = (
-                FixedClaimWindow(w.start_date, w.end_date)
+                FixedClaimWindow(w.start_date, w.end_date, w.minimum_days_after_purchase)
                 if isinstance(w, FixedWindow)
                 else RelativeClaimWindow(w.start_offset_days, w.end_offset_days)
             )

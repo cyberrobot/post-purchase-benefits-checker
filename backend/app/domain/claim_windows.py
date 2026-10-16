@@ -23,9 +23,16 @@ def _bounds(start: date, end: date) -> None:
 class FixedClaimWindow:
     start_date: date
     end_date: date
+    minimum_days_after_purchase: int | None = None
 
     def __post_init__(self) -> None:
         _bounds(self.start_date, self.end_date)
+        wait = self.minimum_days_after_purchase
+        if wait is not None:
+            if type(wait) is not int:
+                raise TypeError("Minimum wait must be an integer")
+            if not 0 <= wait <= 3652058:
+                raise ValueError("Minimum wait is outside the supported calendar range")
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,19 +63,29 @@ class ClaimWindowEvaluation:
 
 
 def evaluate_fixed_claim_window(
-    window: FixedClaimWindow, evaluation_date: date
+    window: FixedClaimWindow, evaluation_date: date, purchase_date: date | None = None
 ) -> ClaimWindowEvaluation:
     """Evaluate supplied calendar data; both opening and deadline days are open."""
     if not isinstance(window, FixedClaimWindow):
         raise TypeError("Window must be a FixedClaimWindow")
     _calendar_date(evaluation_date)
-    if evaluation_date < window.start_date:
+    opens_on = window.start_date
+    if window.minimum_days_after_purchase is not None:
+        validate_purchase_date(purchase_date)
+        try:
+            opens_on = max(
+                opens_on, purchase_date + timedelta(days=window.minimum_days_after_purchase)
+            )
+        except OverflowError:
+            raise ValueError("Claim dates exceed the supported calendar range") from None
+        _bounds(opens_on, window.end_date)
+    if evaluation_date < opens_on:
         status = ClaimWindowStatus.NOT_YET_OPEN
     elif evaluation_date > window.end_date:
         status = ClaimWindowStatus.EXPIRED
     else:
         status = ClaimWindowStatus.OPEN
-    return ClaimWindowEvaluation(status, window.start_date, window.end_date)
+    return ClaimWindowEvaluation(status, opens_on, window.end_date)
 
 
 def evaluate_relative_claim_window(

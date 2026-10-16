@@ -34,7 +34,7 @@ from tests.reference_helpers import _fingerprint, _resolve, _verified_source
 MANIFEST = (
     Path(__file__).parent / "fixtures/promotions/hotpoint-wren-cashback-2026-h7ic16m6-uk.json"
 )
-REVIEWED_SHA256 = "256b5630bb88c3bf125caeca39cac78a2b5ccc790469785681a6c54c44a632ac"
+REVIEWED_SHA256 = "3a967b5a0690f65714a48bccc2ac7fb12d206222f718f9afdb45d019d7a4b2dc"
 
 
 def _resolve_current(session, match, kind, attributes, *, allow_create=True):
@@ -132,6 +132,7 @@ def construct_reference(session):
             purchase_end_date=date.fromisoformat(f["purchase_end_date"]),
             claim_start_date=date.fromisoformat(f["claim_window"]["start_date"]),
             claim_end_date=date.fromisoformat(f["claim_window"]["end_date"]),
+            claim_min_wait_days=f["claim_window"]["minimum_days_after_purchase"],
         )
         expected.variants = [
             PromotionVariant(
@@ -147,7 +148,14 @@ def construct_reference(session):
                     Benefit(
                         benefit_type="cashback",
                         name="GBP 75.00 cashback",
-                        description=" ".join(f["limitations"]),
+                        description=" ".join(
+                            [
+                                f["limitations"][0],
+                                *f["limitations"][2:],
+                                "The 30-day wait after each purchase is enforced "
+                                "with the fixed campaign deadline.",
+                            ]
+                        ),
                         reward=BenefitReward(
                             reward_type="fixed_amount", fixed_amount=Decimal("75.00")
                         ),

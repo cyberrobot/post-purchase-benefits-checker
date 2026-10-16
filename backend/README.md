@@ -659,12 +659,34 @@ to the same retailer without changing Hisense data. It is an offline test-only
 reference constructed in review; isolated PostgreSQL tests activate through the
 existing publication gate and exercise the canonical purchase check and HTTP API.
 
-**Production publication is blocked:** the fixed base window (4 November through
-31 December) cannot enforce the additional individual 35-day wait. A 27 October
-purchaser cannot submit until 1 December. Combined purchase-relative opening and
-fixed deadline support is required before production use. The manifest and benefit
-description preserve this limitation, evidence and additional Sony claim conditions.
-There are no production seeds, migrations, configuration or public contract changes.
+The fixed base window (4 November through 31 December) now includes the reviewed
+35-day minimum wait as a structured rule. A 27 October purchaser receives
+`CLAIM_NOT_YET_OPEN` before 1 December. The manifest's `claim_delay_limitation`
+records the limitation at the original evidence capture; the current rule is in
+`claim_window.minimum_days_after_purchase`. Additional Sony conditions still need
+claimant verification. No production seed is provided.
+
+### Fixed claim windows with an individual wait
+
+A fixed claim definition may supply `minimum_days_after_purchase`, a non-negative
+integer. The application calculates the inclusive opening as the later of the
+campaign opening and purchase date plus the wait; the campaign deadline stays fixed.
+Publication rejects overflow or a qualifying purchase range whose latest purchase
+cannot complete the wait by the deadline. Inconsistent legacy data fails with the
+existing safe published-data error. REST and MCP retain the same schemas and report
+the computed `opens_on`, deadline, classification and reason code.
+
+Migration `0008_fixed_claim_min_wait` adds nullable `promotions.claim_min_wait_days`
+with a database constraint requiring a fixed window and a supported non-negative
+value. Existing rows remain NULL and preserve their previous meaning. Apply the
+migration, deploy the updated evaluator and publication code, then enable reviewed
+wait-bearing data. Older application versions ignore the new rule, so they must
+not serve that data. No manufacturer-based or automatic backfill is performed;
+identify legacy promotions with omitted waits from verified evidence and correct
+or withdraw them through the controlled publication process before relying on them.
+Downgrade refuses while any wait-bearing rows exist, preventing silent loss of a
+claim condition. Plan data preservation and remediation before attempting rollback;
+do not clear a published wait solely to make downgrade succeed.
 
 ## Optional local MCP purchase checker
 
@@ -906,7 +928,7 @@ new schema, API/MCP contract or production configuration is required.
 | Not-yet-open after a legitimate purchase | N/A | N/A | Yes | Yes | Yes |
 | Missing/malformed input; unknown identities; optional price | Yes | Yes | Yes | Yes | Yes |
 | Review, failed publication and archived exclusion | Yes | Yes | Yes | Yes | Yes |
-| Production readiness | Narrow model only | Narrow model only | Narrow model only | **BLOCKED** | **BLOCKED** |
+| Production readiness | Narrow model only | Narrow model only | Narrow model only | Narrow model only | Narrow model only |
 
 | Missing-window edge case | Verified layer |
 | --- | --- |
@@ -930,19 +952,15 @@ read snapshots assert PostgreSQL repeatable-read/read-only settings, while the
 read-only replay test observes SQL and unchanged stored graphs. Existing PR 27–29
 regressions cover cancellation/timeouts and remaining transport limits.
 
-**MVP release sign-off remains blocked for Hotpoint and Sony.** Diagnostic tests
-record the current backend's premature `ELIGIBLE` projection for Hotpoint bought
-12 June/evaluated 13 June 2026 (earliest valid claim 12 July) and Sony bought
-27 October/evaluated 4 November 2026 (earliest valid claim 1 December).
-They assert purchase precedes evaluation, evaluation precedes the individual
-opening, and evaluation falls inside the recorded fixed window. They assert the
-pinned `status=unmodelled`, `authoritative_runtime_rule=false`,
-`production_publication_permitted=false` metadata and emit a blocked readiness
-property. These are test-only references. Hotpoint's 30-day wait and Sony's
-35-day wait require a purchase-relative opening combined with the absolute
-deadline before either reference can support authoritative production claim-now
-advice. A green suite confirms the documented current model, including its
-known limitations; it does not approve those premature claims.
+Safety regressions reject premature `ELIGIBLE` for Hotpoint bought 12 June/evaluated
+13 June 2026 (earliest claim 12 July) and Sony bought 27 October/evaluated 4 November
+2026 (earliest claim 1 December). The references now persist their independently
+reviewed 30-day and 35-day waits alongside the fixed campaign bounds. Tests require
+`CLAIM_NOT_YET_OPEN`, its reason code, and the exact individual opening through
+PostgreSQL, REST and MCP. Historical limitation annotations in the evidence manifests
+describe the original capture, while the current structured claim-window fields
+drive runtime evaluation. These references remain test data and certify only the
+represented rules.
 
 Only the exact five model/retailer slices are covered, not entire campaigns.
 Recorded verification timestamps are historical evidence, not live freshness.
