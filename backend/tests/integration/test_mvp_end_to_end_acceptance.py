@@ -535,19 +535,25 @@ class TestMVPAcceptance:
         self, brand, purchase, evaluation, earliest, wait, catalogue, journey, record_property
     ):
         case = next(c for c in CASES if c.brand == brand)
-        # Limitation metadata records the historical source capture, before typed support.
-        limitation = case.manifest["claim_delay_limitation"]
-        assert limitation["status"] == "unmodelled"
-        assert limitation["production_publication_permitted"] is False
-        assert limitation["authoritative_runtime_rule"] is False
-        assert limitation["minimum_days_after_purchase"] == wait
-        assert case.manifest["claim_window"]["minimum_days_after_purchase"] == wait
+        # Original evidence-capture observations predate typed support. Their historical
+        # flags are preserved evidence, not current publication or runtime gates.
+        original_capture_observation = case.manifest["claim_delay_limitation"]
+        current_claim_window = case.manifest["claim_window"]
+        assert original_capture_observation["status"] == "unmodelled"
+        assert original_capture_observation["production_publication_permitted"] is False
+        assert original_capture_observation["authoritative_runtime_rule"] is False
+        assert original_capture_observation["minimum_days_after_purchase"] == wait
+        assert current_claim_window["minimum_days_after_purchase"] == wait
+        assert (
+            original_capture_observation["minimum_days_after_purchase"]
+            == current_claim_window["minimum_days_after_purchase"]
+        )
         purchased_on = date.fromisoformat(purchase)
         evaluated_on = date.fromisoformat(evaluation)
         earliest_on = date.fromisoformat(earliest)
         assert purchased_on < evaluated_on < earliest_on
         assert earliest_on == purchased_on + timedelta(days=wait)
-        fixed_window = case.manifest["claim_window"]
+        fixed_window = current_claim_window
         assert fixed_window["type"] == "fixed"
         assert (
             date.fromisoformat(fixed_window["start_date"])
@@ -575,15 +581,17 @@ class TestMVPAcceptance:
             arguments=case.arguments(purchase_date=purchase),
             evaluation=evaluation,
         )
-        release_blockers = [
+        historically_unmodelled_brands = [
             c.brand
             for c in CASES
             if c.manifest.get("claim_delay_limitation", {}).get("production_publication_permitted")
             is False
         ]
-        assert release_blockers == ["Hotpoint", "Sony"]
+        assert historically_unmodelled_brands == ["Hotpoint", "Sony"]
         record_property(
-            "production_readiness", f"VERIFIED: {brand} individual {wait}-day wait is enforced"
+            "represented_wait_rule",
+            f"VERIFIED: {brand} individual {wait}-day wait only; "
+            "other claimant restrictions and production approval remain unverified",
         )
 
 

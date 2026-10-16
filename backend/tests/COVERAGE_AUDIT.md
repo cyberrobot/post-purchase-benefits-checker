@@ -2,8 +2,11 @@
 
 Audit date: 2026-10-15. The initial audit exposed two P0 claim-readiness failures.
 The subsequent request to fix CI adds the structured minimum-wait rule, migration
-and regression coverage described below. Certification remains limited to the
-represented rules; legacy omitted waits require verified remediation.
+and regression coverage described below. Maintainer scope approval remains
+**pending**. Verification covers only the
+represented waiting-period rule and campaign bounds; it does not certify full
+manufacturer eligibility or production publication approval. Legacy omitted waits
+require verified remediation.
 
 ## Reproducibility and scope
 
@@ -11,8 +14,10 @@ The implementation branch is `pr31-test-coverage-audit-regression-hardening`.
 Its starting commit is `a2bbc4b` (merge of PR30 into the branch created from main).
 The necessary PR30 acceptance suite was absent on main alone; the merge is an explicit
 prerequisite adjustment, not a test-only diff. The implementation does not claim PR30
-production changes as new coverage work. Latest remote PR numbering was not independently
-verified; the attached specification is the authority for this work's scope.
+production changes as new coverage work. The original specification remains the
+scope baseline. Its appended proposed
+amendment requires maintainer approval; the request to fix CI did not establish
+that approval.
 
 The dev extra and lock now include pytest-cov 7.1.0 and coverage 7.16.2; those versions
 were present in the Python 3.13.16 test environment. `uv lock --check --offline` passed.
@@ -51,7 +56,9 @@ CI instruments its existing single complete pytest run with `--cov=app --cov-bra
 `term-missing`, XML and HTML reports. `actions/upload-artifact` runs even on failure;
 reports contain paths and execution counts, not captured requests or environment values.
 The existing Docker build/migration/health smoke step remains present. No global
-coverage threshold was added. Local Docker image smoke was not run by this audit.
+coverage threshold was added. Local Docker image smoke was deferred during the
+initial audit; the later
+correction-phase execution is recorded below.
 
 ## Invariant inventory
 
@@ -119,16 +126,31 @@ overflowing claim intervals for allowed purchases. Existing rows retain NULL, an
 relative claim windows keep their previous meaning. The authoring format accepts
 the optional minimum wait on fixed windows; REST/MCP request and response schemas
 are unchanged. Reference source observations remain pinned, with the current wait
-explicitly represented in the structured claim definition.
+explicitly represented in the structured claim definition. `claim_delay_limitation`
+is the original evidence-capture observation; its historical `unmodelled` and false
+publication/runtime-authority flags are not current publication gates. The acceptance
+test compares the historical wait with the current structured wait and independently
+asserts response classification, reason and opening. Its recorded verification
+covers only the represented waiting-period rule.
 
 Migration `0008_fixed_claim_min_wait` adds the field and check constraint without
-backfilling source rules. Deploy the migration and updated application before
-publishing wait-bearing data; older application versions ignore the rule. Identify
+backfilling source rules. Apply the migration and deploy **all** application
+instances supporting the new
+evaluator and publication logic **before** publishing any wait-bearing data. An old
+binary ignoring the field is unsafe. Audit existing published promotions to identify
 legacy omitted waits through source review and correct or withdraw affected offers.
 Downgrade refuses while wait-bearing rows exist, preserving the condition until
 operators explicitly plan safe data remediation. No external issue was created;
-PR31-P0 is this audit's local tracking reference. The initial testing-only scope
-expanded in response to the user's request to fix CI.
+PR31-P0 is this audit's local tracking reference. The implementation exceeds the
+original testing-only scope; **maintainer scope
+approval remains pending**. The expanded surface proposed for review comprises
+optional fixed-window `minimum_days_after_purchase`, nullable persisted
+`claim_min_wait_days`, migration `0008`, publication validation, shared runtime
+evaluation, authoring format, test-fixture updates and focused tests. Existing rows
+retain `NULL`; no inferred or manufacturer-wide backfill occurs. If strict test-only
+scope is desired, move the production rule/migration to a separately reviewed
+dependent PR; this is an option requiring explicit instruction, not an approved
+or performed split.
 
 Other end-to-end limitations: the five-field CheckPurchaseRequest has no country,
 purchase channel or product-condition facts, and the purchase-check projection builds

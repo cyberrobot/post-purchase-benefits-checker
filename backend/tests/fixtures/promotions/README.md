@@ -252,7 +252,10 @@ for 12 June purchases it is 12 July. PostgreSQL, REST and MCP regressions requir
 `claim_delay_limitation` preserves the original evidence-capture observation that
 the wait was then unmodelled; it is historical metadata and is not passed into the
 strict candidate. The current `claim_window` supplies the reviewed runtime rule.
-This remains a narrow test-only reference with other claimant conditions unverified.
+Historical `unmodelled` and false publication/runtime-authority flags are review
+notes, not current publication gates. Verification covers only the represented
+waiting-period rule and campaign bounds; other claimant conditions and production
+publication approval remain unverified.
 
 ## Evidence ledger
 
@@ -349,7 +352,10 @@ For a 27 October purchase, the first calendar claim day is **1 December**; befor
 then, the shared application/REST/MCP result is `CLAIM_NOT_YET_OPEN`. The pinned
 `claim_delay_limitation` remains the historical evidence-capture annotation from
 before combined support existed; the current `claim_window` contains the reviewed
-runtime rule. This is a test reference, not production publication approval.
+runtime rule. Historical `unmodelled` and false publication/runtime-authority flags
+are review notes, not current publication gates. Verification covers only the
+represented waiting-period rule and campaign bounds, not full manufacturer
+eligibility or production publication approval.
 
 The five-field API cannot prove age, first ownership, new condition, country/seller,
 returns, prior claims, My Sony account, receipt validity, actual serial/photos or

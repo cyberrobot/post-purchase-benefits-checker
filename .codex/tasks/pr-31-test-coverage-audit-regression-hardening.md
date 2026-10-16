@@ -386,3 +386,36 @@ Describe any spec requirement not completed, changed scope, or feature fix defer
 ### Remaining risks or follow-up
 
 Report P0/P1 bugs and unsupported source terms (especially any premature claim-ready response), what remains unverified by offline scripted AI tests, and the issue/PR blocking production release. `None` only if verified and resolved.
+
+---
+
+## Proposed scope amendment — requires maintainer approval
+
+**Maintainer scope approval pending.** This proposal preserves the original
+specification above, including its migration exclusion. Writing an amendment or
+retaining the working fix does not constitute approval.
+
+The previous implementation reported `ELIGIBLE` for Hotpoint purchased
+`2026-06-12` and checked `2026-06-13`, before its `2026-07-12` individual opening;
+and Sony purchased `2026-10-27` and checked `2026-11-04`, before `2026-12-01`.
+The preserved regressions require `CLAIM_NOT_YET_OPEN`, reason
+`claim_window_not_yet_open`, and independently asserted exact opening dates.
+
+The expanded surface proposed for review is optional structured
+`minimum_days_after_purchase` on fixed windows; nullable persisted
+`promotions.claim_min_wait_days`; Alembic `0008_fixed_claim_min_wait`; publication
+validation; shared runtime evaluation; authoring format; test-fixture updates and
+focused tests. REST/MCP wire schemas remain unchanged. Existing rows retain
+`NULL`; there is no inferred, automatic or manufacturer-wide backfill.
+
+Apply the migration and deploy **all** application instances supporting the new
+evaluator and publication logic **before** publishing any wait-bearing promotion
+data. An old binary ignoring the field is unsafe. Audit existing published
+promotions against source evidence for omitted waits, and correct or withdraw
+affected data before relying on claim-ready results. Downgrade refuses while
+wait-bearing rows exist; plan safe remediation without discarding the rule.
+
+Verification covers only the represented waiting-period rule and campaign bounds,
+not full manufacturer eligibility or unsupported claimant restrictions. If strict
+test-only scope is desired, propose moving the production rule/migration to a
+separately reviewed dependent PR. Do not split without explicit instruction.

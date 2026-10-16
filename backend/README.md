@@ -679,8 +679,9 @@ the computed `opens_on`, deadline, classification and reason code.
 Migration `0008_fixed_claim_min_wait` adds nullable `promotions.claim_min_wait_days`
 with a database constraint requiring a fixed window and a supported non-negative
 value. Existing rows remain NULL and preserve their previous meaning. Apply the
-migration, deploy the updated evaluator and publication code, then enable reviewed
-wait-bearing data. Older application versions ignore the new rule, so they must
+migration and deploy **all** application instances with updated evaluator and
+publication code **before** publishing any reviewed wait-bearing data. Older
+application versions ignore the new rule, so they must
 not serve that data. No manufacturer-based or automatic backfill is performed;
 identify legacy promotions with omitted waits from verified evidence and correct
 or withdraw them through the controlled publication process before relying on them.
@@ -958,9 +959,17 @@ Safety regressions reject premature `ELIGIBLE` for Hotpoint bought 12 June/evalu
 reviewed 30-day and 35-day waits alongside the fixed campaign bounds. Tests require
 `CLAIM_NOT_YET_OPEN`, its reason code, and the exact individual opening through
 PostgreSQL, REST and MCP. Historical limitation annotations in the evidence manifests
-describe the original capture, while the current structured claim-window fields
-drive runtime evaluation. These references remain test data and certify only the
-represented rules.
+describe the original evidence-capture observation. Their `unmodelled` and false
+publication/runtime-authority flags are historical review notes, not current
+publication gates. Current structured claim-window fields drive runtime evaluation.
+Recorded verification certifies only the represented waiting-period rule and campaign
+bounds, not full manufacturer eligibility.
+
+The production rule and migration exceed the original PR31 test-audit scope.
+Maintainer scope approval is pending; the proposed amendment is appended to
+`.codex/tasks/pr-31-test-coverage-audit-regression-hardening.md`. If strict test-only
+scope is required, a separately reviewed dependent PR for the production rule and
+migration is an option requiring explicit instruction.
 
 Only the exact five model/retailer slices are covered, not entire campaigns.
 Recorded verification timestamps are historical evidence, not live freshness.
