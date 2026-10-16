@@ -97,6 +97,7 @@ class PublishedPromotionDetails:
     benefits: tuple[PublishedBenefit, ...] = ()
     requirements: tuple[PublishedRequirement, ...] = ()
     sources: tuple[PromotionSourceRecord, ...] = ()
+    claim_min_wait_days: int | None = None
 
     def __post_init__(self):
         for value in (self.promotion_id, self.promotion_variant_id, self.manufacturer_id):

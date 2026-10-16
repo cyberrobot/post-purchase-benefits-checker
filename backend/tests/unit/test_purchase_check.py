@@ -538,8 +538,17 @@ def test_repository_projection_failure_is_classified_and_chained(sql_failure):
     assert logs == []
 
 
-@pytest.mark.parametrize("evaluation", [DAY, date(2024, 2, 28), date(2024, 4, 1)])
-def test_primary_verification_and_complete_evidence_survive_claim_classification(evaluation):
+@pytest.mark.parametrize(
+    "evaluation,classification,reason",
+    [
+        (DAY, "ELIGIBLE", "claim_window_open"),
+        (date(2024, 2, 28), "CLAIM_NOT_YET_OPEN", "claim_window_not_yet_open"),
+        (date(2024, 4, 1), "EXPIRED", "claim_window_expired"),
+    ],
+)
+def test_primary_verification_and_complete_evidence_survive_claim_classification(
+    evaluation, classification, reason
+):
     from datetime import timedelta, timezone
 
     primary_time = datetime(2024, 1, 2, 14, 30, tzinfo=timezone(timedelta(hours=2)))
@@ -563,7 +572,13 @@ def test_primary_verification_and_complete_evidence_survive_claim_classification
         "purchase_date",
     ]
     assert all(r.status.value == "satisfied" for r in offer.eligibility.rule_evaluations)
-    assert offer.eligibility.reasons and len(offer.explanation) == len(offer.eligibility.reasons)
+    # Independently authored calendar outcomes must hold alongside evidence preservation.
+    assert offer.eligibility.classification.value == classification
+    assert [r.code.value for r in offer.eligibility.reasons] == [
+        "all_configured_rules_satisfied",
+        reason,
+    ]
+    assert len(offer.explanation) == 2
     assert offer.provenance.official_source_url == sources[0].url
     with pytest.raises(FrozenInstanceError):
         offer.last_verified_at = STAMP

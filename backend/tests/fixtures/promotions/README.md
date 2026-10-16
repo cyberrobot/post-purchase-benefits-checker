@@ -244,19 +244,18 @@ Cashback is fixed GBP 75.00 regardless of optional purchase price. Purchases
 must fall on 5 May–12 June 2026 inclusive; the base claim dates are 4 June–
 4 December 2026 inclusive. This test-only reference is not a campaign catalogue.
 
-**The 30-day wait after each purchase is unmodelled. Do not production-publish
-this fixed-only fixture or make general claim-now promises.** The actual earliest
-claim date is `max(2026-06-04, purchase_date + 30 calendar days)`, with a fixed
-4 December deadline. The current candidate/persisted format accepts one fixed
-or relative window; it cannot combine them. Its fixed-only `ELIGIBLE` result
-may be a false positive during 4 June–11 July for purchases still waiting.
-For 5 May purchases the first claim date is 4 June; for 12 June purchases it
-is 12 July. Integrated eligible assertions use dates after the relevant wait.
-The manifest's structured `claim_delay_limitation` is evidence metadata, is
-included in the semantic pin, and is never passed into the strict v1 candidate.
-The benefit description exposes this limitation through existing contracts.
-A separate validated purchase-relative opening plus fixed absolute deadline
-feature is required before general production publication.
+The current structured claim window includes `minimum_days_after_purchase: 30`.
+The earliest claim date is `max(2026-06-04, purchase_date + 30 calendar days)`, with
+a fixed 4 December deadline. For 5 May purchases the first claim date is 4 June;
+for 12 June purchases it is 12 July. PostgreSQL, REST and MCP regressions require
+`CLAIM_NOT_YET_OPEN` before the individual opening. The manifest's pinned
+`claim_delay_limitation` preserves the original evidence-capture observation that
+the wait was then unmodelled; it is historical metadata and is not passed into the
+strict candidate. The current `claim_window` supplies the reviewed runtime rule.
+Historical `unmodelled` and false publication/runtime-authority flags are review
+notes, not current publication gates. Verification covers only the represented
+waiting-period rule and campaign bounds; other claimant conditions and production
+publication approval remain unverified.
 
 ## Evidence ledger
 
@@ -346,15 +345,17 @@ photo **or** back-label model/manufacturing-date/serial photo alternatives.
 My Sony account creation remains explanatory text; no purchased-TV registration
 requirement is inferred.
 
-**Production publication is blocked.** The current backend supports a fixed
-claim window OR a purchase-relative window, and cannot enforce both the
-individual opening `max(2026-11-04, purchase_date + 35 calendar days)` and the
-fixed 31 December deadline. The persisted **base window** is 4 November through
-31 December only. For a 27 October purchase, the first legal calendar claim day
-is **1 December**, so the engine could produce false-positive `ELIGIBLE` results
-from 4–30 November. The structured `claim_delay_limitation` is pinned evidence
-metadata, not an executable runtime rule. Integrated eligible assertions use
-safe dates only. A separate combined-window feature is required before production use.
+The current structured claim window includes `minimum_days_after_purchase: 35`
+alongside the fixed 4 November–31 December bounds. It enforces the individual
+opening `max(2026-11-04, purchase_date + 35 calendar days)` and fixed deadline.
+For a 27 October purchase, the first calendar claim day is **1 December**; before
+then, the shared application/REST/MCP result is `CLAIM_NOT_YET_OPEN`. The pinned
+`claim_delay_limitation` remains the historical evidence-capture annotation from
+before combined support existed; the current `claim_window` contains the reviewed
+runtime rule. Historical `unmodelled` and false publication/runtime-authority flags
+are review notes, not current publication gates. Verification covers only the
+represented waiting-period rule and campaign bounds, not full manufacturer
+eligibility or production publication approval.
 
 The five-field API cannot prove age, first ownership, new condition, country/seller,
 returns, prior claims, My Sony account, receipt validity, actual serial/photos or

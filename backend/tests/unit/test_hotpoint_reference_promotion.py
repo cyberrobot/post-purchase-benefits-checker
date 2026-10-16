@@ -26,6 +26,7 @@ def test_manifest_exact_wren_facts_evidence_and_unmodelled_delay():
     assert f["purchase_end_date"] == "2026-06-12"
     assert f["claim_window"] == {
         "type": "fixed",
+        "minimum_days_after_purchase": 30,
         "start_date": "2026-06-04",
         "end_date": "2026-12-04",
     }

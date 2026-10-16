@@ -149,19 +149,19 @@ def test_historical_expired_promotion_replay_preserves_lifecycle_and_graph(db_se
 
 
 @pytest.mark.parametrize(
-    "purchase,evaluation,classification",
+    "purchase,evaluation,classification,opens",
     [
-        ("2026-09-29", "2026-12-02", "NO_MATCH"),
-        ("2026-09-30", "2026-11-03", "CLAIM_NOT_YET_OPEN"),
-        ("2026-09-30", "2026-11-04", "ELIGIBLE"),
-        ("2026-09-30", "2026-12-02", "ELIGIBLE"),
-        ("2026-10-27", "2026-12-01", "ELIGIBLE"),
-        ("2026-10-27", "2026-12-31", "ELIGIBLE"),
-        ("2026-10-27", "2027-01-01", "EXPIRED"),
-        ("2026-10-28", "2026-12-02", "NO_MATCH"),
+        ("2026-09-29", "2026-12-02", "NO_MATCH", None),
+        ("2026-09-30", "2026-11-03", "CLAIM_NOT_YET_OPEN", "2026-11-04"),
+        ("2026-09-30", "2026-11-04", "ELIGIBLE", "2026-11-04"),
+        ("2026-09-30", "2026-12-02", "ELIGIBLE", "2026-11-04"),
+        ("2026-10-27", "2026-12-01", "ELIGIBLE", "2026-12-01"),
+        ("2026-10-27", "2026-12-31", "ELIGIBLE", "2026-12-01"),
+        ("2026-10-27", "2027-01-01", "EXPIRED", "2026-12-01"),
+        ("2026-10-28", "2026-12-02", "NO_MATCH", None),
     ],
 )
-def test_real_published_snapshot_boundaries(reference, purchase, evaluation, classification):
+def test_real_published_snapshot_boundaries(reference, purchase, evaluation, classification, opens):
     factory, identity = reference
     publish(factory, identity)
     with factory() as session:
@@ -183,7 +183,7 @@ def test_real_published_snapshot_boundaries(reference, purchase, evaluation, cla
     assert offer.promotion_id == identity
     assert offer.promotion_status == PromotionStatus.ACTIVE
     assert offer.eligibility.classification == classification
-    assert offer.claim_window.opens_on == date(2026, 11, 4)
+    assert offer.claim_window.opens_on == date.fromisoformat(opens)
     assert offer.claim_window.deadline_on == date(2026, 12, 31)
     assert offer.benefits[0].cashback_reward_gbp == Decimal("150.00")
     assert {r.requirement_type for r in offer.requirements} == {
@@ -552,7 +552,18 @@ def test_same_display_name_with_wrong_canonical_model_is_rejected(db_session):
 
 
 @pytest.mark.parametrize(
-    "field", ["source", "window", "purchase", "retailer", "limitation", "link", "requirements"]
+    "field",
+    [
+        "source",
+        "window",
+        "purchase",
+        "claim_wait_changed",
+        "claim_wait_removed",
+        "retailer",
+        "limitation",
+        "link",
+        "requirements",
+    ],
 )
 def test_replay_rejects_changed_graph_without_replacement(db_session, field):
     candidate = construct_reference(db_session)
@@ -563,6 +574,10 @@ def test_replay_rejects_changed_graph_without_replacement(db_session, field):
         candidate.claim_start_date = date(2026, 10, 27)
     elif field == "purchase":
         candidate.purchase_end_date = date(2026, 10, 26)
+    elif field == "claim_wait_changed":
+        candidate.claim_min_wait_days = 36
+    elif field == "claim_wait_removed":
+        candidate.claim_min_wait_days = None
     elif field == "retailer":
         other = Retailer(name="Other graph retailer", slug="other-graph-retailer")
         db_session.add(other)
@@ -589,6 +604,8 @@ def test_replay_rejects_changed_graph_without_replacement(db_session, field):
         construct_reference(db_session)
     assert _graph_ids(db_session) == before
     assert candidate.status == PromotionStatus.REVIEW
+    if field in {"claim_wait_changed", "claim_wait_removed"}:
+        assert candidate.claim_min_wait_days == (36 if field == "claim_wait_changed" else None)
 
 
 def test_mid_construction_failure_removes_all_owned_rows(db_session, monkeypatch):
@@ -716,7 +733,7 @@ def test_http_api_regression_uses_existing_contract(reference, postgres_engine):
         assert eligible["benefits"][0]["cashback_reward_gbp"] == "150.00"
         assert eligible["provenance"] == offer["provenance"]
         assert eligible["requirements"] == offer["requirements"]
-        assert "unmodelled" in eligible["benefits"][0]["description"]
+        assert "wait after each purchase is enforced" in eligible["benefits"][0]["description"]
         app.dependency_overrides[uk_evaluation_date] = lambda: date(2026, 12, 1)
         response = client.post(
             "/api/v1/eligibility/check", json={**body, "purchase_date": "2026-10-27"}
@@ -881,7 +898,7 @@ def test_wrong_manufacturer_product_link_cannot_publish(db_session):
     assert "product_manufacturer_mismatch" in {issue.code for issue in error.value.report.issues}
 
 
-def test_limitations_are_recorded_and_exposed_without_claiming_runtime_wait(reference):
+def test_historical_limitations_are_retained_and_current_wait_is_enforced(reference):
     factory, promotion_id = reference
     publish(factory, promotion_id)
     f = reference_manifest()
@@ -889,8 +906,8 @@ def test_limitations_are_recorded_and_exposed_without_claiming_runtime_wait(refe
     assert f["claim_delay_limitation"]["authoritative_runtime_rule"] is False
     offer = check(factory, date(2026, 10, 27), date(2026, 12, 2)).promotions[0]
     assert "35-day wait" in offer.benefits[0].benefit.description
-    assert "unmodelled" in offer.benefits[0].benefit.description
-    assert "No production publication" in offer.benefits[0].benefit.description
+    assert "wait after each purchase is enforced" in offer.benefits[0].benefit.description
+    assert "No production publication" not in offer.benefits[0].benefit.description
     with factory() as session:
         candidate = session.get(Promotion, promotion_id)
         assert candidate.claim_start_offset_days is None

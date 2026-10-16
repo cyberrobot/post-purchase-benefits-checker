@@ -105,6 +105,11 @@ class Promotion(Identity, Timestamps, Base):
             "(claim_start_date IS NOT NULL AND claim_end_date IS NOT NULL)",
             name="ck_promotions_claim_dates_complete",
         ),
+        CheckConstraint(
+            "claim_min_wait_days IS NULL OR (claim_start_date IS NOT NULL "
+            "AND claim_min_wait_days BETWEEN 0 AND 3652058)",
+            name="ck_promotions_claim_min_wait",
+        ),
         CheckConstraint("claim_start_date <= claim_end_date", name="ck_promotions_claim_dates"),
         CheckConstraint(
             "(claim_start_offset_days IS NULL AND claim_end_offset_days IS NULL) OR "
@@ -133,6 +138,7 @@ class Promotion(Identity, Timestamps, Base):
     status: Mapped[str] = mapped_column(String(32))
     purchase_start_date: Mapped[date | None] = mapped_column(Date)
     purchase_end_date: Mapped[date | None] = mapped_column(Date)
+    claim_min_wait_days: Mapped[int | None] = mapped_column(Integer)
     claim_start_date: Mapped[date | None] = mapped_column(Date)
     claim_end_date: Mapped[date | None] = mapped_column(Date)
     claim_start_offset_days: Mapped[int | None] = mapped_column(Integer)

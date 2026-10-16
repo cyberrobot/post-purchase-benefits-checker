@@ -316,3 +316,35 @@ def test_relative_preflight_representability(end, offsets, invalid):
     assert bool(found) is invalid
     if found:
         assert found[0].path == "/promotion/claim_window"
+
+
+@pytest.mark.parametrize("wait", [0, 30])
+def test_fixed_window_wait_round_trips_as_typed_candidate_data(wait):
+    raw = document()
+    raw["promotion"]["claim_window"] = {
+        "type": "fixed",
+        "start_date": "2026-10-01",
+        "end_date": "2026-12-31",
+        "minimum_days_after_purchase": wait,
+    }
+    candidate = parse_candidate_promotion(raw)
+    assert (
+        candidate.model_dump(mode="json")["promotion"]["claim_window"]
+        == raw["promotion"]["claim_window"]
+    )
+    assert {issue.code for issue in validate_candidate_promotion(candidate).issues} == {
+        "unresolved_references"
+    }
+
+
+@pytest.mark.parametrize("wait", [-1, True, "30", 3652059])
+def test_fixed_window_wait_rejects_untrusted_invalid_types_and_bounds(wait):
+    raw = document()
+    raw["promotion"]["claim_window"] = {
+        "type": "fixed",
+        "start_date": "2026-10-01",
+        "end_date": "2026-12-31",
+        "minimum_days_after_purchase": wait,
+    }
+    with pytest.raises(CandidateInputError):
+        parse_candidate_promotion(raw)

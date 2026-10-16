@@ -44,6 +44,7 @@ def _record(row: Promotion) -> PromotionRecord:
         claim_end_date=row.claim_end_date,
         claim_start_offset_days=row.claim_start_offset_days,
         claim_end_offset_days=row.claim_end_offset_days,
+        claim_min_wait_days=row.claim_min_wait_days,
     )
 
 
@@ -194,7 +195,9 @@ class SqlAlchemyPromotionRepository:
                     if any(v is not None for v in fixed) and any(v is not None for v in relative):
                         raise ValueError
                     if any(v is not None for v in fixed):
-                        window = FixedClaimWindow(*fixed)
+                        window = FixedClaimWindow(*fixed, promotion.claim_min_wait_days)
+                    elif promotion.claim_min_wait_days is not None:
+                        raise ValueError
                     elif any(v is not None for v in relative):
                         window = RelativeClaimWindow(*relative)
                 except (ValueError, TypeError):
@@ -494,6 +497,7 @@ def _check_details(variant):
             for row in sorted(variant.requirements, key=lambda value: value.id)
         ),
         sources,
+        claim_min_wait_days=promotion.claim_min_wait_days,
     )
 
 

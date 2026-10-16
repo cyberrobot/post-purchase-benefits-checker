@@ -41,6 +41,7 @@ def _fingerprint(promotion, sources_by_id=None):
         promotion.claim_end_date,
         promotion.claim_start_offset_days,
         promotion.claim_end_offset_days,
+        promotion.claim_min_wait_days,
         tuple(
             sorted(
                 (

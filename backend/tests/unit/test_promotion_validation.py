@@ -171,3 +171,24 @@ def test_incomplete_benefit_name_cannot_publish(name):
     assert [(i.code, i.path) for i in report.issues] == [
         ("missing_benefit_name", "/promotion/variants/0/benefits/0/name")
     ]
+
+
+@pytest.mark.parametrize("end,wait", [(None, 30), (date(2026, 12, 31), 30)])
+def test_publication_rejects_fixed_wait_without_a_nonempty_supported_intersection(end, wait):
+    snapshot = replace(
+        valid_snapshot(),
+        purchase_end_date=end,
+        claim_window=FixedClaimWindow(date(2026, 10, 1), date(2026, 12, 31), wait),
+    )
+    assert "invalid_claim_window" in {
+        issue.code for issue in validate_promotion_for_publication(snapshot).issues
+    }
+
+
+def test_publication_accepts_fixed_wait_with_qualifying_purchase_bounds():
+    snapshot = replace(
+        valid_snapshot(),
+        purchase_end_date=date(2026, 10, 31),
+        claim_window=FixedClaimWindow(date(2026, 10, 1), date(2026, 12, 31), 30),
+    )
+    assert validate_promotion_for_publication(snapshot).can_publish

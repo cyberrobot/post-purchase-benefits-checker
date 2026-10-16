@@ -197,3 +197,52 @@ def test_relative_value_contract():
     for field in fields(window):
         with pytest.raises(FrozenInstanceError):
             setattr(window, field.name, 0)
+
+
+@pytest.mark.parametrize("wait", [-1, 3652059, True, 1.5, "30"])
+def test_fixed_wait_rejects_invalid_offsets(wait):
+    with pytest.raises((ValueError, TypeError)):
+        FixedClaimWindow(date(2026, 6, 4), date(2026, 12, 4), wait)
+
+
+@pytest.mark.parametrize(
+    "evaluated,status",
+    [
+        (date(2026, 7, 11), S.NOT_YET_OPEN),
+        (date(2026, 7, 12), S.OPEN),
+        (date(2026, 12, 4), S.OPEN),
+        (date(2026, 12, 5), S.EXPIRED),
+    ],
+)
+def test_fixed_campaign_wait_uses_purchase_and_preserves_absolute_deadline(evaluated, status):
+    result = evaluate_fixed_claim_window(
+        FixedClaimWindow(date(2026, 6, 4), date(2026, 12, 4), 30),
+        evaluated,
+        date(2026, 6, 12),
+    )
+    assert result.status == status
+    assert result.opens_on == date(2026, 7, 12)
+    assert result.deadline_on == date(2026, 12, 4)
+
+
+@pytest.mark.parametrize("purchase,wait", [(date.max, 1), (date(2026, 12, 4), 1)])
+def test_fixed_campaign_wait_rejects_overflow_and_empty_intersection(purchase, wait):
+    with pytest.raises(ValueError):
+        evaluate_fixed_claim_window(
+            FixedClaimWindow(date(2026, 6, 4), date(2026, 12, 4), wait),
+            date(2026, 12, 4),
+            purchase,
+        )
+
+
+@pytest.mark.parametrize(
+    "evaluated,status", [(date(2026, 6, 3), S.NOT_YET_OPEN), (date(2026, 6, 4), S.OPEN)]
+)
+def test_fixed_campaign_opening_still_applies_after_individual_wait(evaluated, status):
+    # A May 1 purchase has completed its 30-day wait before the campaign opens June 4.
+    result = evaluate_fixed_claim_window(
+        FixedClaimWindow(date(2026, 6, 4), date(2026, 12, 4), 30),
+        evaluated,
+        date(2026, 5, 1),
+    )
+    assert result == ClaimWindowEvaluation(status, date(2026, 6, 4), date(2026, 12, 4))
