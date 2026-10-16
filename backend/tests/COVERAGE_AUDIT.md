@@ -266,13 +266,15 @@ latest remote `main`, PR numbering, PR32 existence and remote CI status could no
 be confirmed. Those statements describe only that local checkout and are not the
 current GitHub status.
 
-**Verified GitHub state at this review follow-up:** PR [#31](https://github.com/cyberrobot/post-purchase-benefits-checker/pull/31)
+**Historical GitHub checkpoints (2026-10-16):** PR [#31](https://github.com/cyberrobot/post-purchase-benefits-checker/pull/31)
 was merged on 16 October 2026 at 12:30:12 UTC as
 `83485cf32c899723d6e0f8f34bf8dc4418119807`. PR
-[#32](https://github.com/cyberrobot/post-purchase-benefits-checker/pull/32) is open,
-targets `main` at that PR31 merge commit, and has head
-`801903f6121fff6d097490ae6a8c5504c835e7e3`. The local PR32 branch head matched
-that SHA when verified. PR32 was created; the earlier local statement that no PR
+[#32](https://github.com/cyberrobot/post-purchase-benefits-checker/pull/32) was open
+and targeted `main` at that PR31 merge commit. At the earlier review, its head was
+`801903f6121fff6d097490ae6a8c5504c835e7e3`; it subsequently advanced to
+`54c03e596f42eb52d81faa29649e8ac0d7b054d9`, which contains the detailed review
+record and issue drafts below. These are dated historical checkpoints; check
+GitHub for the live head. PR32 was created; the earlier local statement that no PR
 was created records the implementation-time state only.
 
 **Governance decision outstanding:** the PR31 task amendment, PR31 description,
@@ -403,19 +405,29 @@ errors are not counted as kills. Logs were inspected for these exact assertions.
 - Local Ruff lint and format checks passed (122 files already formatted); `git diff --check` passed. mypy is N/A (no configured command). Migration tests were exercised by the full suite; Docker image/startup smoke was not rerun locally because packaging, runtime and CI were unchanged. Remote CI evidence is recorded in the following section.
 - The independently identified deployment/data audit prerequisites, unsupported customer facts, unavailable immutable source bytes, and pending PR31 maintainer scope decision remain unresolved; coverage does not clear them.
 
-### Current remote CI verification
+### Remote CI evidence — 2026-10-16
 
 GitHub Actions [Backend run #93](https://github.com/cyberrobot/post-purchase-benefits-checker/actions/runs/38907810341)
-ran for PR32 head `801903f6121fff6d097490ae6a8c5504c835e7e3` and completed with
+ran for historical PR32 head `801903f6121fff6d097490ae6a8c5504c835e7e3` and completed with
 success. The job logs confirm `uv sync --locked --extra dev`, Ruff lint, Ruff format
 (122 files already formatted), diagnostic branch-coverage pytest (**2,414 passed,
 6 warnings**), coverage artifact upload, and backend image build/migration/health
 smoke all passed. The exact test count here is from the remote job log, not inferred
 from the green status. The uploaded
 [backend-branch-coverage artifact](https://github.com/cyberrobot/post-purchase-benefits-checker/actions/runs/38907810341)
-is artifact `backend-branch-coverage` (ID `12049126460`). This remote success is
-separate from the historical local dependency-sync DNS failure and first Docker
-socket permission error recorded above; later authorized local tests passed.
+is artifact `backend-branch-coverage` (ID `12049126460`).
+
+GitHub Actions [Backend run #94](https://github.com/cyberrobot/post-purchase-benefits-checker/actions/runs/38910194427)
+ran for historical PR32 head `54c03e596f42eb52d81faa29649e8ac0d7b054d9` and
+completed with success. Rechecked job logs confirm locked dependency installation,
+Ruff lint and format, diagnostic branch-coverage pytest (**2,414 passed,
+6 warnings**, 126.31s), coverage artifact upload, and backend image
+build/migration/health smoke all passed. These two runs verify their respective
+historical commits; they do not establish CI success for subsequent commits.
+Their remote success is separate from the historical local dependency-sync DNS
+failure and first Docker socket permission error recorded above; later authorized
+local tests passed. Those environment limitations are not unresolved product
+failures.
 
 ### Follow-up issue drafts (not filed)
 
@@ -440,9 +452,9 @@ tracking these actionable remediation scopes. These are drafts, not issue URLs; 
 tracker is claimed to exist. Apply a suitable existing repository label when filing
 if one is available.
 
-PR #32 now contains the concise verification and follow-up summary. The local
-audit edits in this working tree are not committed or pushed, so the detailed
-repository-state record and draft issue bodies below are not yet in the PR branch.
+PR #32 includes the verification record and the three ready-to-file follow-up
+issue drafts below. Those drafts have not been filed as GitHub issues because
+issue creation was denied; they are committed here for subsequent tracking.
 
 #### Draft: Define supported manufacturer eligibility restrictions and customer wording
 
