@@ -23,7 +23,10 @@ try {
   let response;
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    assert.equal(server.exitCode, null, `Server exited early: ${server.exitCode}`);
+    assert.ok(
+      server.exitCode === null && server.signalCode === null,
+      `Server exited early: code=${server.exitCode}, signal=${server.signalCode}`,
+    );
     try {
       response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(2000) });
       break;
@@ -51,7 +54,7 @@ try {
   throw error;
 } finally {
   const exited = once(server, 'exit');
-  if (server.exitCode === null) {
+  if (server.exitCode === null && server.signalCode === null) {
     server.kill('SIGTERM');
     const force = setTimeout(() => server.kill('SIGKILL'), 5000);
     await exited;
