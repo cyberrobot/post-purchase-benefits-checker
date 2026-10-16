@@ -251,3 +251,138 @@ aggregate app/migration source SHA-256 hashes.
 These checks demonstrate represented claim timing and persistence guarantees.
 They do not certify unrepresented claimant restrictions or automatically repair
 legacy published records whose source wait was omitted.
+
+## PR32 residual assurance follow-up — 2026-10-16
+
+### Baseline and decision record
+
+This is a follow-up to the PR31 evidence above, not a rerun of its audit or mutant
+count. The local `main` and `origin/main` were still PR30 (`46d19f0`); remote
+refresh failed with DNS resolution errors. The PR32 branch therefore uses the
+available PR31 tip `62ea8e2` as its prerequisite baseline. The specification reports
+PR31 merged on 16 October; neither the latest remote main, current highest PR
+number, availability of PR number 32 nor remote CI status was independently
+confirmed. No PR number was reserved and no PR was created.
+
+**Governance decision outstanding:** both the PR31 task amendment and original
+sections of this audit explicitly say maintainer approval of the production and
+migration expansion is pending. No separate approval evidence was available.
+A reported merge is not recorded scope approval. Obtain and record that decision
+before relying on the dependent release. PR32 changes no production code,
+manifest, schema, migration, transport contract, configuration or CI workflow.
+
+Inspection and the three new isolated fault trials below found existing tests
+already detect the proposed wait-projection, product-filter and reward-value
+faults. **No new or strengthened tests were necessary.** The conditional synthetic
+2027 wait scenario and additional product matrix would duplicate demonstrated
+protection. This conclusion does not certify unavailable manufacturer facts or
+legacy production data. No normal tests were relaxed, skipped or marked xfail.
+
+### Findings and dispositions
+
+Test paths below are relative to `backend/tests`; owning code is relative to
+`backend/app`. “Adequately tested” refers to the stated fault and boundary, not
+complete manufacturer entitlement.
+
+| ID | Invariant/source clause | Customer failure/impact | Owning code | Existing test ID and boundary | Evidence/oracle | Gap category | Severity | New or strengthened test ID | Defect proof | Disposition/blocker |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR32-01 | Hotpoint Wren 8(c); Sony §8: individual wait survives read projection | Premature claim-now advice | db/repositories/promotions.py::_check_details; application/purchase_check.py::_evaluate_candidate | integration/test_mvp_end_to_end_acceptance.py::TestMVPAcceptance::test_mvp_individual_wait_prevents_premature_claim_readiness; PostgreSQL → canonical operation → REST/MCP | Literal 30/35 days and 2026-07-12/2026-12-01 openings; independent reviewed observations, not fresh source bytes | adequately tested | P1 | None | M32-1: dropping persisted wait fails both existing cases | No duplicate synthetic test; source and legacy-row caveats remain |
+| PR32-02 | Exact linked product only | Wrong product receives an offer | db/repositories/promotions.py::find_promotion_candidates | integration/test_promotion_candidate_matching.py::test_exact_applicability[changes1-False]; real PostgreSQL query | Independently constructed different product association; expected empty tuple | adequately tested | P1 | None | M32-2: removing product predicate yields forbidden candidate | No new test needed; application also rejects inconsistent candidate details |
+| PR32-03 | Exact GBP reward projected from product mapping | Incorrect cashback advice | db/repositories/promotions.py::_check_details | integration/test_eligibility_api.py::test_http_real_snapshot_complete_projection_and_no_writes; PostgreSQL/REST; integration/test_check_purchase.py::test_complete_snapshot_materialised_no_writes; application | Literal expected amounts 100, 20.00, 42; synthetic persisted product-specific amount 42 | adequately tested | P1 | None | M32-3: product reward +1 fails literal REST oracle | Existing tests detect this concrete projection fault; not a claim of exhaustive cross-product mapping verification |
+| PR32-04 | Recorded wait must match actual source-backed published data | Legacy NULL or wrong wait permits premature readiness | migrations/versions/0008_fixed_claim_min_wait.py; application/purchase_check.py | integration/test_postgres_migrations.py::test_fixed_min_wait_migration_preserves_rows_and_refuses_unsafe_rollback; PostgreSQL; existing reference replay tests | Migration preserves NULL deliberately; current fixture consistency is not evidence about deployed rows | migration/deployment risk | P1 | None | Inspection: optional NULL has no wait; no production dataset available | Release data audit required; correct or withdraw affected published rows with provenance; never infer brand-wide waits |
+| PR32-05 | Reviewed official terms must justify configured facts | Internally consistent fixtures can still misstate entitlement | tests/acceptance/cases.py; integration/test_mvp_end_to_end_acceptance.py::offer | unit/test_mvp_acceptance_cases.py::test_pinned_acceptance_identity_reward_and_requirements; fixture consistency; acceptance offer; projection fidelity | Five reference clause maps and README review ledger; semantic hashes pin local JSON, not official bytes | unverified manufacturer/source fact | P1 | None | No fresh source-byte proof available; comparisons to manifest are not independent verification | Retain projection assertions; archive reviewed official versions before source-level certification; mapping below |
+| PR32-06 | Samsung clause 7; LG Eligibility §4/General §27: new product | Refurbished purchase may still match configured public rules | domain/eligibility_rules.py::PurchaseConditionRule; application/purchase_check.py::_evaluate_candidate | unit/test_samsung_reference_promotion.py::test_new_only_domain_rule_is_separate_from_public_five_field_request; unit/test_lg_reference_promotion.py::test_new_only_domain_rule_is_separate_from_public_five_field_request; pure domain | Explicit REFURBISHED → NOT_ELIGIBLE/condition_mismatch, missing → POTENTIALLY_ELIGIBLE/condition_unknown | unsupported product capability | P0 conditional on claim-entitlement presentation | None | Domain pair exists; public CheckPurchaseRequest has no condition and configured rules omit it | All five references not release-certified as unconditional manufacturer entitlement; separate purchase-fact/persisted-rule/transport design required |
+| PR32-07 | Claimant, country, seller/channel, prior claims, returns, account and evidence terms | Advice to excluded claimant or invalid seller/returned purchase | application/purchase_check.py::CheckPurchaseRequest/_evaluate_candidate; domain/eligibility_rules.py | Five reference domain/acceptance tests; current five-field contract inspected | Detailed per-brand ledger below; domain support for some typed rules does not establish runtime projection | unsupported product capability | P0 conditional on entitlement presentation | None | No transport facts or runtime configured rules for these exclusions | Separate supported-fact/uncertainty and publication policy scope; require review before general claim-entitlement advice |
+| PR32-08 | All runtime instances must preserve wait-bearing data | Mixed old/new binaries ignore a newly stored wait | migration 0008; application/promotion_authoring.py; db/repositories/promotions.py | unit/test_promotion_authoring.py::test_fixed_window_wait_round_trips_as_typed_candidate_data; publication/migration/reference suites | Strict typed authoring → publication → persisted field → projection reviewed; old binary lacks evaluator | migration/deployment risk | P1 | None | M32-1 corroborates projection only; no deployed fleet observed | Apply 0008 and deploy all supporting consumers before enabling wait data; record fleet/version and legacy-data audit externally |
+| PR32-09 | Corrupt publication must never partially succeed; evidence retained | Partial or misleading successful offers; unsafe error details | application/purchase_check.py; application/purchase_check_details.py; api/eligibility.py; mcp/server.py | integration/test_mvp_end_to_end_acceptance.py::test_mvp_corrupt_published_data_fails_safely; integration/test_eligibility_api.py::test_http_invalid_published_data_never_partial_success | Actual deleted claim-source link, exact published_data_invalid and no MCP structured success, pool cleanup | adequately tested | P1 | None | Existing tests inspected; no distinct new adversarial path established | No duplicate source/error test; provenance is traceability, not full terms enforcement |
+| PR32-10 | Scripted conversation is deterministic tool assurance | Mistaking scripted grounding for faithful live language interpretation | tests/chatgpt/flow.py; mcp/server.py | unit/test_chatgpt_tool_flow.py; integration/test_chatgpt_mcp_flow.py | Authored tool calls and expected structured facts | unsupported product capability | P2 | None | No live model invoked | Natural-language extraction and generated prose faithfulness unverified; no live CI evaluation added |
+| PR32-11 | No retrieval/ingestion boundary changed | No new external failure path to cover | N/A | N/A | No network/model ingestion implemented in this scope | not applicable | N/A | None | Inspection | No live manufacturer/model calls or new external-boundary tests |
+
+### Evidence-to-test mapping and limits
+
+No official terms PDF/HTML bytes are committed under `tests/fixtures/promotions`.
+Hisense records the SHA-256 of a prior user attachment, but those attachment bytes
+are not present there for independent replay. Samsung/LG/Hotpoint/Sony record
+review observations and URLs rather than immutable official bytes. PR32 inspected
+all five manifests and the README clause ledger; it did not reopen remote sources
+or certify that their contents are currently unchanged. The independent literal
+calendar/GBP expectations below independently exercise the implementation, while
+their manufacturer authority remains the earlier recorded review observations.
+
+| Narrow reference | Independently authored acceptance facts and clause attribution | Runtime enforcement | Informational requirements / unsupported restrictions / facts not established |
+| --- | --- | --- | --- |
+| Samsung SM-R640, Samsung.com | GBP 50, Table 1 p2; retailer Table 2 p3; purchase 3–23 June 2026 §§1–2; clause 12 inclusive offsets 0..29 gives purchase 15 June → 14 July | Manufacturer/product/retailer/purchase dates, relative claim dates, fixed reward | Clause 11 receipt/serial are instructions; clause 7 new-only and §§3–6/13 territory, age/company, reseller, prior claims/caps and account/Wallet steps unsupported. Portal accessibility/claim acceptance not established |
+| LG OLED55G54LW.AEK, LG.com/UK | GBP 150 exact SKU reward row; Eligibility §§3–4/retailers §22; claim deadline 19 August 2025 §§4/6/9, Cashback Claim §12 | Manufacturer/product/retailer/purchase dates, fixed 21 May–19 August window, reward; 30-day validation delay is not an opening wait | §§6–7 receipt/serial informational; new UK condition, residency/age, bank account, bulk/returns/prior claims unsupported. Individual submission-after-purchase and exact 23:59 GMT cutoff unsupported; portal availability not established |
+| Hisense WF7I1248BBR, Currys | GBP 100 Annex 2; Currys Annex 1/§3.2; purchases 9 September–27 October 2026 §3.1; claims 27 November–24 December §3.5 | Manufacturer/product/canonical retailer/purchase dates/fixed claim dates/reward | §§3.6/5.2/5.3/5.5 receipt/serial informational; §§3.7/4.1–4.8 consumer, age/residency, employee, condition, returns, direct seller/marketplace, combination and household cap unsupported. Portal not accessed; archived PDF hash alone is not replayed source bytes |
+| Hotpoint H7IC16M6 UK, Wren | GBP 75 clause 4; Wren clause 13; purchase 5 May–12 June clauses 2–3; fixed 4 June–4 December plus 30 days clause 8(c)/FAQ; 12 June → 12 July | Manufacturer/product/retailer/dates/reward and structured wait 30 | Clauses 5/6/8 receipt/serial/warranty registration informational; clauses 1/9/14/15/20 claimant, condition, claims/combination/returns unsupported; seller identity beyond canonical Wren unsupported; payment/bank evidence not established |
+| Sony K55XR75M2B, Currys - UK | GBP 150 §6 row; dealer PDF p3/§11; purchase 30 September–27 October §§5–6; 35 days §8 and fixed 31 December deadline §10; 27 October → 1 December | Manufacturer/product/retailer alias/dates/reward and structured wait 35 | §9 receipt and serial photo alternatives informational; §§2–3/7/11–13 owner/age/new condition/returns/account/seller/prior claims unsupported; exact CET cutoff unsupported; no claim submitted or accepted |
+
+Acceptance `offer()` compares requirement descriptions, source URLs and timestamps
+to each manifest: these are **projection fidelity** assertions. Semantic digest
+checks protect against accidental local edits but can be deliberately updated with
+a wrong fact; they do not independently validate official restrictions. Literal
+amounts/dates in CASES and the two wait cases are **business expectation** oracles
+within the recorded review scope. No new immutable-source business oracle was
+invented where independent bytes were absent. Existing reference construction and
+replay tests already reject changed or removed structured waits.
+
+Concrete unsupported pair: Samsung clause 7 is recorded as new-only. The existing
+pure-domain test rejects REFURBISHED and marks missing condition unknown. The
+same public request for SM-R640/Samsung.com, purchased and evaluated 2026-06-15,
+cannot express refurbished condition and its persisted configured rule set can
+return ELIGIBLE. That is a configured-rule match, not certified claim entitlement.
+This is a capability/release decision, not a regression to “fix” by a passing
+transport test. Local follow-up scopes PR32-06/07 require supported purchase facts,
+persisted typed constraints, projection, shared evaluation, REST/MCP design and
+source-backed publication review; no external issues/PRs were created.
+
+For PR32-04/08, source-audit every existing published wait-bearing promotion,
+record source version and expected wait, compare the actual persisted column,
+then correct/version or withdraw mismatches in a separate remediation. A synthetic
+NULL row proves code semantics, not that a real production record is wrong. No
+production dataset or deployment inventory was accessed, so actual affected rows
+and mixed-version exposure remain unknown. All five references remain **not
+release-certified for unconditional manufacturer claim entitlement** until material
+unrepresented exclusions and evidence limitations have an explicit release decision.
+
+### New isolated defect-detection evidence
+
+Each trial copied `backend/` to its own disposable `/private/tmp/pr32-*` directory,
+excluding the venv/cache/coverage artifacts. The existing Python 3.13 environment
+and its bin PATH supplied pytest and Alembic. Exactly one site in the temporary
+`app/db/repositories/promotions.py` changed; no working-tree production source was
+edited. Each temporary source was restored to its original text, its focused test
+rerun, and its directory removed. Disposable real PostgreSQL Testcontainers were
+used throughout. These are new PR32 fault trials against **pre-existing tests**,
+not newly added tests or new production defects and not PR31's earlier mutants.
+
+| Trial | One-site replacement | Focused existing test ID | Intended observed failure | Restored result |
+| --- | --- | --- | --- | --- |
+| M32-1 | `_check_details`: `claim_min_wait_days=promotion.claim_min_wait_days` → `claim_min_wait_days=None` | integration/test_mvp_end_to_end_acceptance.py::TestMVPAcceptance::test_mvp_individual_wait_prevents_premature_claim_readiness | Both literal Hotpoint/Sony assertions fail: ELIGIBLE != CLAIM_NOT_YET_OPEN (2 failed, 5.49s); assertion names 12 July / 1 December openings | 2 passed, 5.05s |
+| M32-2 | Candidate SQL `PromotionVariantProduct.product_id == product_id` → `True` | integration/test_promotion_candidate_matching.py::test_exact_applicability | `[changes1-False]`: nonempty PromotionCandidate tuple != (); 1 failed, 4 passed, 2.87s | 5 passed, 3.85s |
+| M32-3 | `_check_details`: `ProductRewardValue(value.product_id, value.amount)` → `ProductRewardValue(value.product_id, value.amount + 1)` | integration/test_eligibility_api.py::test_http_real_snapshot_complete_projection_and_no_writes | Exact REST amount set {'100','20.00','43'} != {'100','20.00','42'}; 1 failed, 4.21s | 1 passed, 4.31s |
+
+Reproduce each with the stated single-site edit in an isolated backend copy and
+`python -m pytest <focused ID> -q --tb=short`, using the existing venv and migrated
+PostgreSQL fixtures, then restore and repeat. M32-1 is projection loss, distinct
+from PR31's pure evaluator bypass; M32-2 targets product rather than retailer;
+M32-3 targets persisted reward value rather than pure reward arithmetic. Setup
+errors are not counted as kills. Logs were inspected for these exact assertions.
+
+### PR32 verification status
+
+- `UV_CACHE_DIR=/private/tmp/uv-pr32 uv sync --locked --extra dev`: **could not complete**; locked resolution found 67 packages but editable build could not fetch setuptools==75.8.2 from PyPI because DNS resolution failed. Replacement evidence uses the existing venv with `uv run --no-sync`; fresh install reproducibility remains unverified.
+- `UV_CACHE_DIR=/private/tmp/uv-pr32 uv run --no-sync pytest tests/integration/test_mvp_end_to_end_acceptance.py -k individual_wait -q`: sandbox attempt had **2 setup errors**, Docker socket PermissionError; this is not a product failure or mutant kill. With authorised Docker access and `--tb=short`, **2 passed, 48 deselected**, 5.57s.
+- Isolated focused commands and restored results: table above. No full-suite run occurred during implementation.
+- `UV_CACHE_DIR=/private/tmp/uv-pr32 uv run --no-sync ruff check .` and `uv run --no-sync ruff format --check .`: **passed**, 122 files already formatted; `git diff --check`: **passed**.
+- mypy: **N/A**, no configured command. Migration-specific command `uv run pytest tests/integration/test_postgres_migrations.py -q` was not separately run during implementation because no migration interaction changed; the full suite remains the authoritative broader check.
+- Docker image build/startup smoke not rerun: packaging, runtime and CI are unchanged. No live manufacturer/model requests, external accounts, production writes, commits, pushes or PR creation occurred.
+
+### Final independent review and full-suite measurement
+
+- Fresh reviewer: **PASS**, no actionable findings. No repair cycle was needed.
+- From `backend/`, `UV_CACHE_DIR=/private/tmp/uv-pr32 uv run --no-sync pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml -q`: **2414 passed**, 6 SQLAlchemy warnings, 84.53s. No tests failed or were skipped.
+- This PR32 run measured 2500/2577 statements (97.0120%) and 571/620 branches (92.0968%; 49 missing arcs, 47 partial branches), with 96.0588% combined coverage. Comparing the generated JSON to the preserved PR31 final report `/private/tmp/pr31-ci-final.json` found **the exact same missing-branch arc set**; no branch was newly missed or newly covered. The result is fresh PR32 evidence, despite matching the historical PR31 values.
+- Risk review of the relevant locations found all branches covered in `application/purchase_check.py`, `domain/claim_windows.py`, and `domain/eligibility_rules.py`. Remaining partial arcs are in defensive validation/malformed-data branches across schema and domain constructors, authoring/publication validation, repository reward/source shape checks, and operational guards. Existing tests cover the customer-significant boundaries in those areas, including whole-check rejection of invalid published details, no partial REST/MCP success for corrupted source graphs, publication rejection/retry for malformed claim windows and reward mappings, and real persisted wait/product/reward projections. No additional residual business gap was established from the uncovered arcs. The missing locations and exact arc set are unchanged from PR31; percentages were not used as a test target.
+- Local Ruff lint and format checks passed (122 files already formatted); `git diff --check` passed. mypy is N/A (no configured command). Migration tests were exercised by the full suite; Docker image/startup smoke was not rerun because packaging, runtime and CI were unchanged. No remote CI run was performed.
+- The independently identified deployment/data audit prerequisites, unsupported customer facts, unavailable immutable source bytes, and pending PR31 maintainer scope decision remain unresolved; coverage does not clear them.
