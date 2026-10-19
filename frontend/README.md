@@ -91,12 +91,26 @@ and amber. The success foreground uses the specified darker green. No campaign c
 references is shipped.
 
 `src/app/globals.css` exposes semantic Tailwind v4 `@theme` tokens for colours, typography,
-spacing, radii and shadows. Light mode is explicit. Use `type-display`, `type-section`, `body-copy`
-and `eyebrow` for the shared type scale; `section-space`, `card-grid` (1/2/3 columns) and
-`editorial-grid` (1/2 columns) establish responsive composition. `surface-dark`, `surface-highlight`
-and `icon-tile` support the navy panel, amber feature and decorative icon treatments. Put dark
-text on amber. Avoid adding product-specific colour tokens or assuming a badge is an eligibility
-result. Focus uses an offset violet ring with white separation; reduced motion disables animation.
+spacing, radii and shadows. Use utilities directly in JSX: `text-display` / `text-section` with
+`font-bold leading-[1.15] tracking-tight`, `text-body text-ink-muted`, and
+`text-small font-bold tracking-widest text-brand uppercase`. Ordinary component appearance uses
+small typed variant maps and utilities, including responsive `md:` / `lg:` variants.
+For example, compose cards with `grid gap-6 md:grid-cols-2 lg:grid-cols-3`, editorial sections
+with `grid items-center gap-8 md:grid-cols-2`, and section spacing with `py-16 lg:py-24`.
+Use `bg-navy text-on-dark` or `bg-highlight text-ink` for contrasting sections and explicitly
+choose readable descendant text colours. Put dark text on amber; badges do not decide eligibility.
+Decorative icon tiles can use `inline-grid place-items-center rounded-control bg-surface-muted
+p-3 text-brand`.
+
+The shell body is a flex column with `min-h-svh`. Every public page's main must be a **direct
+child of body**: the global `body > main { flex: 1 }` convention gives all short pages footer
+space automatically. Pages own their main and H1; do not wrap main in a route-level div.
+Long content expands naturally and the footer stays in document flow.
+
+Retained global CSS exceptions are the explicit light colour scheme, direct-child main growth,
+universal focus ring with white separation, heading/paragraph wrapping, tap highlight reset,
+Safari's native disclosure marker selector, and the reduced-motion preference reset. These are
+cross-component/browser conventions rather than a parallel component stylesheet.
 
 Import primitives directly from `src/components/ui/`:
 
@@ -112,7 +126,7 @@ Import primitives directly from `src/components/ui/`:
 - `AccordionItem`: native details/summary, `title`, children, optional `open` and `className`.
   Native Enter/Space behaviour is preserved, with a decorative chevron that indicates open state.
 
-For example, future sections can compose `SectionHeading`, a `card-grid` div, and three `Card`
+For example, future sections can compose `SectionHeading`, a `grid gap-6 md:grid-cols-2 lg:grid-cols-3` div, and three `Card`
 children inside a `Container`. The real homepage, checker, FAQ, benefit selector, eligibility
 mapping, manufacturer data and additional navigation destinations remain separate feature work.
 

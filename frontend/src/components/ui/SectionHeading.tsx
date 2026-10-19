@@ -16,12 +16,20 @@ export function SectionHeading({
   id,
 }: SectionHeadingProps) {
   return (
-    <div className={`section-heading section-heading--${align}`}>
-      {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-      <Heading id={id} className="type-section">
+    <div className={`grid gap-3 ${align === 'center' ? 'justify-items-center text-center' : ''}`}>
+      {eyebrow && (
+        <p className="text-small font-bold tracking-widest text-brand uppercase group-data-[surface=dark]/card:text-highlight">
+          {eyebrow}
+        </p>
+      )}
+      <Heading id={id} className="text-section leading-[1.15] font-bold tracking-tight">
         {children}
       </Heading>
-      {description && <p className="body-copy">{description}</p>}
+      {description && (
+        <p className="max-w-[70ch] text-body text-ink-muted group-data-[surface=dark]/card:text-on-dark">
+          {description}
+        </p>
+      )}
     </div>
   );
 }

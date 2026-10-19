@@ -4,9 +4,9 @@ import type { NavigationItem } from './SiteNavigation';
 
 export function SiteFooter({ links = [] }: { links?: readonly NavigationItem[] }) {
   return (
-    <footer className="site-footer">
-      <Container>
-        <p className="footer-brand">BenefitScout</p>
+    <footer className="border-t border-border py-8 text-small text-ink-muted">
+      <Container className="grid gap-2">
+        <p className="mb-2 font-bold text-ink">BenefitScout</p>
         <p>A UK post-purchase benefits service in development.</p>
         <p>
           Promotion eligibility and claims are determined by the manufacturer; always check the
@@ -14,10 +14,12 @@ export function SiteFooter({ links = [] }: { links?: readonly NavigationItem[] }
         </p>
         {links.length > 0 && (
           <nav aria-label="Footer">
-            <ul>
+            <ul className="m-0 flex list-none flex-wrap gap-4 p-0">
               {links.map(({ href, label }) => (
                 <li key={href}>
-                  <Link href={href}>{label}</Link>
+                  <Link href={href} className="inline-block py-3 text-inherit">
+                    {label}
+                  </Link>
                 </li>
               ))}
             </ul>

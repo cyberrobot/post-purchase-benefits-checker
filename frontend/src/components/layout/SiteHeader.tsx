@@ -3,11 +3,14 @@ import { Container } from '../ui/Container';
 import { SiteNavigation, type NavigationItem } from './SiteNavigation';
 export function SiteHeader({ navigation = [] }: { navigation?: readonly NavigationItem[] }) {
   return (
-    <header className="site-header">
-      <Container className="header-content">
-        <Link className="wordmark" href="/">
+    <header className="border-b border-border bg-page">
+      <Container className="flex flex-wrap items-center justify-between gap-4 py-6">
+        <Link
+          className="inline-flex min-h-11 items-center text-card font-[750] tracking-[-0.035em] text-ink no-underline wrap-anywhere"
+          href="/"
+        >
           BenefitScout
-          <span className="brand-dot" aria-hidden="true">
+          <span className="text-brand" aria-hidden="true">
             .
           </span>
         </Link>

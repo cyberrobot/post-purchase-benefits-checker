@@ -19,29 +19,34 @@ export function SiteNavigation({ items }: { items: readonly NavigationItem[] }) 
   }
   const links = items.map(({ href, label }) => (
     <li key={href}>
-      <Link href={href} onClick={() => close(false)}>
+      <Link className="block p-3 text-ink wrap-anywhere" href={href} onClick={() => close(false)}>
         {label}
       </Link>
     </li>
   ));
   return (
     <>
-      <nav aria-label="Primary" className="desktop-navigation">
-        <ul>{links}</ul>
+      <nav aria-label="Primary" className="hidden md:block">
+        <ul className="m-0 flex list-none flex-wrap gap-3 p-0">{links}</ul>
       </nav>
       <details
         ref={disclosure}
-        className="mobile-navigation"
+        className="w-full md:hidden"
         onToggle={(event) => setOpen(event.currentTarget.open)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') close(true);
         }}
       >
-        <summary ref={summary} aria-expanded={hydrated ? open : undefined} aria-controls={id}>
+        <summary
+          className="min-h-11 cursor-pointer p-2 font-semibold"
+          ref={summary}
+          aria-expanded={hydrated ? open : undefined}
+          aria-controls={id}
+        >
           Menu <span aria-hidden="true">⌄</span>
         </summary>
         <nav id={id} aria-label="Mobile primary">
-          <ul>{links}</ul>
+          <ul className="m-0 flex list-none flex-wrap gap-3 p-0">{links}</ul>
         </nav>
       </details>
     </>

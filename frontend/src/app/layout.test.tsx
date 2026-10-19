@@ -19,3 +19,26 @@ it('composes a skip link, banner, one page main and heading, and contentinfo', (
     '/',
   ]);
 });
+
+it('keeps an ordinary future page main directly inside the shared shell', () => {
+  const layout = RootLayout({
+    children: (
+      <main id="main-content" tabIndex={-1}>
+        <h1>Ordinary page</h1>
+      </main>
+    ),
+  });
+  const body = layout.props.children;
+  const children = body.props.children;
+  expect(children.filter((child: React.ReactElement) => child?.type === 'main')).toHaveLength(1);
+  render(children);
+  const main = screen.getByRole('main');
+  expect(main).toHaveAttribute('tabindex', '-1');
+  expect(
+    screen.getByRole('banner').compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    main.compareDocumentPosition(screen.getByRole('contentinfo')) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
