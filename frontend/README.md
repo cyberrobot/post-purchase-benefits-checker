@@ -122,7 +122,10 @@ Import primitives directly from `src/components/ui/`:
 - `Card`: `default`, `subtle` or `dark` div surface, children and native div props; no built-in action.
 - `Badge`: `neutral`, `accent` or `success` text-bearing span; caller supplies its meaning.
 - `SectionHeading`: explicit `level="h2"` or `"h3"`, optional `id`, `eyebrow`, `description`,
-  `align="normal"` or `"center"`; heading text as children.
+  `align="normal"` or `"center"`; heading text as children. Use `tone="dark"` on standalone
+  `bg-navy` or `bg-navy-panel` sections for amber eyebrows and white headings/supporting copy.
+  The default `tone="light"` preserves light-surface colours and automatically adapts inside
+  `Card variant="dark"`; a dark card does not require an explicit tone.
 - `AccordionItem`: native details/summary, `title`, children, optional `open` and `className`.
   Native Enter/Space behaviour is preserved, with a decorative chevron that indicates open state.
 

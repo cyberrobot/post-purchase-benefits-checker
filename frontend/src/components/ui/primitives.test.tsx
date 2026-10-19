@@ -91,3 +91,61 @@ it('uses a native disclosure with a text-bearing summary and initially hidden an
   fireEvent.click(summary);
   expect(details).not.toHaveAttribute('open');
 });
+
+it('preserves light heading semantics and its supporting text by default', () => {
+  render(
+    <SectionHeading level="h2" id="light-details" eyebrow="About" description="Light copy">
+      Light details
+    </SectionHeading>,
+  );
+  expect(screen.getByRole('heading', { level: 2, name: 'Light details' })).toHaveAttribute(
+    'id',
+    'light-details',
+  );
+  expect(screen.getByText('About')).toHaveClass('text-brand');
+  expect(screen.getByText('Light copy')).toBeVisible();
+  expect(screen.getByText('Light copy')).toHaveClass('text-ink-muted');
+});
+
+it.each(['bg-navy', 'bg-navy-panel'])(
+  'supports a standalone dark heading on %s without a card wrapper',
+  (surface) => {
+    render(
+      <section className={surface}>
+        <SectionHeading
+          level="h3"
+          id="dark-details"
+          tone="dark"
+          align="center"
+          eyebrow="About"
+          description="Dark copy"
+        >
+          Dark details
+        </SectionHeading>
+      </section>,
+    );
+    const heading = screen.getByRole('heading', { level: 3, name: 'Dark details' });
+    expect(heading).toHaveAttribute('id', 'dark-details');
+    expect(heading).toBeVisible();
+    expect(heading).toHaveClass('text-on-dark');
+    expect(screen.getByText('About')).toHaveClass('text-highlight');
+    expect(screen.getByText('Dark copy')).toBeVisible();
+    expect(screen.getByText('Dark copy')).toHaveClass('text-on-dark');
+    expect(heading.closest('[data-surface]')).toBeNull();
+  },
+);
+
+it('retains automatic dark-card styling without an explicit heading tone', () => {
+  render(
+    <Card variant="dark">
+      <SectionHeading level="h2" eyebrow="About" description="Card copy">
+        Card details
+      </SectionHeading>
+    </Card>,
+  );
+  const heading = screen.getByRole('heading', { level: 2, name: 'Card details' });
+  expect(heading.closest('[data-surface="dark"]')).toHaveClass('text-on-dark');
+  expect(screen.getByText('About')).toHaveClass('group-data-[surface=dark]/card:text-highlight');
+  expect(screen.getByText('Card copy')).toBeVisible();
+  expect(screen.getByText('Card copy')).toHaveClass('group-data-[surface=dark]/card:text-on-dark');
+});
