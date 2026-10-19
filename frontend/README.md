@@ -173,3 +173,48 @@ implemented destinations are supplied. Existing RTL tests cover injected menu Es
 Long-label stress remains outstanding manual shared-component coverage rather than a claim about the root.
 Reduced-motion coverage confirms the current static shell has no active animations or transitions;
 it does not exercise an animated component. Firefox and WebKit are possible future extensions.
+
+## Eligibility API foundation
+
+Set `BENEFITSCOUT_API_ORIGIN` on the **Next.js server runtime** when enabling live
+checks (for example `http://127.0.0.1:8000` for a separately running local backend;
+see the backend README for its PostgreSQL/configuration/startup prerequisites).
+Production accepts only HTTPS origins. Local loopback HTTP origins are accepted
+outside production for development. Credentials,
+paths beyond `/`, query strings and fragments are rejected. No `NEXT_PUBLIC_*`
+variable is used. Next.js server hosting is required; static export cannot serve
+the bridge. Build and homepage rendering require no API configuration.
+
+The browser sends `POST /api/eligibility/check`; the server forwards only to
+`/api/v1/eligibility/check` on the configured origin, so browser CORS configuration
+is unnecessary. A manual request against the frontend is:
+
+```sh
+curl -i http://localhost:3000/api/eligibility/check \
+  -H 'Content-Type: application/json' \
+  -d '{"brand":"Example","model":"SKU-1","retailer":"Shop","purchase_date":"2026-10-01","purchase_price":"799.99"}'
+```
+
+`checkPurchase` validates wire data, preserves decimal/date strings and distinguishes
+resolved/no-match and unresolved identity successes. Callers handle `ApiError.kind`
+for validation, rate limiting, availability, timeout, cancellation, server and
+contract failures. Messages are safe generic copy; use the correlation request ID
+for support. Missing/invalid configuration returns `503 api_not_configured`,
+connection/invalid upstream replies return `502 upstream_unavailable`, and the
+8 second upstream deadline returns `504 upstream_timeout`. The browser deadline
+is 10 seconds. Request bodies are limited to 8192 bytes; responses to 1 MiB.
+There are no automatic retries. Cookies/authorization are never forwarded.
+
+The provider creates an isolated QueryClient with no focus/reconnect refetch,
+no retries or persistence. `useCheckPurchaseMutation` runs only on explicit
+mutation. Mutation data is transient (zero cache retention after it becomes
+inactive); components should call `reset` when done. TanStack does not automatically
+cancel mutations. Standalone `checkPurchase` accepts a caller AbortSignal.
+The homepage remains a placeholder; checkout/results and accessible error UI are
+future work. Backend REST/MCP and database contracts are unchanged.
+
+`pnpm test:e2e` manages a deterministic upstream fixture on loopback port 3102 and
+the production Next.js server on 3101, supplying the origin only at runtime.
+Playwright terminates both processes, including on failure. The transport browser
+test traverses the real route for resolved, unresolved, rate limited and broken
+connection responses. Ordinary smoke checks use 3100 without an origin.

@@ -1,3 +1,4 @@
+import { QueryProvider } from '@/components/providers/QueryProvider';
 import type { Metadata } from 'next';
 import './globals.css';
 import { SiteHeader } from '@/components/layout/SiteHeader';
@@ -20,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           Skip to main content
         </a>
         <SiteHeader />
-        {children}
+        <QueryProvider>{children}</QueryProvider>
         <SiteFooter />
       </body>
     </html>

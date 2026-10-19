@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   testDir: './e2e',
@@ -15,11 +16,23 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    command: 'pnpm exec next start --hostname 127.0.0.1 --port 3101',
-    url: 'http://127.0.0.1:3101',
-    reuseExistingServer: false,
-    timeout: 60_000,
-    gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
-  },
+  webServer: [
+    {
+      command: 'node e2e/support-upstream.mjs',
+      url: 'http://127.0.0.1:3103/health',
+      reuseExistingServer: false,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
+    },
+    {
+      env: {
+        BENEFITSCOUT_API_ORIGIN: 'https://127.0.0.1:3102',
+        NODE_EXTRA_CA_CERTS: resolve('e2e/certs/localhost-cert.pem'),
+      },
+      command: 'pnpm exec next start --hostname 127.0.0.1 --port 3101',
+      url: 'http://127.0.0.1:3101',
+      reuseExistingServer: false,
+      timeout: 60_000,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
+    },
+  ],
 });
