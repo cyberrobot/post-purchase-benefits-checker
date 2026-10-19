@@ -139,3 +139,37 @@ green/pale-green 5.10:1, navy/amber 9.56:1, white/navy-panel 14.49:1 and amber/n
 7.87:1. Borders are decorative; outlined controls use violet rather than the pale divider token.
 `SiteFooter` accepts optional typed `links` and renders the current year plus the manufacturer
 eligibility/claims disclaimer.
+
+## Production browser acceptance tests
+
+Install the Chromium version selected by the Playwright lockfile, build once, then run the suite:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
+pnpm build
+pnpm test:e2e
+```
+
+Ubuntu CI uses `pnpm exec playwright install --with-deps chromium` to install system libraries too.
+`pnpm test` remains Jest only. Browser specs use `e2e/*.e2e.ts`; Playwright starts one production
+Next.js server on loopback port **3101**, which must be free. The HTTP smoke server uses 3100.
+The Chromium suite has two workers, one retry in CI and none locally. Failures save screenshots
+and first-retry traces in `test-results/`; `playwright-report/` contains the HTML report. Both are
+ignored by Git and uploaded by frontend CI on failure. Open a local report with
+`pnpm exec playwright show-report`.
+
+The suite checks the actual `/` shell, truthful development copy, semantic landmarks, working home
+navigation, keyboard skip navigation and visible focus, footer flow, local asset loading and
+browser runtime errors. It measures document and critical text bounds at 320, 360, 375, 768, 1024,
+1280 and 1440 CSS pixels. Separate 640/320 CSS-width cases with 200% root text size stress wrapping;
+these are **reflow and text-size proxies, not native browser zoom**. An axe scan uses its supported
+WCAG 2.0/2.1/2.2 A/AA tags and fails on every returned violation. Axe does not certify all WCAG
+criteria, and the root scan does not audit unrendered dark cards or dark section headings.
+
+Outstanding manual checks are **native 200% browser zoom** and screen-reader inspection. The live
+root has no navigation menu or footer links; live-browser menu interactions become applicable when
+implemented destinations are supplied. Existing RTL tests cover injected menu Escape/focus behaviour and dark tone mappings. No test route or component harness is introduced.
+Long-label stress remains outstanding manual shared-component coverage rather than a claim about the root.
+Reduced-motion coverage confirms the current static shell has no active animations or transitions;
+it does not exercise an animated component. Firefox and WebKit are possible future extensions.
