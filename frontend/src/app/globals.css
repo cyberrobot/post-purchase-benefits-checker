@@ -1,7 +1,62 @@
 @import 'tailwindcss';
 
-body {
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: Arial, Helvetica, sans-serif;
+@theme {
+  --color-page: #faf9f6;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f8fa;
+  --color-ink: #10182f;
+  --color-ink-muted: #536581;
+  --color-navy: #0b1329;
+  --color-navy-panel: #1c274e;
+  --color-brand: #5046e6;
+  --color-highlight: #ecb73e;
+  --color-success: #007a52;
+  --color-success-subtle: #ecfdf5;
+  --color-border: #dee6f0;
+  --color-on-dark: #ffffff;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --spacing: 0.25rem;
+  --radius-control: 0.75rem;
+  --radius-card: 1.5rem;
+  --radius-feature: 2rem;
+  --shadow-card: 0 0.25rem 1.5rem rgb(16 24 47 / 4%);
+  --text-display: clamp(2rem, 4vw, 3.5rem);
+  --text-section: clamp(2rem, 3vw, 3rem);
+  --text-card: 1.5rem;
+  --text-body: 1.125rem;
+  --text-small: 0.875rem;
+}
+
+/* Global light baseline, focus treatment and native-browser exceptions. */
+:root {
+  color-scheme: light;
+}
+body > main {
+  flex: 1;
+}
+a,
+button,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--color-brand);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 4px var(--color-on-dark);
+}
+:where(h1, h2, h3, p) {
+  overflow-wrap: anywhere;
+}
+/* Safari still needs its vendor marker selector for custom native disclosures. */
+summary.accordion-summary::-webkit-details-marker {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }

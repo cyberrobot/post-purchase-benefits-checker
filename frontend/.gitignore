@@ -10,3 +10,6 @@ next-env.d.ts
 .DS_Store
 
 .swc/
+
+playwright-report/
+test-results/
