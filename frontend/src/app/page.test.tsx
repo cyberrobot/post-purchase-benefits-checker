@@ -14,3 +14,10 @@ it('introduces BenefitScout and explains that purchase checking is not available
     ),
   ).toBeVisible();
 });
+
+it('provides a focusable main target for the shell skip link', () => {
+  render(<Home />);
+  expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
+  expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});
