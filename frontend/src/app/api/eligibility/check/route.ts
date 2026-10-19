@@ -37,22 +37,25 @@ export async function POST(request: Request): Promise<Response> {
   const requestId = randomUUID();
   if (mediaType(request) !== 'application/json')
     return problem(415, 'unsupported_media_type', requestId);
-  let body: string;
-  try {
-    body = await readBounded(request.body, 8192);
-  } catch {
-    return problem(413, 'request_too_large', requestId);
-  }
-  try {
-    JSON.parse(body);
-  } catch {
-    return problem(422, 'invalid_purchase_request', requestId);
-  }
-  const origin = getApiOrigin();
-  if (!origin) return problem(503, 'api_not_configured', requestId);
+  let receivingBody = true;
   try {
     return await withDeadline(
       async (signal) => {
+        let body: string;
+        try {
+          body = await readBounded(request.body, 8192, signal);
+        } catch (error) {
+          if (signal.aborted) throw error;
+          return problem(413, 'request_too_large', requestId);
+        }
+        receivingBody = false;
+        try {
+          JSON.parse(body);
+        } catch {
+          return problem(422, 'invalid_purchase_request', requestId);
+        }
+        const origin = getApiOrigin();
+        if (!origin) return problem(503, 'api_not_configured', requestId);
         const upstream = await fetch(`${origin}/api/v1/eligibility/check`, {
           method: 'POST',
           body,
@@ -68,7 +71,7 @@ export async function POST(request: Request): Promise<Response> {
         const id = safeRequestId(upstream.headers.get('x-request-id')) ?? requestId;
         let data: unknown;
         try {
-          data = JSON.parse(await readBounded(upstream.body, MAX_RESPONSE_BYTES));
+          data = JSON.parse(await readBounded(upstream.body, MAX_RESPONSE_BYTES, signal));
         } catch (error) {
           if (signal.aborted) throw error;
           return problem(502, 'upstream_unavailable', id);
@@ -108,7 +111,9 @@ export async function POST(request: Request): Promise<Response> {
     );
   } catch (error) {
     return error instanceof ApiError && error.kind === 'timeout'
-      ? problem(504, 'upstream_timeout', requestId)
+      ? receivingBody
+        ? problem(408, 'request_timeout', requestId)
+        : problem(504, 'upstream_timeout', requestId)
       : problem(502, 'upstream_unavailable', requestId);
   }
 }

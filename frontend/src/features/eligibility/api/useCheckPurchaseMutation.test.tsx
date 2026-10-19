@@ -56,3 +56,23 @@ it('does not retry errors', async () => {
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(mocked).toHaveBeenCalledTimes(1);
 });
+
+it.each(['success', 'error'])('reset clears a previous %s to idle', async (outcome) => {
+  if (outcome === 'success')
+    mocked.mockResolvedValue(unresolved as Awaited<ReturnType<typeof checkPurchase>>);
+  else mocked.mockRejectedValue(new ApiError('unavailable'));
+  const { result } = renderHook(useCheckPurchaseMutation, { wrapper: QueryProvider });
+  await act(async () => {
+    await result.current.mutateAsync(purchase).catch(() => {});
+  });
+  await waitFor(() => expect(result.current.status).toBe(outcome));
+  if (outcome === 'success') expect(result.current.data).toEqual(unresolved);
+  else expect(result.current.error).toMatchObject({ kind: 'unavailable' });
+  act(() => result.current.reset());
+  await waitFor(() => expect(result.current.status).toBe('idle'));
+  expect(result.current.data).toBeUndefined();
+  expect(result.current.error).toBeNull();
+  window.dispatchEvent(new Event('focus'));
+  window.dispatchEvent(new Event('online'));
+  expect(mocked).toHaveBeenCalledTimes(1);
+});

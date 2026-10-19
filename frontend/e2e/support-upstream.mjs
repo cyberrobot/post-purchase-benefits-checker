@@ -3,6 +3,79 @@ import { resolve } from 'node:path';
 import { createServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
 const id = '00000000-0000-0000-0000-000000000009';
+function populatedResponse(unsafe = false) {
+  const source = (sourceId, role, url) => ({
+    source_id: sourceId,
+    role,
+    url,
+    source_type: 'web_page',
+    retrieved_at: '2026-10-01T00:00:00Z',
+    verified_at: '2026-10-02T00:00:00Z',
+  });
+  const safeClaimUrl = 'https://example.com/claim';
+  const unsafeClaimUrl = 'https://reviewer:secret@unsafe.example/claim';
+  return {
+    outcome: 'resolved',
+    evaluation_date: '2026-10-08',
+    resolved_identity: {
+      manufacturer_id: '00000000-0000-0000-0000-000000000001',
+      retailer_id: '00000000-0000-0000-0000-000000000002',
+      product_id: '00000000-0000-0000-0000-000000000003',
+    },
+    promotions: [
+      {
+        promotion_id: '00000000-0000-0000-0000-000000000004',
+        promotion_variant_id: '00000000-0000-0000-0000-000000000005',
+        promotion_name: 'Example populated promotion',
+        variant_name: null,
+        promotion_status: 'active',
+        eligibility: {
+          classification: 'ELIGIBLE',
+          reasons: [
+            { code: 'all_configured_rules_satisfied', rule_kind: null },
+            { code: 'claim_window_open', rule_kind: null },
+          ],
+          rule_evaluations: [
+            { kind: 'product', status: 'satisfied', reason_code: 'product_match' },
+          ],
+          claim_window_status: 'open',
+        },
+        claim_window: { status: 'open', opens_on: '2026-10-01', deadline_on: '2026-11-30' },
+        benefits: [
+          {
+            benefit_id: '00000000-0000-0000-0000-000000000006',
+            benefit_type: 'cashback',
+            name: 'Cashback',
+            description: null,
+            cashback_reward_gbp: '10.00',
+            reward_unavailable_reason: null,
+            reward_unavailable_explanation: null,
+          },
+        ],
+        requirements: [{ requirement_type: 'receipt', description: 'Keep your receipt.' }],
+        last_verified_at: '2026-10-02T00:00:00Z',
+        provenance: {
+          official_source_url: 'https://example.com/offer',
+          source_type: 'web_page',
+          retrieved_at: '2026-10-01T00:00:00Z',
+          verified_at: '2026-10-02T00:00:00Z',
+          claim_url: unsafe ? unsafeClaimUrl : safeClaimUrl,
+        },
+        sources: [
+          source('00000000-0000-0000-0000-000000000007', 'primary', 'https://example.com/offer'),
+          source(
+            '00000000-0000-0000-0000-000000000008',
+            'claim',
+            unsafe ? unsafeClaimUrl : safeClaimUrl,
+          ),
+        ],
+        explanation: ['The recorded eligibility rules match this purchase.'],
+      },
+    ],
+    no_match_reason: null,
+    explanation: [],
+  };
+}
 const server = createServer(
   {
     key: readFileSync(resolve('e2e/certs/localhost-key.pem')),
@@ -29,6 +102,15 @@ const server = createServer(
     }
     if (purchase.model === 'OFFLINE') {
       req.socket.destroy();
+      return;
+    }
+    if (purchase.model === 'POPULATED' || purchase.model === 'UNSAFE') {
+      const populated = populatedResponse(purchase.model === 'UNSAFE');
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'X-Request-ID': id,
+      });
+      res.end(JSON.stringify(populated));
       return;
     }
     let status = 200,

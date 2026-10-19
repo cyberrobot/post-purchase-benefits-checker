@@ -42,6 +42,19 @@ export const purchaseRequestSchema = z
       .optional(),
   })
   .strict();
+// Validate passive evidence without normalising the received source string.
+const httpSourceUrlSchema = z.string().refine((value) => {
+  if (/[\p{White_Space}\x00-\x1f\x7f]/u.test(value) || !/^https?:\/\//i.test(value)) return false;
+  // WHATWG URL parsing repairs backslashes and empty authorities; reject those inputs.
+  const authority = value.match(/^https?:\/\/([^/?#]*)/i)?.[1];
+  if (!authority || authority.includes('@') || value.includes('\\')) return false;
+  try {
+    const url = new URL(value);
+    return Boolean(url.hostname) && !url.username && !url.password && url.port !== '0';
+  } catch {
+    return false;
+  }
+});
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 const timestamp = z.string().datetime({ offset: true });
 const ruleKind = z.enum([
@@ -168,17 +181,17 @@ export const promotionSchema = z.object({
   ),
   last_verified_at: timestamp,
   provenance: z.object({
-    official_source_url: z.string(),
+    official_source_url: httpSourceUrlSchema,
     source_type: sourceType,
     retrieved_at: timestamp,
     verified_at: timestamp,
-    claim_url: z.string(),
+    claim_url: httpSourceUrlSchema,
   }),
   sources: z.array(
     z.object({
       source_id: uuid,
       role: z.enum(['primary', 'terms', 'claim', 'supporting']),
-      url: z.string(),
+      url: httpSourceUrlSchema,
       source_type: sourceType,
       retrieved_at: timestamp,
       verified_at: timestamp.nullable(),

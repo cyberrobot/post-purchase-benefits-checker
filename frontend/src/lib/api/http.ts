@@ -5,23 +5,33 @@ export const MAX_RESPONSE_BYTES = 1_048_576;
 export async function readBounded(
   body: ReadableStream<Uint8Array> | null,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<string> {
   if (!body) return '';
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  const cancel = () => {
+    // A source's cancel promise need not settle. Observe rejection without awaiting it.
+    void reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener('abort', cancel, { once: true });
   try {
+    if (signal?.aborted) throw new ApiError('cancelled');
     while (true) {
       const { done, value } = await reader.read();
+      if (signal?.aborted) throw new ApiError('cancelled');
       if (done) break;
       size += value.byteLength;
       if (size > limit) {
-        await reader.cancel();
+        cancel();
         throw new ApiError('contract');
       }
       chunks.push(value);
     }
   } finally {
+    signal?.removeEventListener('abort', cancel);
+    if (signal?.aborted) cancel();
     reader.releaseLock();
   }
   const bytes = new Uint8Array(size);
@@ -40,14 +50,21 @@ export async function withDeadline<T>(
   if (caller?.aborted) throw new ApiError('cancelled');
   const controller = new AbortController();
   let timedOut = false;
-  const cancel = () => controller.abort();
+  let rejectAbort: (error: ApiError) => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectAbort = reject;
+  });
+  const cancel = () => {
+    controller.abort();
+    rejectAbort(new ApiError(timedOut ? 'timeout' : 'cancelled'));
+  };
   caller?.addEventListener('abort', cancel, { once: true });
   const timer = setTimeout(() => {
     timedOut = true;
-    controller.abort();
+    cancel();
   }, timeout);
   try {
-    return await operation(controller.signal);
+    return await Promise.race([operation(controller.signal), aborted]);
   } catch (error) {
     if (caller?.aborted) throw new ApiError('cancelled');
     if (timedOut) throw new ApiError('timeout');

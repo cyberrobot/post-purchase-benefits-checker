@@ -151,3 +151,126 @@ it('times out upstream', async () => {
   expect((await result).status).toBe(504);
   jest.useRealTimers();
 });
+
+function streamRequest(body: ReadableStream<Uint8Array>, signal?: AbortSignal) {
+  return new Request('http://localhost/api/eligibility/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    signal,
+    duplex: 'half',
+  } as RequestInit & { duplex: string });
+}
+it('bounds a stalled inbound read even when source cancellation never settles', async () => {
+  jest.useFakeTimers();
+  const cancel = jest.fn(() => new Promise<void>(() => {}));
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{'));
+    },
+    cancel,
+  });
+  const incoming = streamRequest(body);
+  const remove = jest.spyOn(incoming.signal, 'removeEventListener');
+  const result = POST(incoming);
+  await jest.advanceTimersByTimeAsync(7999);
+  expect(fetchMock).not.toHaveBeenCalled();
+  await jest.advanceTimersByTimeAsync(1);
+  const response = await result;
+  expect(response.status).toBe(408);
+  expect(response.headers.get('content-type')).toContain('application/problem+json');
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(await response.json()).toMatchObject({ status: 408, code: 'request_timeout' });
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(cancel).toHaveBeenCalled();
+  expect(body.locked).toBe(false);
+  expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+  expect(jest.getTimerCount()).toBe(0);
+  jest.useRealTimers();
+});
+it('receives a slow body and gives upstream only the remaining overall budget', async () => {
+  jest.useFakeTimers();
+  let source!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      source = controller;
+    },
+  });
+  fetchMock.mockImplementation(() => new Promise(() => {}));
+  const result = POST(streamRequest(body));
+  await jest.advanceTimersByTimeAsync(3000);
+  source.enqueue(new TextEncoder().encode(JSON.stringify(purchase)));
+  source.close();
+  await jest.advanceTimersByTimeAsync(0);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  await jest.advanceTimersByTimeAsync(5000);
+  expect((await result).status).toBe(504);
+  expect(jest.getTimerCount()).toBe(0);
+  jest.useRealTimers();
+});
+it('accepts a slow completed body within the budget and cleans its timer', async () => {
+  jest.useFakeTimers();
+  let source!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      source = controller;
+    },
+  });
+  fetchMock.mockResolvedValue(Response.json(resolved));
+  const result = POST(streamRequest(body));
+  await jest.advanceTimersByTimeAsync(3000);
+  source.enqueue(new TextEncoder().encode(JSON.stringify(purchase)));
+  source.close();
+  expect((await result).status).toBe(200);
+  expect(body.locked).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+  jest.useRealTimers();
+});
+it('cancels a stalled inbound body without relying on fetch abort', async () => {
+  jest.useFakeTimers();
+  const active = new AbortController();
+  const cancel = jest.fn(() => Promise.reject(new Error('private cancellation failure')));
+  const body = new ReadableStream<Uint8Array>({ cancel });
+  const result = POST(streamRequest(body, active.signal));
+  active.abort();
+  const response = await result;
+  expect(response.status).toBe(502);
+  expect(await response.text()).not.toContain('private');
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(cancel).toHaveBeenCalled();
+  expect(body.locked).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+  jest.useRealTimers();
+});
+it('rejects an unsafe source URL in an otherwise valid upstream success', async () => {
+  const { populated } = await import('@/lib/api/promotion.fixture');
+  const value = structuredClone(populated);
+  value.promotions[0].sources[0].url = 'https://user:password@example.com';
+  fetchMock.mockResolvedValue(Response.json(value));
+  const response = await POST(request());
+  expect(response.status).toBe(502);
+  expect(await response.text()).not.toMatch(/password|example.com/);
+});
+
+it('bounds an upstream body that stalls without depending on fetch abort', async () => {
+  jest.useFakeTimers();
+  const cancel = jest.fn(() => new Promise<void>(() => {}));
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{'));
+    },
+    cancel,
+  });
+  fetchMock.mockResolvedValue(
+    new Response(body, { headers: { 'Content-Type': 'application/json' } }),
+  );
+  const result = POST(request());
+  await jest.advanceTimersByTimeAsync(8000);
+  const response = await result;
+  expect(response.status).toBe(504);
+  expect(await response.json()).toMatchObject({ code: 'upstream_timeout' });
+  expect(cancel).toHaveBeenCalled();
+  expect(body.locked).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+  jest.useRealTimers();
+});

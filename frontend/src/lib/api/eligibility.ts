@@ -37,7 +37,7 @@ export async function checkPurchase(
       const requestId = safeRequestId(response.headers.get('x-request-id'));
       let body: unknown;
       try {
-        body = JSON.parse(await readBounded(response.body, MAX_RESPONSE_BYTES));
+        body = JSON.parse(await readBounded(response.body, MAX_RESPONSE_BYTES, signal));
       } catch (error) {
         if (signal.aborted) throw error;
         throw new ApiError('contract', response.status, undefined, requestId);

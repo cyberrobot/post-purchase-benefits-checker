@@ -16,7 +16,7 @@ export function errorKind(status: number): ApiErrorKind {
   if ([413, 415, 422].includes(status)) return 'validation';
   if (status === 429) return 'rate_limited';
   if ([502, 503].includes(status)) return 'unavailable';
-  if (status === 504) return 'timeout';
+  if ([408, 504].includes(status)) return 'timeout';
   return status >= 500 ? 'server' : 'contract';
 }
 export function safeRequestId(value: string | null): string | undefined {

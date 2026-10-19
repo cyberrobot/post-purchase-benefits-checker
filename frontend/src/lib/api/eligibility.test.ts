@@ -1,25 +1,30 @@
 /** @jest-environment node */
 import { checkPurchase } from './eligibility';
 import { purchase, resolved, unresolved, problem, requestId } from './fixtures';
+import { populated, populatedClaim } from './promotion.fixture';
 const fetchMock = jest.fn();
 beforeEach(() => {
   global.fetch = fetchMock;
   fetchMock.mockReset();
 });
-it.each([resolved, unresolved])('returns domain success', async (value) => {
-  fetchMock.mockResolvedValue(Response.json(value));
-  expect(await checkPurchase(purchase)).toEqual(value);
-  expect(fetchMock).toHaveBeenCalledWith(
-    '/api/eligibility/check',
-    expect.objectContaining({
-      method: 'POST',
-      cache: 'no-store',
-      credentials: 'omit',
-      body: JSON.stringify(purchase),
-    }),
-  );
-});
+it.each([resolved, unresolved, populated, populatedClaim])(
+  'returns domain success',
+  async (value) => {
+    fetchMock.mockResolvedValue(Response.json(value));
+    expect(await checkPurchase(purchase)).toEqual(value);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/eligibility/check',
+      expect.objectContaining({
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'omit',
+        body: JSON.stringify(purchase),
+      }),
+    );
+  },
+);
 it.each([
+  [408, 'timeout'],
   [413, 'validation'],
   [415, 'validation'],
   [422, 'validation'],
@@ -104,4 +109,11 @@ it('distinguishes deadline and removes timers', async () => {
   await assertion;
   expect(jest.getTimerCount()).toBe(0);
   jest.useRealTimers();
+});
+
+it('rejects a shaped success with unsafe source evidence', async () => {
+  const value = structuredClone(populated);
+  value.promotions[0].provenance.claim_url = 'javascript:alert(1)';
+  fetchMock.mockResolvedValue(Response.json(value));
+  await expect(checkPurchase(purchase)).rejects.toMatchObject({ kind: 'contract' });
 });
