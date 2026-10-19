@@ -30,10 +30,10 @@ it('keeps an ordinary future page main directly inside the shared shell', () => 
   });
   const body = layout.props.children;
   const children = body.props.children;
-  expect(children.filter((child: React.ReactElement) => child?.type === 'main')).toHaveLength(1);
-  render(children);
+  render(children, { container: document.body });
   const main = screen.getByRole('main');
   expect(main).toHaveAttribute('tabindex', '-1');
+  expect(main.parentElement).toBe(document.body);
   expect(
     screen.getByRole('banner').compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
