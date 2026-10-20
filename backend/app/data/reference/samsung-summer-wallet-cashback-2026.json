@@ -1,0 +1,60 @@
+{
+  "reference_version": 1,
+  "campaign": "Samsung Summer Wallet Cashback Promotion 2026 (UK)",
+  "promotion_slug": "samsung-summer-wallet-cashback-2026-buds4-pro-samsung-com-reference",
+  "coverage": "Samsung Galaxy Buds4 Pro SM-R640 purchased at Samsung.com only; not the full campaign",
+  "manufacturer": "Samsung",
+  "product": {
+    "name": "Galaxy Buds4 Pro",
+    "model_or_sku": "SM-R640"
+  },
+  "retailer": "Samsung.com",
+  "purchase_start_date": "2026-06-03",
+  "purchase_end_date": "2026-06-23",
+  "claim_window": {
+    "type": "relative",
+    "start_offset_days": 0,
+    "end_offset_days": 29
+  },
+  "benefit": {
+    "type": "cashback",
+    "reward": {
+      "type": "fixed_amount",
+      "amount_gbp": "50.00"
+    }
+  },
+  "official_terms_url": "https://api.my-samsung.com/UploadImages/terms/TermsConditionsLegal_91665.pdf",
+  "samsung_newsroom_url": "https://news.samsung.com/uk/samsung-electronics-uk-launches-summer-cashback-promotion-offering-up-to-300-cashback-on-selected-galaxy-devices",
+  "claim_url": "https://samsungoffers.claims/walletcashback2026",
+  "evidence": {
+    "retrieved_at": "2026-10-09T09:42:00Z",
+    "verified_at": "2026-10-09T09:42:53Z",
+    "claim_verification": "Destination verified from official PDF; claim portal accessibility was not checked.",
+    "clauses": {
+      "campaign_dates": "PDF p. 1, clauses 1\u20132",
+      "product_reward": "PDF p. 2, Table 1",
+      "retailer": "PDF p. 3, Table 2",
+      "condition": "PDF pp. 1\u20132, clause 7",
+      "requirements": "PDF p. 4, clause 11",
+      "claim_window": "PDF p. 4, clause 12; purchase date included, final deadline 22 July 2026 23:59 BST",
+      "participant_restrictions": "PDF pp. 1 and 4, clauses 3\u20136 and 13",
+      "corroboration": "Samsung Newsroom, 15 June 2026"
+    }
+  },
+  "requirements": [
+    {
+      "type": "receipt",
+      "description": "Provide proof of purchase and the other details specified in official terms clause 11."
+    },
+    {
+      "type": "serial_number",
+      "description": "Provide serial number or IMEI where requested under clause 11; this is an as-requested instruction."
+    }
+  ],
+  "limitations": [
+    "Only SM-R640 at Samsung.com is represented; other campaign products and retailers are outside this reference.",
+    "New-only condition, territory, age/company eligibility, reseller and marketplace seller exclusions, prior claims and household/company caps are not evaluated by the five-field purchase request.",
+    "Follow the Samsung account and Wallet steps and all official terms; matching configured rules does not guarantee manufacturer approval or payment.",
+    "Historical promotion; the claim portal may no longer accept submissions."
+  ]
+}

@@ -146,7 +146,7 @@ def test_limitation_regression_official_arithmetic_is_evidence_only(purchase, fi
 
 
 def test_malformed_local_json_is_rejected(tmp_path, monkeypatch):
-    from tests import sony_reference
+    from app.db.reference import sony as sony_reference
 
     broken = tmp_path / "broken.json"
     broken.write_text("{")

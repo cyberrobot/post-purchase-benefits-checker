@@ -979,3 +979,100 @@ account creation, prior claims or manufacturer approval/payment. Scripted MCP
 journeys exercise explicit fixture decisions, not actual LLM comprehension or a
 live claim portal. Supporting tools inspect stored evidence without reclassifying
 the purchase or fetching the source URLs.
+
+## Explicit reviewed reference catalogue loader
+
+From `backend/`, first start PostgreSQL and migrate the intended development/test
+DB. `DATABASE_URL` is authoritative: Compose normally maps host `5434` to container
+`5432`; an operator inside Docker uses the database service hostname and `5432`.
+`/health` checks the process only, and does not establish database readiness.
+
+```sh
+uv run alembic upgrade head
+uv run python -m app.cli.seed_reference_data --dataset mvp-reviewed-v1 --plan
+uv run python -m app.cli.seed_reference_data --dataset mvp-reviewed-v1 --apply
+# Independent opt-in: stage reviewed graphs without publishing them
+uv run python -m app.cli.seed_reference_data --dataset mvp-reviewed-v1 --apply --stage-promotions
+```
+
+No arguments means plan. `--stage-promotions` requires `--apply`. The loader rejects
+`APP_ENV=production` in every mode. No application startup, build, migration or
+request executes it automatically. The JSON target display contains hostname,
+port and database only; check those before applying. Exit `0` means successful
+plan/apply/replay, `2` means input/configuration/fact or integrity conflict, and `3`
+means database unavailable/incompatible. PostgreSQL failure is an operational
+error; it does not mean the catalogue lacks Samsung. A missing schema requires
+`alembic upgrade head`; a stopped service or incorrect port requires fixing the
+configured database connection. Errors omit SQL and credentials.
+
+The bundled `app/data/reference/dataset.json` is version 1 (`mvp-reviewed-v1`) and
+its semantic SHA-256 is pinned in `app.application.reference_data_import`.
+Each complete reviewed manifest retains its original semantic digest; fixture
+paths point to these canonical files. No runtime code imports test modules.
+The data pack is included in Python package data and the image's existing app copy.
+An amendment requires reviewed facts plus an explicit version/digest amendment;
+the command cannot refresh pins or fetch source URLs.
+
+On an empty migrated database, catalogue apply creates **5 manufacturers, 4
+retailers, 5 exact products and 1 retailer alias**, and **zero promotions**:
+
+| Manufacturer | Exact model | Retailer |
+| --- | --- | --- |
+| Samsung | `SM-R640` | Samsung.com |
+| LG | `OLED55G54LW.AEK` | LG.com/UK |
+| Hisense | `WF7I1248BBR` | Currys |
+| Hotpoint | `H7IC16M6 UK` | Wren |
+| Sony | `K55XR75M2B` | Currys, with `Currys - UK` alias |
+
+No model aliases or retailer SKUs are evidenced or inserted. Other application
+data remains present. Counts describe this dataset's changes, not global table
+size. A repeated invocation reuses compatible rows and preserves IDs, timestamps,
+source evidence and promotion lifecycle status. Conflicts never merge, rename,
+re-parent or overwrite rows. Apply takes a transaction-scoped dataset advisory
+lock with a five-second lock timeout and 30-second statement timeout, rechecks
+facts, then commits the whole run. Any error rolls back catalogue and optional
+staging together. Correct the conflict and retry; there is no force/reset mode.
+
+Optional staging creates five full **review** graphs. It compares existing graphs
+in review/active/expired/archived without changing their status. Candidate
+preflight is not persisted publication approval. Sources remain historical
+observations, not current portal accessibility checks. Sony/Hotpoint pinned
+`unmodelled`, `authoritative_runtime_rule: false` and
+`production_publication_permitted: false` annotations describe historical review
+limitations. Their structured claim windows now carry the supported 35/30-day
+wait; the annotations remain unchanged for review. Samsung/LG remain historical
+campaigns. A later independently authorised publication must review evidence and
+invoke the existing `change_promotion_status` gate explicitly.
+
+**A populated catalogue is not a published promotions database.** Review records
+are intentionally invisible to eligibility. Only the five exact reviewed slices
+are supported; the pack does not represent the whole UK market or full campaigns.
+
+With the backend running, these smoke requests both return HTTP 200. After seed,
+the first is `unresolved_identity` for **model**, `not_found`; the second is
+`resolved`, with empty promotions and `no_matching_published_promotions` unless
+an independently published matching offer already exists:
+
+```sh
+curl -sS http://localhost:8000/api/v1/eligibility/check -H 'Content-Type: application/json' \
+  -d '{"brand":"Samsung","model":"Blah","retailer":"Currys","purchase_date":"2026-10-19"}'
+curl -sS http://localhost:8000/api/v1/eligibility/check -H 'Content-Type: application/json' \
+  -d '{"brand":"Samsung","model":"SM-R640","retailer":"Samsung.com","purchase_date":"2026-10-19"}'
+```
+
+Use the configured PostgreSQL connection with `psql` and check the target and
+counts explicitly (do not print credential-bearing connection strings):
+
+```sql
+SELECT current_database(), inet_server_addr(), inet_server_port();
+SELECT 'manufacturers' AS entity, count(*) FROM manufacturers
+UNION ALL SELECT 'retailers', count(*) FROM retailers
+UNION ALL SELECT 'products', count(*) FROM products
+UNION ALL SELECT 'retailer_aliases', count(*) FROM retailer_aliases;
+SELECT status, count(*) FROM promotions GROUP BY status;
+```
+
+Focused checks use `uv run pytest tests/unit/test_reference_data_import.py` and
+`uv run pytest tests/integration/test_reference_data_import.py tests/integration/test_reference_data_eligibility.py`.
+The integration checks require Docker/PostgreSQL 16 and apply existing migrations.
+No migration, REST/MCP contract or new environment variable is introduced.
