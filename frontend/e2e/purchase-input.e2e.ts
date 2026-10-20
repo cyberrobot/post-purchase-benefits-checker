@@ -73,12 +73,13 @@ for (const [model, text] of [
     await page.goto('/');
     await fill(page, model);
     await page.getByRole('button', { name: 'Find My Benefits' }).click();
-    await expect(page.getByRole('alert')).toContainText(text);
+    const alert = page.getByRole('form', { name: 'Check a purchase' }).getByRole('alert');
+    await expect(alert).toContainText(text);
     expect(requests).toBe(1);
     await expect(page.getByLabel('Model number', { exact: true })).toHaveValue(model);
     await expect(page.getByRole('status')).toBeEmpty();
     await page.getByLabel('Model number', { exact: true }).fill('SKU-1');
-    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(alert).toHaveCount(0);
     expect(requests).toBe(1);
     await page.getByRole('button', { name: 'Find My Benefits' }).click();
     await expect(page.getByRole('status')).toContainText('No matching published promotion');

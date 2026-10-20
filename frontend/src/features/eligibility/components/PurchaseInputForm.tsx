@@ -1,5 +1,5 @@
 'use client';
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useCheckPurchaseMutation } from '../api/useCheckPurchaseMutation';
 import { purchaseRequestSchema, type CheckPurchaseResponse } from '@/lib/api/eligibility.contract';
@@ -88,12 +88,16 @@ export function PurchaseInputForm() {
   const id = useId();
   const [draft, setDraft] = useState<Draft>(empty);
   const [attempted, setAttempted] = useState(false);
+  const [focusRequest, setFocusRequest] = useState<{ field: Field }>();
   const [feedback, setFeedback] = useState<{ text: string; failed: boolean }>();
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   const inputs = useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
   const mutation = useCheckPurchaseMutation();
   const errors = attempted ? validatePurchase(draft) : {};
+  useEffect(() => {
+    if (focusRequest) inputs.current[focusRequest.field]?.focus();
+  }, [focusRequest]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (inFlight.current) return;
@@ -102,7 +106,8 @@ export function PurchaseInputForm() {
     const result = purchaseRequestSchema.safeParse(draft);
     if (!result.success) {
       const invalid = validatePurchase(draft);
-      inputs.current[fields.find((field) => invalid[field.name])!.name]?.focus();
+      const firstInvalid = fields.find((field) => invalid[field.name]);
+      if (firstInvalid) setFocusRequest({ field: firstInvalid.name });
       return;
     }
     inFlight.current = true;

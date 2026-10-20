@@ -62,6 +62,60 @@ it('focuses and describes invalid fields, updates errors on correction and block
   expect(input).not.toHaveAttribute('aria-invalid');
   expect(mutateAsync).not.toHaveBeenCalled();
 });
+it('commits error descriptions before focusing on every invalid submission', async () => {
+  render(<PurchaseInputForm />);
+  const observations: { label: string; invalid: string | null; error: string | null }[] = [];
+  const controls = labels.map((label) => screen.getByLabelText(label));
+  controls.forEach((control, index) => {
+    control.addEventListener('focus', () => {
+      const errorId = control
+        .getAttribute('aria-describedby')
+        ?.split(' ')
+        .find((id) => id.endsWith('-error'));
+      observations.push({
+        label: labels[index],
+        invalid: control.getAttribute('aria-invalid'),
+        error: errorId ? (document.getElementById(errorId)?.textContent ?? null) : null,
+      });
+    });
+  });
+  const button = screen.getByRole('button');
+  const expectInvalidFocus = (label: string, error: string) => {
+    button.focus();
+    submit();
+    expect(observations.at(-1)).toEqual({ label, invalid: 'true', error });
+    expect(screen.getByLabelText(label)).toHaveFocus();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  };
+  expectInvalidFocus('Manufacturer', 'Enter the manufacturer');
+  expectInvalidFocus('Manufacturer', 'Enter the manufacturer');
+  labels.forEach((label, index) => {
+    fireEvent.change(controls[index], { target: { value: Object.values(draft)[index] } });
+    if (index < labels.length - 1) {
+      const next = labels[index + 1];
+      expectInvalidFocus(
+        next,
+        next === 'Purchase date'
+          ? 'Enter a valid purchase date'
+          : `Enter the ${next.toLowerCase()}`,
+      );
+    }
+  });
+  expect(observations.map(({ label }) => label)).toEqual([
+    'Manufacturer',
+    'Manufacturer',
+    'Model number',
+    'Retailer',
+    'Purchase date',
+  ]);
+  button.focus();
+  const focusCount = observations.length;
+  submit();
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching'));
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+  expect(observations).toHaveLength(focusCount);
+  expect(button).toHaveFocus();
+});
 it.each([' ', 'x'.repeat(256), 'bad\u0001value'])('blocks invalid identity %p', (brand) => {
   render(<PurchaseInputForm />);
   fill();
