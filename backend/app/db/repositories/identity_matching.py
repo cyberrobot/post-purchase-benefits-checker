@@ -47,8 +47,8 @@ class SqlAlchemyIdentityRepository:
                     )
                 )
                 return tuple(sorted(candidates))
-        except (SQLAlchemyError, ValueError, TypeError) as error:
-            raise IdentityPersistenceError("Reference identity lookup failed") from error
+        except (SQLAlchemyError, ValueError, TypeError):
+            raise IdentityPersistenceError("Reference identity lookup failed") from None
 
     def manufacturer_candidates(self, normalised: str) -> tuple[UUID, ...]:
         return self._named_candidates(
@@ -91,8 +91,8 @@ class SqlAlchemyIdentityRepository:
                     )
                 )
                 return tuple(sorted(candidates))
-        except (SQLAlchemyError, ValueError, TypeError) as error:
-            raise IdentityPersistenceError("Product model lookup failed") from error
+        except (SQLAlchemyError, ValueError, TypeError):
+            raise IdentityPersistenceError("Product model lookup failed") from None
 
     def sku_candidates(
         self, normalised: str, retailer_id: UUID, manufacturer_id: UUID | None = None
@@ -108,8 +108,8 @@ class SqlAlchemyIdentityRepository:
         try:
             with self.session.no_autoflush:
                 return tuple(sorted(set(self.session.scalars(query))))
-        except SQLAlchemyError as error:
-            raise IdentityPersistenceError("Retailer SKU lookup failed") from error
+        except SQLAlchemyError:
+            raise IdentityPersistenceError("Retailer SKU lookup failed") from None
 
     def retailer_group_ids(self, retailer_id: UUID) -> tuple[UUID, ...]:
         try:
@@ -121,5 +121,5 @@ class SqlAlchemyIdentityRepository:
                         .order_by(RetailerGroupMember.retailer_group_id)
                     )
                 )
-        except SQLAlchemyError as error:
-            raise IdentityPersistenceError("Retailer group membership lookup failed") from error
+        except SQLAlchemyError:
+            raise IdentityPersistenceError("Retailer group membership lookup failed") from None
