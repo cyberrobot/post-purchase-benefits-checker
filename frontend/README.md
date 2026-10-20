@@ -1,7 +1,7 @@
 # BenefitScout frontend
 
 A standalone Next.js App Router application with React, strict TypeScript and Tailwind CSS v4.
-The public `/` route is a temporary application foundation. Purchase checking is not available yet.
+The public `/` route provides a four-field purchase checker with validation and minimal factual feedback.
 
 ## Prerequisites and setup
 
@@ -50,7 +50,7 @@ The smoke command requires port 3100 to be free. It checks HTTP 200, the main la
 language and metadata, and reports server logs on failure. It bounds readiness and terminates its
 server even when assertions fail. To check presentation, open the production app at mobile and
 desktop widths: the heading should be large and semibold, with a padded, centred content column
-and no horizontal overflow. Component tests cover the accessible heading and honest placeholder copy.
+and no horizontal overflow. Component tests cover the accessible heading and purchase-entry form.
 
 ## Layout and boundaries
 
@@ -68,12 +68,10 @@ Prettier discovers the shared repository configuration and excludes generated fi
 
 Future integration must deliberately consume the existing backend
 `POST /api/v1/eligibility/check` REST contract. The backend owns deterministic eligibility using
-published promotion data. This app currently performs no API calls and adds no handlers, auth,
-persistence or eligibility logic. Any future `NEXT_PUBLIC_*` values are included in browser bundles
+published promotion data. The four-field purchase form explicitly calls the existing same-origin bridge; the backend remains the eligibility authority. No auth or persistence is introduced. Any future `NEXT_PUBLIC_*` values are included in browser bundles
 and must never contain secrets.
 
-Real homepage UX, the purchase checker, backend integration, authentication and hosting belong to
-later frontend changes.
+Detailed results, broader homepage content, authentication and hosting belong to later frontend changes.
 
 ## Interface foundation (FE-02)
 
@@ -130,7 +128,7 @@ Import primitives directly from `src/components/ui/`:
   Native Enter/Space behaviour is preserved, with a decorative chevron that indicates open state.
 
 For example, future sections can compose `SectionHeading`, a `grid gap-6 md:grid-cols-2 lg:grid-cols-3` div, and three `Card`
-children inside a `Container`. The real homepage, checker, FAQ, benefit selector, eligibility
+children inside a `Container`. Full homepage content, FAQ, benefit selector, detailed eligibility
 mapping, manufacturer data and additional navigation destinations remain separate feature work.
 
 Contrast calculations for the shipped foreground/background pairs (WCAG relative luminance):
@@ -159,7 +157,7 @@ and first-retry traces in `test-results/`; `playwright-report/` contains the HTM
 ignored by Git and uploaded by frontend CI on failure. Open a local report with
 `pnpm exec playwright show-report`.
 
-The suite checks the actual `/` shell, truthful development copy, semantic landmarks, working home
+The suite checks the actual `/` shell, truthful purchase-entry copy, semantic landmarks, working home
 navigation, keyboard skip navigation and visible focus, footer flow, local asset loading and
 browser runtime errors. It measures document and critical text bounds at 320, 360, 375, 768, 1024,
 1280 and 1440 CSS pixels. Separate 640/320 CSS-width cases with 200% root text size stress wrapping;
@@ -210,11 +208,37 @@ no retries or persistence. `useCheckPurchaseMutation` runs only on explicit
 mutation. Mutation data is transient (zero cache retention after it becomes
 inactive); components should call `reset` when done. TanStack does not automatically
 cancel mutations. Standalone `checkPurchase` accepts a caller AbortSignal.
-The homepage remains a placeholder; checkout/results and accessible error UI are
-future work. Backend REST/MCP and database contracts are unchanged.
+The homepage provides the four-field purchase checker with accessible validation and safe outcome/error feedback; detailed results are future work. Backend REST/MCP and database contracts are unchanged.
 
 `pnpm test:e2e` manages a deterministic upstream fixture on loopback port 3102 and
 the production Next.js server on 3101, supplying the origin only at runtime.
 Playwright terminates both processes, including on failure. The transport browser
 test traverses the real route for resolved, unresolved, rate limited and broken
 connection responses. Ordinary smoke checks use 3100 without an origin.
+
+## Purchase entry (FE-04)
+
+On `/`, enter the manufacturer, exact model/SKU, retailer and receipt purchase date, then choose
+**Find My Benefits**. These are free-text fields because no catalogue lookup is available.
+All four fields start empty and are required. Validation uses the existing API schema, accepts
+valid historical and future calendar dates, and preserves model punctuation and date-only strings.
+Purchase price is omitted. Invalid submission focuses the first invalid field and sends no request.
+
+A valid submit sends one request through `useCheckPurchaseMutation` and the existing same-origin
+bridge. Fields and the CTA are disabled while pending. Errors preserve entered values; correction
+clears stale feedback and enables a manual retry. The form has no automatic checks, retries or
+purchase storage. Live checks require the existing server-only `BENEFITSCOUT_API_ORIGIN`; the page
+and build work without it, and an explicit unconfigured check reports unavailable.
+
+Completion distinguishes an unresolved identity, no matching published promotion, and a count of
+returned promotion records requiring eligibility review. Returned records can be ineligible; the
+count does not promise cashback, eligibility or claimable benefits. Detailed results, claims,
+source evidence presentation, optional purchase price and autocomplete remain follow-up work.
+
+`pnpm test` includes focused form validation, calendar boundaries, exact request shape, pending
+protection, each outcome/error and correction/retry tests. `pnpm test:e2e` fills the rendered controls
+and traverses the production bridge for no-match, unresolved, populated NOT_ELIGIBLE, rate-limit,
+offline and unsafe-response cases. Shell tests check the real form at 320–1440px and with 200% root
+text size, including invalid messages. Axe scans cover both initial and invalid interactive forms.
+The fixture accepts omitted/null purchase price and the FE-03 configured price. Native 200% zoom,
+VoiceOver/NVDA announcements and UK locale date-picker behaviour still require manual inspection.

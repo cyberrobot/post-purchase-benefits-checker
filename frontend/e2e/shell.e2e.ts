@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-const placeholder = 'Purchase checking is not available yet.';
+const heading = 'Find benefits from a purchase';
 
 async function expectReadable(locator: Locator, viewportWidth: number) {
   await expect(locator).toBeVisible();
@@ -77,7 +77,9 @@ async function expectReflow(page: Page, width: number) {
   const criticalText = [
     page.getByRole('banner').getByRole('link', { name: 'BenefitScout', exact: true }),
     page.getByRole('heading', { level: 1 }),
-    page.getByRole('main').getByText(/Purchase checking is not available yet/),
+    ...(await page
+      .locator('form label, form p, form button, form [role="status"]:not(:empty)')
+      .all()),
     ...(await page.getByRole('contentinfo').getByRole('paragraph').all()),
   ];
   const textFragments = [];
@@ -100,6 +102,13 @@ async function expectReflow(page: Page, width: number) {
       ).toBe(false);
     }
   }
+  for (const control of await page.locator('form input, form button').all()) {
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThan(0);
+    expect(box!.x).toBeGreaterThanOrEqual(-1);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+  }
   const boxes = await Promise.all(
     ['banner', 'main', 'contentinfo'].map((role) =>
       page.getByRole(role as 'banner' | 'main' | 'contentinfo').boundingBox(),
@@ -119,14 +128,13 @@ test('public shell has truthful content, landmarks and working home navigation',
   await expect(page.locator('main')).toHaveCount(1);
   await expect(page.locator('main#main-content')).toHaveCount(1);
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('BenefitScout');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
   await expect(page.getByRole('banner')).toHaveCount(1);
   await expect(page.getByRole('contentinfo')).toHaveCount(1);
-  await expect(page.getByRole('main')).toContainText(placeholder);
-  await expect(page.getByRole('main')).toContainText('Application in development');
-  await expect(page.getByRole('main').locator('input, button, form, [role="status"]')).toHaveCount(
-    0,
-  );
+  await expect(page.getByRole('main')).toContainText(heading);
+  await expect(page.getByRole('form', { name: 'Check a purchase' })).toBeVisible();
+  await expect(page.locator('main input')).toHaveCount(4);
+  await expect(page.getByRole('button', { name: 'Find My Benefits' })).toBeVisible();
   await expect(page.getByRole('navigation')).toHaveCount(0);
   await expect(page.locator('header details, header button, footer a')).toHaveCount(0);
   const brand = page.getByRole('banner').getByRole('link', { name: 'BenefitScout', exact: true });
@@ -134,13 +142,15 @@ test('public shell has truthful content, landmarks and working home navigation',
   await page.evaluate(() => history.replaceState(null, '', '/?home-link-test=1'));
   await brand.click();
   await expect(page).toHaveURL('http://127.0.0.1:3101/');
-  await expect(page.getByRole('main')).toContainText(placeholder);
+  await expect(page.getByRole('main')).toContainText(heading);
 });
 
 for (const width of [320, 360, 375, 768, 1024, 1280, 1440]) {
   test(`shell reflows without clipped text or overlap at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
+    await expectReflow(page, width);
+    await page.getByRole('button', { name: 'Find My Benefits' }).click();
     await expectReflow(page, width);
   });
 }
@@ -152,6 +162,8 @@ for (const width of [640, 320]) {
     await page.evaluate(() => {
       document.documentElement.style.fontSize = '200%';
     });
+    await expectReflow(page, width);
+    await page.getByRole('button', { name: 'Find My Benefits' }).click();
     await expectReflow(page, width);
   });
 }

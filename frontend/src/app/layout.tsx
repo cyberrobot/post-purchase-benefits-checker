@@ -7,7 +7,7 @@ import { SiteFooter } from '@/components/layout/SiteFooter';
 export const metadata: Metadata = {
   title: 'BenefitScout',
   description:
-    'The BenefitScout web application foundation for future post-purchase benefits checking.',
+    'Check your purchase details for published manufacturer promotions with BenefitScout.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

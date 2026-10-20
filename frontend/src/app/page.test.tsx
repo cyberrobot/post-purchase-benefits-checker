@@ -1,23 +1,25 @@
 import { render, screen, within } from '@testing-library/react';
 import Home from '@/app/page';
+import { QueryProvider } from '@/components/providers/QueryProvider';
 
-it('introduces BenefitScout and explains that purchase checking is not available yet', () => {
-  render(<Home />);
-
+it('introduces purchase checking with the actual four-field entry form', () => {
+  render(
+    <QueryProvider>
+      <Home />
+    </QueryProvider>,
+  );
   const main = screen.getByRole('main');
-  expect(main).toBeInTheDocument();
   expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-  expect(within(main).getByRole('heading', { level: 1, name: 'BenefitScout' })).toBeVisible();
-  expect(
-    within(main).getByText(
-      'We are establishing the BenefitScout web application. Purchase checking is not available yet.',
-    ),
-  ).toBeVisible();
-});
-
-it('provides a focusable main target for the shell skip link', () => {
-  render(<Home />);
-  expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
-  expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
-  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  expect(within(main).getByRole('heading', { level: 1 })).toHaveTextContent(
+    'Find benefits from a purchase',
+  );
+  expect(within(main).getByRole('form', { name: 'Check a purchase' })).toBeVisible();
+  for (const label of ['Manufacturer', 'Model number', 'Retailer', 'Purchase date'])
+    expect(screen.getByLabelText(label)).toBeRequired();
+  expect(screen.getByRole('button', { name: 'Find My Benefits' })).toHaveAttribute(
+    'type',
+    'submit',
+  );
+  expect(main).toHaveAttribute('id', 'main-content');
+  expect(main).toHaveAttribute('tabindex', '-1');
 });

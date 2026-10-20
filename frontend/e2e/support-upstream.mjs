@@ -94,7 +94,13 @@ const server = createServer(
       req.method !== 'POST' ||
       req.headers.authorization ||
       req.headers.cookie ||
-      purchase.purchase_price !== '799.99'
+      !['brand', 'model', 'retailer', 'purchase_date'].every(
+        (key) => typeof purchase[key] === 'string',
+      ) ||
+      Object.keys(purchase).some(
+        (key) => !['brand', 'model', 'retailer', 'purchase_date', 'purchase_price'].includes(key),
+      ) ||
+      (purchase.purchase_price != null && purchase.purchase_price !== '799.99')
     ) {
       res.writeHead(500);
       res.end('{}');
@@ -104,8 +110,14 @@ const server = createServer(
       req.socket.destroy();
       return;
     }
-    if (purchase.model === 'POPULATED' || purchase.model === 'UNSAFE') {
+    if (
+      purchase.model === 'POPULATED' ||
+      purchase.model === 'NOT_ELIGIBLE' ||
+      purchase.model === 'UNSAFE'
+    ) {
       const populated = populatedResponse(purchase.model === 'UNSAFE');
+      if (purchase.model === 'NOT_ELIGIBLE')
+        populated.promotions[0].eligibility.classification = 'NOT_ELIGIBLE';
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'X-Request-ID': id,
