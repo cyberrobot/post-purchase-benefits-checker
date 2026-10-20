@@ -1,0 +1,65 @@
+{
+  "reference_version": 1,
+  "campaign": "LG OLED G5 Cashback Promotion 2025 (UK)",
+  "promotion_slug": "lg-g5-cashback-2025-oled55g54lw-lg-com-uk-reference",
+  "coverage": "OLED55G54LW.AEK purchased directly from LG.com/UK only; not the full G5 campaign",
+  "manufacturer": "LG",
+  "product": {
+    "name": "LG OLED G5 55-inch TV",
+    "model_or_sku": "OLED55G54LW.AEK"
+  },
+  "retailer": "LG.com/UK",
+  "purchase_start_date": "2025-05-21",
+  "purchase_end_date": "2025-06-24",
+  "claim_window": {
+    "type": "fixed",
+    "start_date": "2025-05-21",
+    "end_date": "2025-08-19"
+  },
+  "benefit": {
+    "type": "cashback",
+    "reward": {
+      "type": "fixed_amount",
+      "amount_gbp": "150.00"
+    }
+  },
+  "official_terms_url": "https://www.lg.com/uk/tncs/g5-cashback/",
+  "claim_url": "https://www.lgcashback.com/g5",
+  "evidence": {
+    "reviewed_on": "2026-10-09",
+    "retrieved_at": "2026-10-09T10:37:50Z",
+    "verified_at": "2026-10-09T10:37:50Z",
+    "primary_verification": "Official LG UK terms opened and reviewed during implementation; timestamp records that observation.",
+    "claim_verification": "Destination verified from official LG terms; claim portal accessibility and live claim acceptance were not checked.",
+    "validation_delay_days": 30,
+    "clauses": {
+      "campaign_dates": "Summary; Eligibility section 4",
+      "product_reward": "G5 Qualifying Products reward table, OLED55G54LW.AEK row: GBP 150",
+      "retailer": "Eligibility sections 3–4; Participating Retailers section 22: LG.com/UK",
+      "condition": "Eligibility section 4; General Conditions section 27: genuine new UK variant",
+      "requirements": "Eligibility sections 6–7: readable serial number and full receipt or online order confirmation",
+      "claim_window": "Eligibility sections 4, 6, 9; Cashback Claim section 12: after purchase through 19 August 2025 at 23:59 GMT",
+      "validation_delay": "Eligibility sections 4, 6; Cashback Claim section 12: processing/validation after 30 calendar days from purchase, not a submission-opening delay",
+      "participant_restrictions": "Eligibility sections 1–2, 10, 18–20; Cashback Claim section 13: UK resident age 18+, GBP account, bulk and returns restrictions"
+    }
+  },
+  "requirements": [
+    {
+      "type": "receipt",
+      "description": "Provide a full receipt or online order confirmation under Eligibility sections 6–7."
+    },
+    {
+      "type": "serial_number",
+      "description": "Provide a readable serial number under Eligibility sections 6–7."
+    }
+  ],
+  "limitations": [
+    "Only OLED55G54LW.AEK at LG.com/UK is represented; other G5 models and retailers are outside this reference.",
+    "UK residency, age, new UK product condition, GBP bank account, prior claims, returns, bulk-purchase cap and seller details are not evaluated by the five-field purchase request.",
+    "LG processing/validation occurs after 30 calendar days from purchase; claim submission may occur on the purchase date.",
+    "The fixed claim window cannot enforce submission after an individual purchase; historical checks use evaluation dates on or after purchase.",
+    "The official 23:59 GMT cutoff is represented only by inclusive calendar dates; exact time and GMT/BST enforcement are unavailable.",
+    "Follow all official LG terms; matching configured rules does not guarantee manufacturer approval or payment. Requirements are instructions, not proof of satisfaction.",
+    "Historical promotion; the LG-designated claim portal was not independently checked and may no longer accept submissions."
+  ]
+}

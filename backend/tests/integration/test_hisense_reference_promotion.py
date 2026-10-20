@@ -228,7 +228,7 @@ def test_candidate_replay_reuses_verified_sources(reference):
 def test_constructor_preflight_failure_rolls_back_savepoint_and_preserves_caller_state(
     db_session, monkeypatch
 ):
-    from tests import hisense_reference as helper
+    from app.db.reference import hisense as helper
 
     marker = Retailer(name="Caller pending retailer", slug="caller-pending-retailer")
     db_session.add(marker)
@@ -506,7 +506,7 @@ def test_replay_rejects_changed_graph_without_replacement(db_session, field):
 
 
 def test_mid_construction_failure_removes_all_owned_rows(db_session, monkeypatch):
-    from tests import hisense_reference as helper
+    from app.db.reference import hisense as helper
 
     marker = Retailer(name="Retained caller", slug="retained-caller")
     db_session.add(marker)
