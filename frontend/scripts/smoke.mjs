@@ -41,11 +41,11 @@ try {
   assert.match(html, /<title>BenefitScout<\/title>/);
   assert.match(
     html,
-    /<meta name="description" content="The BenefitScout web application foundation/,
+    /<meta name="description" content="Check your purchase details/,
   );
   assert.match(html, /<main[\s>]/);
-  assert.match(html, /<h1[^>]*>BenefitScout<\/h1>/);
-  assert.match(html, /Purchase checking is not available yet/);
+  assert.match(html, /<h1[^>]*>Find benefits from a /);
+  assert.match(html, /Find My Benefits/);
   console.log(
     'Production smoke passed: GET / returned 200 with server-rendered content and metadata.',
   );
