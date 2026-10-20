@@ -52,7 +52,7 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
 for (const [model, text] of [
   ['RATE', 'wait 15 seconds'],
   ['OFFLINE', 'temporarily unavailable'],
-  ['UNSAFE', 'service problem'],
+  ['UNSAFE', 'temporarily unavailable'],
 ]) {
   test(`rendered form safely handles ${model} and manual correction`, async ({ page }) => {
     let requests = 0;
