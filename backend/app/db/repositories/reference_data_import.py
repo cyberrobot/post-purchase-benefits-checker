@@ -99,7 +99,11 @@ class SqlAlchemyReferenceDataRepository:
                     self.session.flush()
             rows = [
                 row
-                for row in self.session.scalars(select(Product))
+                for row in (
+                    self.session.scalars(select(Product).where(Product.manufacturer_id == maker.id))
+                    if maker
+                    else ()
+                )
                 if row.model_number
                 and normalise_identifier(row.model_number) == normalise_identifier(fact.model)
             ]
@@ -145,27 +149,36 @@ class SqlAlchemyReferenceDataRepository:
                 self.session.flush()
         return tuple(plan)
 
+    def preview_promotions(self, dataset: Dataset) -> tuple[PlannedEntity, ...]:
+        """Reuse canonical constructors and graph comparisons without persisting objects."""
+        return self._promotions(dataset, preview=True)
+
     def stage(self, dataset: Dataset) -> tuple[int, int]:
+        plan = self._promotions(dataset, preview=False)
+        return (sum(e.action == "create" for e in plan), sum(e.action == "reuse" for e in plan))
+
+    def _promotions(self, dataset: Dataset, *, preview: bool) -> tuple[PlannedEntity, ...]:
         self.session.expire_all()
-        created = reused = 0
+        plan = []
         for fact in dataset.facts:
             constructor = import_module(f"app.db.reference.{fact.manufacturer_slug}")
             maker = self.resolver.resolve_manufacturer(fact.manufacturer)
-            manifest = constructor.reference_manifest()
-            existing = self.session.scalar(
-                select(Promotion.id).where(
-                    Promotion.manufacturer_id == maker.canonical_id,
-                    Promotion.slug == manifest["promotion_slug"],
-                )
-            )
             try:
-                constructor.construct_reference(self.session)
+                manifest = constructor.reference_manifest()
+                existing = self.session.scalar(
+                    select(Promotion.id).where(
+                        Promotion.manufacturer_id == maker.canonical_id,
+                        Promotion.slug == manifest["promotion_slug"],
+                    )
+                )
+                constructor.construct_reference(self.session, preview=preview)
             except ValueError:
                 raise ReferenceDataConflict(
                     f"{fact.manufacturer}: reviewed graph or candidate evidence conflict"
                 ) from None
-            if existing:
-                reused += 1
-            else:
-                created += 1
-        return created, reused
+            plan.append(
+                PlannedEntity(
+                    "promotion", manifest["promotion_slug"], "reuse" if existing else "create"
+                )
+            )
+        return tuple(plan)

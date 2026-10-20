@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from contextlib import nullcontext
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -25,7 +26,7 @@ from app.db.models import (
     Requirement,
     Retailer,
 )
-from app.db.reference.helpers import _fingerprint, _resolve, _verified_source
+from app.db.reference.helpers import _fingerprint, _resolve, _verified_source, lock_reference_query
 from app.db.repositories.identity_matching import SqlAlchemyIdentityRepository
 from app.domain.promotion_lifecycle import PromotionStatus
 
@@ -59,26 +60,28 @@ def reference_manifest():
     return validate_manifest(json.loads(MANIFEST.read_text()))
 
 
-def construct_reference(session):
+def construct_reference(session, *, preview=False):
     """Construct in review; callers publish through the persisted publication gate."""
     if session.new or session.dirty or session.deleted:
         raise ValueError("Reference construction requires a session without pending changes")
     f = reference_manifest()
-    with session.begin_nested():
+    with nullcontext() if preview else session.begin_nested():
         resolver = IdentityResolver(SqlAlchemyIdentityRepository(session))
         maker = _resolve(
             session,
             resolver.resolve_manufacturer(f["manufacturer"]),
             Manufacturer,
             {"name": f["manufacturer"], "slug": "hisense"},
+            preview=preview,
         )
         existing = session.scalar(
-            select(Promotion)
-            .where(
-                Promotion.manufacturer_id == maker.id,
-                Promotion.slug == f["promotion_slug"],
+            lock_reference_query(
+                select(Promotion).where(
+                    Promotion.manufacturer_id == maker.id,
+                    Promotion.slug == f["promotion_slug"],
+                ),
+                preview=preview,
             )
-            .with_for_update()
         )
         shop = _resolve(
             session,
@@ -86,6 +89,7 @@ def construct_reference(session):
             Retailer,
             {"name": f["retailer"], "slug": "currys"},
             allow_create=existing is None,
+            preview=preview,
         )
         product = _resolve(
             session,
@@ -102,6 +106,7 @@ def construct_reference(session):
                 "model_number": f["product"]["model_or_sku"],
             },
             allow_create=existing is None,
+            preview=preview,
         )
         expected = Promotion(
             manufacturer_id=maker.id,
@@ -150,6 +155,7 @@ def construct_reference(session):
                     "retrieved_at": retrieved_at.isoformat(),
                     "verified_at": verified_at.isoformat(),
                 },
+                preview=preview,
             )
             for role, url, title in (
                 (
@@ -185,8 +191,9 @@ def construct_reference(session):
             if not same:
                 raise ValueError("Conflicting existing verified reference")
             return existing
-        session.add(expected)
-        session.flush()
+        if not preview:
+            session.add(expected)
+            session.flush()
         candidate = parse_candidate_promotion(
             {
                 "schema_version": 1,

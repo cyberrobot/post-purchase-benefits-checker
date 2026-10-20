@@ -31,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--plan", action="store_true")
     mode.add_argument("--apply", action="store_true")
     parser.add_argument("--stage-promotions", action="store_true")
+    parser.add_argument("--preview-promotions", action="store_true")
     args = parser.parse_args(argv)
     engine = None
     started = perf_counter()
@@ -55,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     try:
+        if args.preview_promotions and args.apply:
+            raise ReferenceDataConflict("Promotion preview requires read-only plan mode")
         if args.stage_promotions and not args.apply:
             raise ReferenceDataConflict("Promotion staging requires --apply")
         settings = get_settings()
@@ -84,7 +87,11 @@ def main(argv: list[str] | None = None) -> int:
                 session.connection().exec_driver_sql("SET TRANSACTION READ ONLY")
                 session.connection().exec_driver_sql("SET LOCAL statement_timeout = '30s'")
             report = import_reference_data(
-                repository, dataset, apply=args.apply, stage_promotions=args.stage_promotions
+                repository,
+                dataset,
+                apply=args.apply,
+                stage_promotions=args.stage_promotions,
+                preview_promotions=args.preview_promotions,
             )
         output = asdict(report)
         output["counts"] = {

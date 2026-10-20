@@ -147,6 +147,7 @@ class ImportReport:
 
 class ReferenceDataRepository(Protocol):
     def catalogue(self, dataset: Dataset, *, apply: bool) -> tuple[PlannedEntity, ...]: ...
+    def preview_promotions(self, dataset: Dataset) -> tuple[PlannedEntity, ...]: ...
     def stage(self, dataset: Dataset) -> tuple[int, int]: ...
 
 
@@ -156,13 +157,18 @@ def import_reference_data(
     *,
     apply: bool = False,
     stage_promotions: bool = False,
+    preview_promotions: bool = False,
 ) -> ImportReport:
+    if preview_promotions and apply:
+        raise ReferenceDataConflict("Promotion preview requires read-only plan mode")
     if stage_promotions and not apply:
         raise ReferenceDataConflict("Promotion staging requires --apply")
     if semantic_hash(dataset.model_dump()) != DATASET_SHA256:
         raise ReferenceDataConflict("Unapproved dataset facts")
     # The complete read-only plan must succeed before any mutation.
     entities = repository.catalogue(dataset, apply=False)
+    if preview_promotions or stage_promotions:
+        entities += repository.preview_promotions(dataset)
     created = reused = 0
     if apply:
         repository.catalogue(dataset, apply=True)

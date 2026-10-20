@@ -3,7 +3,7 @@
 import json
 from contextlib import nullcontext
 from dataclasses import asdict
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from pydantic import ValidationError
@@ -306,3 +306,26 @@ def test_schema_mismatch_survives_identity_repository_lookup(monkeypatch, capsys
     events = [json.loads(line) for line in output.out.splitlines()]
     assert events[-1]["event"] == "reference_seed_failed"
     assert events[-1]["error_category"] == "schema_mismatch"
+
+
+def test_promotion_preflight_runs_before_any_apply_and_rejects_atomically():
+    repository = Mock()
+    repository.catalogue.return_value = ()
+    repository.preview_promotions.side_effect = ReferenceDataConflict("invalid graph")
+    with pytest.raises(ReferenceDataConflict, match="invalid graph"):
+        import_reference_data(repository, load_dataset(), apply=True, stage_promotions=True)
+    assert repository.catalogue.call_args_list == [call(load_dataset(), apply=False)]
+    repository.stage.assert_not_called()
+
+
+def test_preview_is_explicit_and_cannot_apply():
+    repository = Mock()
+    repository.catalogue.return_value = ()
+    repository.preview_promotions.return_value = ()
+    report = import_reference_data(repository, load_dataset(), preview_promotions=True)
+    assert report.mode == "plan"
+    repository.preview_promotions.assert_called_once()
+    repository.stage.assert_not_called()
+    with pytest.raises(ReferenceDataConflict, match="read-only"):
+        import_reference_data(repository, load_dataset(), apply=True, preview_promotions=True)
+    assert main(["--apply", "--preview-promotions"]) == 2

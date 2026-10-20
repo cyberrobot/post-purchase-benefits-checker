@@ -4,7 +4,7 @@ import asyncio
 from datetime import date
 from functools import partial
 
-import httpx2
+import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
@@ -46,8 +46,8 @@ def test_seeded_rest_mcp_publication_journey(postgres_engine, migrated_test_data
 
     async def journey():
         async with app.router.lifespan_context(app), protocol_client(app) as client:
-            async with httpx2.AsyncClient(
-                transport=httpx2.ASGITransport(app=app), base_url="http://localhost:8000"
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://localhost:8000"
             ) as http:
                 body = {
                     "brand": "Samsung",
