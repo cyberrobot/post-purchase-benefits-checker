@@ -39,10 +39,7 @@ try {
   const html = await response.text();
   assert.match(html, /<html[^>]*lang="en-GB"/);
   assert.match(html, /<title>BenefitScout<\/title>/);
-  assert.match(
-    html,
-    /<meta name="description" content="Check your purchase details/,
-  );
+  assert.match(html, /<meta name="description" content="Check your purchase details/);
   assert.match(html, /<main[\s>]/);
   assert.match(html, /<h1[^>]*>Find benefits from a /);
   assert.match(html, /Find My Benefits/);
