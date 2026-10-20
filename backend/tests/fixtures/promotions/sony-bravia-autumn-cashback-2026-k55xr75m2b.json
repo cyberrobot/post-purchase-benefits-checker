@@ -1,1 +1,99 @@
-../../../app/data/reference/sony-bravia-autumn-cashback-2026-k55xr75m2b.json
+{
+  "reference_version": 1,
+  "evidence_status": "verified",
+  "campaign": "Sony BRAVIA Autumn Cashback 2026",
+  "promotion_slug": "sony-bravia-autumn-cashback-2026-k55xr75m2b-reference",
+  "coverage": "K55XR75M2B purchased directly from Currys - UK only; not the full campaign",
+  "manufacturer": "Sony",
+  "product": {
+    "name": "Sony 55-inch BRAVIA 7 II TV",
+    "model_or_sku": "K55XR75M2B"
+  },
+  "retailer": "Currys - UK",
+  "purchase_start_date": "2026-09-30",
+  "purchase_end_date": "2026-10-27",
+  "claim_window": {
+    "type": "fixed",
+    "start_date": "2026-11-04",
+    "end_date": "2026-12-31",
+    "minimum_days_after_purchase": 35
+  },
+  "benefit": {
+    "type": "cashback",
+    "reward": {
+      "type": "fixed_amount",
+      "amount_gbp": "150.00"
+    }
+  },
+  "official_terms_url": "https://campaign.odw.sony-europe.com/redemption/terms/UK_TV_Autumn_Terms_and_Conditions_2026.pdf",
+  "faq_url": "https://www.sony.co.uk/electronics/support/articles/00412189",
+  "claim_url": "https://www.sony.co.uk/cashback/braviaautumn2026",
+  "claim_delay_limitation": {
+    "minimum_days_after_purchase": 35,
+    "status": "unmodelled",
+    "authoritative_runtime_rule": false,
+    "earliest_allowed_claim_date": "max(2026-11-04, purchase_date + 35 calendar days)",
+    "last_allowed_claim_date": "2026-12-31",
+    "production_publication_permitted": false,
+    "unsafe_historical_interval": "2026-11-04 through 2026-11-30 for purchases still waiting",
+    "required_follow_up": "Support a purchase-relative opening combined with a fixed absolute deadline before production publication."
+  },
+  "evidence": {
+    "terms_version": "26/08/2026; four pages",
+    "dealer_list_version": "28/09/2026",
+    "retrieved_at": "2026-10-13T08:23:10Z",
+    "verified_at": "2026-10-13T08:23:10Z",
+    "timestamp_basis": "UTC observation after implementation review of official Sony page and PDF text provided by the web tool. This records tool-provided observations, not origin-server retrieval times. No remote source-byte checksum is asserted. The semantic manifest SHA-256 covers the local JSON only.",
+    "section_heading": "Sony UK TV Autumn Cashback 2026",
+    "clause_map": {
+      "campaign": "Official campaign page; terms section 1",
+      "purchase_period": "Terms sections 5–6",
+      "model_and_reward": "Terms section 6, page 1, K55XR75M2B row, GBP column",
+      "claim_period": "Terms sections 8 and 10",
+      "minimum_wait": "Terms section 8; official campaign page and FAQ",
+      "retailer": "UK authorised-dealer PDF, page 3, Currys - UK entry; terms section 11",
+      "receipt": "Terms section 9; order date controls when different",
+      "serial_number": "Terms section 9",
+      "account": "Terms section 7",
+      "claimant": "Terms section 2",
+      "product_condition": "Terms sections 2–3 and 11–12",
+      "claim_limits": "Terms section 13",
+      "claim_destination": "Terms section 7; official campaign page",
+      "deadline_precision": "Terms section 10, late-day CET cutoff"
+    },
+    "claim_source_title": "Official Sony campaign claim destination; page text observed, no claim submitted",
+    "claim_portal_observation": "The official Sony campaign page was independently inspected as the destination directed by terms section 7. No customer claim was submitted or accepted.",
+    "faq_conflict": "FAQ claim-count wording differs internally. Official terms section 13 governs: one claim per individual model, two total. No contradictory FAQ line is used as a runtime rule.",
+    "supporting_source": {
+      "url": "https://campaign.odw.sony-europe.com/redemption/dealers/UK_TV_Autumn_dealers_2026.pdf",
+      "source_type": "pdf",
+      "title_or_version": "Sony UK authorised dealers — 28/09/2026; Currys - UK, page 3",
+      "retrieved_at": "2026-10-13T08:23:10Z",
+      "verified_at": "2026-10-13T08:23:10Z"
+    },
+    "exclusions_and_limitations": [
+      "Original individual consumer aged 18 or over; not a business purchaser (terms section 2).",
+      "New Sony-distributed product; used, returned and refurbished products excluded (terms sections 2–3, 11–12).",
+      "One claim per individual model, two total (terms section 13); conflicting FAQ wording does not override terms.",
+      "My Sony account required (terms section 7); this does not establish a purchased-TV registration requirement.",
+      "Authorised dealer only; unlisted Amazon Marketplace sellers excluded; no assumption that Currys Marketplace third-party sellers qualify (terms section 11)."
+    ]
+  },
+  "requirements": [
+    {
+      "type": "receipt",
+      "description": "Original receipt/invoice showing retailer, model/product and purchase date; order date controls if different (terms section 9)."
+    },
+    {
+      "type": "serial_number",
+      "description": "Provide serial number plus screen photo displaying serial/device ID OR back-of-TV photo showing model, manufacturing date and serial (terms section 9)."
+    }
+  ],
+  "limitations": [
+    "Test-only reference for exact K55XR75M2B purchased directly from Currys - UK; distinct K55XR75M2PB, other models and retailers are not assessed.",
+    "The 35-day wait after purchase is unmodelled: the fixed-only window can produce false-positive ELIGIBLE results before the individual wait elapses. No production publication or general claim-now promise is permitted until a purchase-relative opening plus fixed absolute deadline is supported.",
+    "The five-field request does not verify original owner, age 18+, new Sony-distributed condition, seller/country, returned/refurbished status, My Sony account, receipt, serial/TV photo, prior claims (one per model, two total), or payment details. Requirements are claim steps, not satisfied user facts.",
+    "Dates are inclusive UK calendar dates; the exact late-day CET cutoff is not enforced. Sony makes the final claim decision; this result does not guarantee approval or payment."
+  ],
+  "dealer_list_url": "https://campaign.odw.sony-europe.com/redemption/dealers/UK_TV_Autumn_dealers_2026.pdf"
+}

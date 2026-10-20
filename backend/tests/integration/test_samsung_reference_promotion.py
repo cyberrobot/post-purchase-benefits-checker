@@ -186,7 +186,7 @@ def test_conflicting_graph_fails_without_replacement(db_session):
 
 
 def test_atomic_construction_failure_rolls_back_and_retry_succeeds(db_session, monkeypatch):
-    from app.db.reference import samsung as helper
+    from tests import samsung_reference as helper
 
     before = snapshot(db_session)
     original = helper.validate_candidate_promotion
@@ -349,7 +349,7 @@ def test_conflicting_existing_reference_cannot_leave_new_rows_after_commit(db_se
 
 
 def test_candidate_failure_cannot_leave_partial_graph_after_caller_commit(db_session, monkeypatch):
-    from app.db.reference import samsung as helper
+    from tests import samsung_reference as helper
 
     caller = Manufacturer(name="Caller maker", slug="caller-maker")
     db_session.add(caller)

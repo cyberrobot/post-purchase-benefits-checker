@@ -368,11 +368,3 @@ is involved in normal tests.
 uv run pytest tests/unit/test_sony_reference_promotion.py
 uv run pytest tests/integration/test_sony_reference_promotion.py
 ```
-
-## Canonical offline data pack
-
-The five JSON fixture paths now point to `app/data/reference/`, the single bundled
-reviewed pack used by the explicit operator loader. Original semantic pins remain
-unchanged. Test constructors re-export production-owned review graph adapters;
-`finish_reference` remains test-only. Tests that inject parsing or candidate
-failures patch the owning `app.db.reference` module. No operator command publishes.

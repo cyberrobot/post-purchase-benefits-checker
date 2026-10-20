@@ -1,1 +1,97 @@
-../../../app/data/reference/hotpoint-wren-cashback-2026-h7ic16m6-uk.json
+{
+  "reference_version": 1,
+  "evidence_status": "verified",
+  "campaign": "Hotpoint Cashback Promotion – Wren (2026)",
+  "promotion_slug": "hotpoint-wren-cashback-2026-h7ic16m6-uk-reference",
+  "coverage": "H7IC16M6 UK purchased directly from Wren only; not the full campaign",
+  "manufacturer": "Hotpoint",
+  "product": {
+    "name": "MaxiSpace built-in dishwasher, 60 cm",
+    "model_or_sku": "H7IC16M6 UK"
+  },
+  "retailer": "Wren",
+  "purchase_start_date": "2026-05-05",
+  "purchase_end_date": "2026-06-12",
+  "claim_window": {
+    "type": "fixed",
+    "start_date": "2026-06-04",
+    "end_date": "2026-12-04",
+    "minimum_days_after_purchase": 30
+  },
+  "benefit": {
+    "type": "cashback",
+    "reward": {
+      "type": "fixed_amount",
+      "amount_gbp": "75.00"
+    }
+  },
+  "official_terms_url": "https://promo.hotpoint.co.uk/terms-and-conditions",
+  "faq_url": "https://promo.hotpoint.co.uk/faqs/",
+  "claim_url": "https://promo.hotpoint.co.uk/",
+  "claim_delay_limitation": {
+    "minimum_days_after_purchase": 30,
+    "status": "unmodelled",
+    "authoritative_runtime_rule": false,
+    "earliest_allowed_claim_date": "max(2026-06-04, purchase_date + 30 calendar days)",
+    "last_allowed_claim_date": "2026-12-04",
+    "production_publication_permitted": false,
+    "unsafe_historical_interval": "2026-06-04 through 2026-07-11 for purchases still waiting",
+    "required_follow_up": "Support a purchase-relative opening combined with a fixed absolute deadline before production publication."
+  },
+  "evidence": {
+    "terms_version": "2026 campaign; no explicit revision identifier observed",
+    "section_heading": "HOTPOINT CASHBACK PROMOTION - WREN",
+    "retrieved_at": "2026-10-12T16:18:12Z",
+    "verified_at": "2026-10-12T16:18:12Z",
+    "timestamp_basis": "UTC time immediately after implementation evidence review through the web tool; timestamps record retrieval and review of tool-provided page text, not a guaranteed origin-server HTTP retrieval. Tool crawl age was three days for terms, six days for FAQ and today for the campaign page. No HTML-byte checksum is asserted.",
+    "clause_map": {
+      "purchase_period": "Wren clause 2",
+      "claim_period": "Wren clause 3",
+      "model_and_reward": "Wren clause 4, built-in dishwasher row",
+      "receipt": "Wren clauses 5 and 8(c)",
+      "registration": "Wren clauses 6 and 8(b)/(c)",
+      "minimum_wait": "Wren clause 8(c), FAQ",
+      "retailer": "Wren clause 13",
+      "product_condition": "Wren clause 14",
+      "claim_limits": "Wren clauses 9 and 15",
+      "returns": "Wren clause 20",
+      "claim_payment": "Wren clause 16",
+      "claimant": "Wren clause 1"
+    },
+    "claim_portal_observation": "The official campaign page and FAQ corroborate the Wren 4 December 2026 deadline. Wren clause 8(c) directs claimants to hotpoint.co.uk/promo; the reviewed official campaign destination is https://promo.hotpoint.co.uk/. No user-specific claim form submission or claim acceptance was observed.",
+    "claim_source_title": "Official campaign claim destination; page text observed, no claim submitted",
+    "excluded_cross_campaign_evidence": "Participating-retailers and Hotpoint.co.uk-only subsections have different scopes and a 26 July deadline; neither supplies Wren evidence.",
+    "supporting_source": {
+      "url": "https://promo.hotpoint.co.uk/faqs/",
+      "observation": "FAQ corroborates 30-day wait and Wren extended 4 December deadline."
+    },
+    "exclusions_and_limitations": [
+      "UK residents aged 18 or over only; employee, immediate-family, agent and professional exclusions apply (Wren clause 1).",
+      "Graded, seconds, replacement and imperfect products excluded (Wren clause 14).",
+      "One claim per eligible appliance; no other promoter offer combination unless allowed (Wren clauses 9 and 15).",
+      "Returned appliances are ineligible; paid cashback must be reimbursed (Wren clause 20).",
+      "Bank transfer follows claim validation; payment is not proof of purchase eligibility (Wren clause 16).",
+      "Internet access and email required; claimant must use full legal name (Wren clauses 7 and 10)."
+    ]
+  },
+  "requirements": [
+    {
+      "type": "receipt",
+      "description": "Retain and upload receipt showing Wren, product model and purchase date (Wren clauses 5 and 8(c))."
+    },
+    {
+      "type": "serial_number",
+      "description": "Provide product model and serial number when claiming (Wren clause 8(c))."
+    },
+    {
+      "type": "registration",
+      "description": "Register appliance warranty and provide registration confirmation (Wren clauses 6 and 8(b)/(c))."
+    }
+  ],
+  "limitations": [
+    "Test-only reference for H7IC16M6 UK purchased directly from Wren; other models and retailers are not assessed.",
+    "The 30-day wait after purchase is unmodelled: the fixed-only window can produce false-positive ELIGIBLE results before the individual wait elapses. No production publication or general claim-now promise is permitted until a purchase-relative opening plus fixed absolute deadline is supported.",
+    "The five-field request does not verify residency, age, employee exclusions, condition, Wren seller, registration, receipt, serial, prior claims, offer combination, returns or banking details. Requirements are claim steps, not satisfied user facts.",
+    "Dates are inclusive UK calendar dates; sub-day 00:00/23:59 cutoffs are not enforced. Hotpoint makes the final claim decision; this result does not guarantee approval or payment."
+  ]
+}
