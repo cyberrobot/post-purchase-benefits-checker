@@ -2,9 +2,11 @@
 
 import hashlib
 import json
+from contextlib import nullcontext
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -26,7 +28,7 @@ from app.db.models import (
     Retailer,
     Source,
 )
-from app.db.reference.helpers import _verified_source
+from app.db.reference.helpers import _verified_source, lock_reference_query
 from app.db.repositories.identity_matching import SqlAlchemyIdentityRepository
 from app.domain.identity_normalisation import MatchStatus
 from app.domain.promotion_lifecycle import PromotionStatus as S
@@ -51,7 +53,7 @@ def reference_manifest():
     return validate_manifest(json.loads(MANIFEST.read_text()))
 
 
-def _resolve(session, match, kind, attributes, *, allow_create=True):
+def _resolve(session, match, kind, attributes, *, allow_create=True, preview=False):
     if match.status == MatchStatus.AMBIGUOUS:
         raise ValueError("Ambiguous reference identity")
     if match.status == MatchStatus.MATCHED:
@@ -63,9 +65,10 @@ def _resolve(session, match, kind, attributes, *, allow_create=True):
         return row
     if not allow_create:
         raise ValueError("Conflicting existing reference graph: missing identity")
-    row = kind(**attributes)
-    session.add(row)
-    session.flush()
+    row = kind(id=uuid4(), **attributes)
+    if not preview:
+        session.add(row)
+        session.flush()
     return row
 
 
@@ -122,7 +125,7 @@ def _fingerprint(promotion):
     )
 
 
-def construct_reference(session):
+def construct_reference(session, *, preview=False):
     """Construct atomically inside the caller's transaction, without committing it.
 
     Require callers to flush their own changes first: begin_nested() unconditionally
@@ -132,22 +135,26 @@ def construct_reference(session):
     if session.new or session.dirty or session.deleted:
         raise ValueError("Reference construction requires a session without pending changes")
     f = reference_manifest()
-    with session.begin_nested():
-        return _construct_reference(session, f)
+    with nullcontext() if preview else session.begin_nested():
+        return _construct_reference(session, f, preview=preview)
 
 
-def _construct_reference(session, f):
+def _construct_reference(session, f, *, preview=False):
     resolver = IdentityResolver(SqlAlchemyIdentityRepository(session))
     maker = _resolve(
         session,
         resolver.resolve_manufacturer(f["manufacturer"]),
         Manufacturer,
         {"name": f["manufacturer"], "slug": "samsung"},
+        preview=preview,
     )
     existing = session.scalar(
-        select(Promotion)
-        .where(Promotion.manufacturer_id == maker.id, Promotion.slug == f["promotion_slug"])
-        .with_for_update()
+        lock_reference_query(
+            select(Promotion).where(
+                Promotion.manufacturer_id == maker.id, Promotion.slug == f["promotion_slug"]
+            ),
+            preview=preview,
+        )
     )
     shop = _resolve(
         session,
@@ -155,6 +162,7 @@ def _construct_reference(session, f):
         Retailer,
         {"name": f["retailer"], "slug": "samsung-com"},
         allow_create=existing is None,
+        preview=preview,
     )
     product = _resolve(
         session,
@@ -169,6 +177,7 @@ def _construct_reference(session, f):
             "model_number": f["product"]["model_or_sku"],
         },
         allow_create=existing is None,
+        preview=preview,
     )
     expected = Promotion(
         manufacturer_id=maker.id,
@@ -255,12 +264,17 @@ def _construct_reference(session, f):
                     "retrieved_at": source.retrieved_at.isoformat(),
                     "verified_at": source.verified_at.isoformat(),
                 },
+                preview=preview,
             )
         )
     for link, source in zip(expected.source_links, verified_sources, strict=True):
-        link.source = source
-    session.add(expected)
-    session.flush()
+        if preview:
+            link.source_id = source.id
+        else:
+            link.source = source
+    if not preview:
+        session.add(expected)
+        session.flush()
     candidate = parse_candidate_promotion(
         {
             "schema_version": 1,
@@ -282,7 +296,7 @@ def _construct_reference(session, f):
                     }
                 ],
                 "sources": [
-                    {"source_id": str(link.source_id), "role": link.role}
+                    {"source_id": str(link.source_id or link.source.id), "role": link.role}
                     for link in expected.source_links
                 ],
             },

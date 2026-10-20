@@ -1,6 +1,7 @@
 """Manufacturer-neutral helpers for offline reviewed reference fixtures."""
 
 from datetime import datetime
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -8,7 +9,7 @@ from app.db.models import Product, Source
 from app.domain.identity_normalisation import MatchStatus, normalise_identifier
 
 
-def _resolve(session, match, kind, attributes, *, allow_create=True):
+def _resolve(session, match, kind, attributes, *, allow_create=True, preview=False):
     if match.status == MatchStatus.AMBIGUOUS:
         raise ValueError("Ambiguous reference identity")
     if match.status == MatchStatus.MATCHED:
@@ -22,9 +23,10 @@ def _resolve(session, match, kind, attributes, *, allow_create=True):
         return row
     if not allow_create:
         raise ValueError("Conflicting existing reference graph: missing identity")
-    row = kind(**attributes)
-    session.add(row)
-    session.flush()
+    row = kind(id=uuid4(), **attributes)
+    if not preview:
+        session.add(row)
+        session.flush()
     return row
 
 
@@ -94,7 +96,7 @@ def _fingerprint(promotion, sources_by_id=None):
     )
 
 
-def _verified_source(session, observation):
+def _verified_source(session, observation, *, preview=False):
     """Reuse only a source record whose URL, role evidence and timestamps all agree."""
     retrieved_at = datetime.fromisoformat(observation["retrieved_at"])
     if retrieved_at.tzinfo is None or retrieved_at.utcoffset() is None:
@@ -106,25 +108,35 @@ def _verified_source(session, observation):
         Source.retrieved_at == retrieved_at,
         Source.verified_at == datetime.fromisoformat(observation["verified_at"]),
     )
-    rows = list(session.scalars(select(Source).where(*criteria).with_for_update()))
+    query = select(Source).where(*criteria)
+    rows = list(session.scalars(query if preview else query.with_for_update()))
     if len(rows) > 1:
         raise ValueError("Ambiguous identical verified reference source observations")
     if rows:
         return rows[0]
     source = Source(
+        id=uuid4(),
         url=observation["url"],
         source_type=observation["source_type"],
         title=observation["title_or_version"],
         retrieved_at=retrieved_at,
         verified_at=datetime.fromisoformat(observation["verified_at"]),
     )
-    session.add(source)
-    session.flush()
+    if not preview:
+        session.add(source)
+        session.flush()
     return source
 
 
 def _resolve_retailer_with_alias(
-    session, resolver, *, canonical_name, canonical_slug, observed_name, allow_create=True
+    session,
+    resolver,
+    *,
+    canonical_name,
+    canonical_slug,
+    observed_name,
+    allow_create=True,
+    preview=False,
 ):
     """Bind a reviewed dealer label to one canonical identity, never merge owners."""
     from app.db.models import Retailer, RetailerAlias
@@ -144,8 +156,11 @@ def _resolve_retailer_with_alias(
         Retailer,
         {"name": canonical_name, "slug": canonical_slug},
         allow_create=allow_create,
+        preview=preview,
     )
     # Serialize alias creation on the canonical owner for fixture participants.
+    if preview:
+        return retailer
     session.refresh(retailer, with_for_update=True)
     observed = resolver.resolve_retailer(observed_name)
     if observed.status == MatchStatus.AMBIGUOUS:
@@ -161,3 +176,8 @@ def _resolve_retailer_with_alias(
         if alias_key not in (normalise_text(retailer.name), normalise_text(retailer.slug)):
             raise ValueError("Conflicting reference retailer alias")
     return retailer
+
+
+def lock_reference_query(query, *, preview=False):
+    """Preview must also work inside a PostgreSQL read-only transaction."""
+    return query if preview else query.with_for_update()

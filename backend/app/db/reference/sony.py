@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from contextlib import nullcontext
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -30,6 +31,7 @@ from app.db.reference.helpers import (
     _resolve,
     _resolve_retailer_with_alias,
     _verified_source,
+    lock_reference_query,
 )
 from app.db.repositories.identity_matching import SqlAlchemyIdentityRepository
 from app.domain.identity_normalisation import MatchStatus
@@ -41,12 +43,12 @@ MANIFEST = (
 REVIEWED_SHA256 = "8703886a35ba0b3536e7a933b8a709b7e2aab9d5910eb41fb4502e5aa129357b"
 
 
-def _resolve_current(session, match, kind, attributes, *, allow_create=True):
+def _resolve_current(session, match, kind, attributes, *, allow_create=True, preview=False):
     """Refresh a matched identity before checking reference attributes against it."""
     if match.status == MatchStatus.MATCHED:
         row = session.get(kind, match.canonical_id)
         session.refresh(row)
-    return _resolve(session, match, kind, attributes, allow_create=allow_create)
+    return _resolve(session, match, kind, attributes, allow_create=allow_create, preview=preview)
 
 
 def validate_manifest(value):
@@ -112,37 +114,39 @@ def source_observations(manifest):
     return observations
 
 
-def construct_reference(session):
+def construct_reference(session, *, preview=False):
     """Construct in review; callers publish through the persisted publication gate."""
     if session.new or session.dirty or session.deleted:
         raise ValueError("Reference construction requires a session without pending changes")
     f = reference_manifest()
     observations = source_observations(f)
-    with session.begin_nested():
+    with nullcontext() if preview else session.begin_nested():
         resolver = IdentityResolver(SqlAlchemyIdentityRepository(session))
         maker = _resolve_current(
             session,
             resolver.resolve_manufacturer(f["manufacturer"]),
             Manufacturer,
             {"name": f["manufacturer"], "slug": "sony"},
+            preview=preview,
         )
         existing = session.scalar(
-            select(Promotion)
-            .where(
-                Promotion.manufacturer_id == maker.id,
-                Promotion.slug == f["promotion_slug"],
-            )
-            .options(
-                selectinload(Promotion.variants).selectinload(PromotionVariant.product_links),
-                selectinload(Promotion.variants)
-                .selectinload(PromotionVariant.benefits)
-                .selectinload(Benefit.reward)
-                .selectinload(BenefitReward.product_values),
-                selectinload(Promotion.variants).selectinload(PromotionVariant.requirements),
-                selectinload(Promotion.source_links).selectinload(PromotionSource.source),
-            )
-            .with_for_update()
-            .execution_options(populate_existing=True)
+            lock_reference_query(
+                select(Promotion)
+                .where(
+                    Promotion.manufacturer_id == maker.id,
+                    Promotion.slug == f["promotion_slug"],
+                )
+                .options(
+                    selectinload(Promotion.variants).selectinload(PromotionVariant.product_links),
+                    selectinload(Promotion.variants)
+                    .selectinload(PromotionVariant.benefits)
+                    .selectinload(Benefit.reward)
+                    .selectinload(BenefitReward.product_values),
+                    selectinload(Promotion.variants).selectinload(PromotionVariant.requirements),
+                    selectinload(Promotion.source_links).selectinload(PromotionSource.source),
+                ),
+                preview=preview,
+            ).execution_options(populate_existing=True)
         )
         shop = _resolve_retailer_with_alias(
             session,
@@ -151,6 +155,7 @@ def construct_reference(session):
             canonical_slug="currys",
             observed_name=f["retailer"],
             allow_create=existing is None,
+            preview=preview,
         )
         product = _resolve_current(
             session,
@@ -167,6 +172,7 @@ def construct_reference(session):
                 "model_number": f["product"]["model_or_sku"],
             },
             allow_create=existing is None,
+            preview=preview,
         )
         expected = Promotion(
             manufacturer_id=maker.id,
@@ -210,7 +216,7 @@ def construct_reference(session):
         ]
         # Flush source observations before transient FK-only associations.
         sources = {
-            role: _verified_source(session, observation)
+            role: _verified_source(session, observation, preview=preview)
             for role, observation in observations.items()
         }
         expected.source_links = [
@@ -234,8 +240,9 @@ def construct_reference(session):
             if not same:
                 raise ValueError("Conflicting existing verified reference")
             return existing
-        session.add(expected)
-        session.flush()
+        if not preview:
+            session.add(expected)
+            session.flush()
         candidate = parse_candidate_promotion(
             {
                 "schema_version": 1,

@@ -225,6 +225,10 @@ def test_cli_default_plan_apply_and_staged_replay(
         assert command()["mode"] == "plan"
         with factory() as session:
             assert snapshot(session) == original
+        preview = command("--plan", "--preview-promotions")
+        assert preview["counts"]["promotion"]["create"] == 5
+        with factory() as session:
+            assert snapshot(session) == original
         assert command("--apply")["counts"]["product"]["create"] == 5
         first = command("--apply", "--stage-promotions")
         assert first["staged_promotions"] == 5 and first["published_promotions"] == 0
@@ -246,3 +250,162 @@ def test_cli_default_plan_apply_and_staged_replay(
                 - aliases
             )
             delete_owned_rows(session, owned)
+
+
+def test_cross_manufacturer_model_is_independent_and_replay_preserves_it(db_session):
+    other = Manufacturer(name="Unrelated maker", slug="unrelated-maker")
+    db_session.add(other)
+    db_session.flush()
+    unrelated = Product(
+        manufacturer_id=other.id, name="Other SM-R640", slug="other-model", model_number="SM-R640"
+    )
+    db_session.add(unrelated)
+    db_session.flush()
+    original = (
+        unrelated.id,
+        unrelated.manufacturer_id,
+        unrelated.name,
+        unrelated.slug,
+        unrelated.model_number,
+        unrelated.created_at,
+        unrelated.updated_at,
+    )
+    assert any(
+        e.kind == "product" and e.key == "SM-R640" and e.action == "create"
+        for e in run(db_session, apply=False).entities
+    )
+    run(db_session)
+    assert (
+        len(list(db_session.scalars(select(Product).where(Product.model_number == "SM-R640")))) == 2
+    )
+    after = snapshot(db_session)
+    assert run(db_session).no_op
+    assert snapshot(db_session) == after
+    db_session.refresh(unrelated)
+    assert (
+        unrelated.id,
+        unrelated.manufacturer_id,
+        unrelated.name,
+        unrelated.slug,
+        unrelated.model_number,
+        unrelated.created_at,
+        unrelated.updated_at,
+    ) == original
+
+
+@pytest.mark.parametrize(
+    "field,value", [("name", "Wrong display name"), ("model_number", "WRONG-MODEL")]
+)
+def test_conflicting_canonical_product_facts_rejected(db_session, field, value):
+    run(db_session)
+    row = db_session.scalar(select(Product).where(Product.model_number == "SM-R640"))
+    setattr(row, field, value)
+    db_session.flush()
+    before = snapshot(db_session)
+    with pytest.raises(ReferenceDataConflict, match="Conflicting product"):
+        run(db_session)
+    assert snapshot(db_session) == before
+
+
+def test_promotion_preview_is_read_only_for_new_and_existing_graphs(db_session):
+    from sqlalchemy import event
+
+    statements = []
+    connection = db_session.connection()
+
+    def record(_connection, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.strip().upper())
+
+    def preview():
+        event.listen(connection, "before_cursor_execute", record)
+        try:
+            return import_reference_data(
+                SqlAlchemyReferenceDataRepository(db_session),
+                load_dataset(),
+                preview_promotions=True,
+            )
+        finally:
+            event.remove(connection, "before_cursor_execute", record)
+
+    before = snapshot(db_session)
+    report = preview()
+    assert [e.action for e in report.entities if e.kind == "promotion"] == ["create"] * 5
+    assert snapshot(db_session) == before
+    assert not db_session.new and not db_session.dirty and not db_session.deleted
+    assert not any(
+        s.startswith(("INSERT", "UPDATE", "DELETE", "SAVEPOINT")) or "FOR UPDATE" in s
+        for s in statements
+    )
+    run(db_session, stage=True)
+    before = snapshot(db_session)
+    statements.clear()
+    report = preview()
+    assert [e.action for e in report.entities if e.kind == "promotion"] == ["reuse"] * 5
+    assert snapshot(db_session) == before
+    assert not any(
+        s.startswith(("INSERT", "UPDATE", "DELETE", "SAVEPOINT")) or "FOR UPDATE" in s
+        for s in statements
+    )
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["reward", "variant", "requirement", "source", "lifecycle", "product", "retailer"]
+)
+def test_conflicting_graph_preflight_prevents_catalogue_writes(db_session, mismatch):
+    from sqlalchemy import event
+
+    from app.db.reference.sony import construct_reference
+
+    promotion = construct_reference(db_session)
+    variant = promotion.variants[0]
+    if mismatch == "reward":
+        variant.benefits[0].reward.fixed_amount = 1
+    elif mismatch == "variant":
+        variant.code = "conflicting-code"
+    elif mismatch == "requirement":
+        variant.requirements[0].description = "Conflicting requirement"
+    elif mismatch == "source":
+        promotion.source_links[0].source.title = "Conflicting evidence"
+    elif mismatch == "lifecycle":
+        promotion.status = "extracted"
+    elif mismatch == "product":
+        db_session.delete(variant.product_links[0])
+    elif mismatch == "retailer":
+        variant.retailer_id = None
+    db_session.flush()
+    before = snapshot(db_session)
+    statements = []
+    connection = db_session.connection()
+
+    def record(_connection, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.strip().upper())
+
+    event.listen(connection, "before_cursor_execute", record)
+    try:
+        with pytest.raises(ReferenceDataConflict, match="Sony"):
+            run(db_session, stage=True)
+    finally:
+        event.remove(connection, "before_cursor_execute", record)
+    assert snapshot(db_session) == before
+    assert not any(s.startswith(("INSERT", "UPDATE", "DELETE")) for s in statements)
+    # Catalogue operations remain independent of the incompatible promotion graph.
+    run(db_session)
+    assert len(list(db_session.scalars(select(Manufacturer)))) == 5
+
+
+def test_database_failure_during_stage_rolls_back_catalogue(db_session, monkeypatch):
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    before = snapshot(db_session)
+    original = SqlAlchemyReferenceDataRepository.stage
+
+    def fail(repository, _dataset):
+        repository.session.execute(text("SELECT 1 / 0"))
+
+    monkeypatch.setattr(SqlAlchemyReferenceDataRepository, "stage", fail)
+    with pytest.raises(DBAPIError), db_session.begin_nested():
+        run(db_session, stage=True)
+    assert snapshot(db_session) == before
+    monkeypatch.setattr(SqlAlchemyReferenceDataRepository, "stage", original)
+    assert run(db_session, stage=True).staged_promotions == 5

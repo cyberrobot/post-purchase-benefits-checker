@@ -995,6 +995,12 @@ uv run python -m app.cli.seed_reference_data --dataset mvp-reviewed-v1 --apply
 uv run python -m app.cli.seed_reference_data --dataset mvp-reviewed-v1 --apply --stage-promotions
 ```
 
+Use `--plan --preview-promotions` for a complete read-only promotion staging plan.
+It compares full graphs and evidence using the canonical reference constructors,
+reports promotion create/reuse actions, and performs no writes or savepoint simulation.
+Staging apply preflights the catalogue and every selected graph inside the operator
+advisory lock before the first write, then revalidates during construction.
+
 No arguments means plan. `--stage-promotions` requires `--apply`. The loader rejects
 `APP_ENV=production` in every mode. No application startup, build, migration or
 request executes it automatically. The JSON target display contains hostname,

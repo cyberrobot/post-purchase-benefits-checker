@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from contextlib import nullcontext
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -26,7 +27,7 @@ from app.db.models import (
     Requirement,
     Retailer,
 )
-from app.db.reference.helpers import _fingerprint, _resolve, _verified_source
+from app.db.reference.helpers import _fingerprint, _resolve, _verified_source, lock_reference_query
 from app.db.repositories.identity_matching import SqlAlchemyIdentityRepository
 from app.domain.identity_normalisation import MatchStatus
 from app.domain.promotion_lifecycle import PromotionStatus
@@ -35,12 +36,12 @@ MANIFEST = Path(__file__).parents[2] / "data/reference/hotpoint-wren-cashback-20
 REVIEWED_SHA256 = "3a967b5a0690f65714a48bccc2ac7fb12d206222f718f9afdb45d019d7a4b2dc"
 
 
-def _resolve_current(session, match, kind, attributes, *, allow_create=True):
+def _resolve_current(session, match, kind, attributes, *, allow_create=True, preview=False):
     """Refresh a matched identity before checking reference attributes against it."""
     if match.status == MatchStatus.MATCHED:
         row = session.get(kind, match.canonical_id)
         session.refresh(row)
-    return _resolve(session, match, kind, attributes, allow_create=allow_create)
+    return _resolve(session, match, kind, attributes, allow_create=allow_create, preview=preview)
 
 
 def validate_manifest(value):
@@ -67,36 +68,38 @@ def reference_manifest():
     return validate_manifest(json.loads(MANIFEST.read_text()))
 
 
-def construct_reference(session):
+def construct_reference(session, *, preview=False):
     """Construct in review; callers publish through the persisted publication gate."""
     if session.new or session.dirty or session.deleted:
         raise ValueError("Reference construction requires a session without pending changes")
     f = reference_manifest()
-    with session.begin_nested():
+    with nullcontext() if preview else session.begin_nested():
         resolver = IdentityResolver(SqlAlchemyIdentityRepository(session))
         maker = _resolve_current(
             session,
             resolver.resolve_manufacturer(f["manufacturer"]),
             Manufacturer,
             {"name": f["manufacturer"], "slug": "hotpoint"},
+            preview=preview,
         )
         existing = session.scalar(
-            select(Promotion)
-            .where(
-                Promotion.manufacturer_id == maker.id,
-                Promotion.slug == f["promotion_slug"],
-            )
-            .options(
-                selectinload(Promotion.variants).selectinload(PromotionVariant.product_links),
-                selectinload(Promotion.variants)
-                .selectinload(PromotionVariant.benefits)
-                .selectinload(Benefit.reward)
-                .selectinload(BenefitReward.product_values),
-                selectinload(Promotion.variants).selectinload(PromotionVariant.requirements),
-                selectinload(Promotion.source_links).selectinload(PromotionSource.source),
-            )
-            .with_for_update()
-            .execution_options(populate_existing=True)
+            lock_reference_query(
+                select(Promotion)
+                .where(
+                    Promotion.manufacturer_id == maker.id,
+                    Promotion.slug == f["promotion_slug"],
+                )
+                .options(
+                    selectinload(Promotion.variants).selectinload(PromotionVariant.product_links),
+                    selectinload(Promotion.variants)
+                    .selectinload(PromotionVariant.benefits)
+                    .selectinload(Benefit.reward)
+                    .selectinload(BenefitReward.product_values),
+                    selectinload(Promotion.variants).selectinload(PromotionVariant.requirements),
+                    selectinload(Promotion.source_links).selectinload(PromotionSource.source),
+                ),
+                preview=preview,
+            ).execution_options(populate_existing=True)
         )
         shop = _resolve_current(
             session,
@@ -104,6 +107,7 @@ def construct_reference(session):
             Retailer,
             {"name": f["retailer"], "slug": "wren"},
             allow_create=existing is None,
+            preview=preview,
         )
         product = _resolve_current(
             session,
@@ -120,6 +124,7 @@ def construct_reference(session):
                 "model_number": f["product"]["model_or_sku"],
             },
             allow_create=existing is None,
+            preview=preview,
         )
         expected = Promotion(
             manufacturer_id=maker.id,
@@ -176,6 +181,7 @@ def construct_reference(session):
                     "retrieved_at": retrieved_at.isoformat(),
                     "verified_at": verified_at.isoformat(),
                 },
+                preview=preview,
             )
             for role, url, title in (
                 (
@@ -211,8 +217,9 @@ def construct_reference(session):
             if not same:
                 raise ValueError("Conflicting existing verified reference")
             return existing
-        session.add(expected)
-        session.flush()
+        if not preview:
+            session.add(expected)
+            session.flush()
         candidate = parse_candidate_promotion(
             {
                 "schema_version": 1,
