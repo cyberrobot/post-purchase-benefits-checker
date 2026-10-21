@@ -206,15 +206,33 @@ it('counts NOT_ELIGIBLE records without promising benefits', async () => {
   if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
   const promotion = {
     ...populatedClaim.promotions[0],
-    eligibility: { ...populatedClaim.promotions[0].eligibility, classification: 'NOT_ELIGIBLE' },
+    eligibility: {
+      classification: 'NOT_ELIGIBLE',
+      reasons: [{ code: 'purchase_date_before_start', rule_kind: 'purchase_date' }],
+      rule_evaluations: [
+        {
+          kind: 'purchase_date',
+          status: 'not_satisfied',
+          reason_code: 'purchase_date_before_start',
+        },
+      ],
+      claim_window_status: 'open',
+    },
+    explanation: ['The purchase date is before the recorded purchase period.'],
   };
-  mutateAsync.mockResolvedValue({ ...populatedClaim, promotions: [promotion, promotion] });
+  mutateAsync.mockResolvedValue({
+    ...populatedClaim,
+    promotions: [
+      promotion,
+      { ...promotion, promotion_variant_id: '00000000-0000-0000-0000-000000000010' },
+    ],
+  });
   render(<PurchaseInputForm />);
   fill();
   submit();
   await waitFor(() =>
     expect(screen.getByRole('status')).toHaveTextContent(
-      '2 promotions: does not meet recorded rules.',
+      '2 promotion matches: does not meet recorded rules.',
     ),
   );
   expect(screen.getByRole('status')).not.toHaveTextContent(/cashback|claimable|qualify|£/i);

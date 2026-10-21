@@ -5,7 +5,7 @@ import {
   todayInLondon,
   validatePurchase,
 } from './purchaseForm';
-import { purchaseRequestSchema } from '@/lib/api/eligibility.contract';
+import { purchaseRequestSchema, type CheckPurchaseResponse } from '@/lib/api/eligibility.contract';
 import { ApiError } from '@/lib/api/errors';
 import { populatedClaim } from '@/lib/api/promotion.fixture';
 const draft = {
@@ -55,31 +55,60 @@ it.each(['0', '799.99', '999999999999.99'])('preserves exact wire money %s', (pr
 it('omits optional blank price entirely', () => {
   expect(requestFromDraft({ ...draft, purchase_price: '' })).toEqual(draft);
 });
-it('groups all reported classifications with accurate counts and no reward calculation', () => {
+it('counts six variant matches across five promotions and preserves every classification', () => {
   if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
   const promotion = populatedClaim.promotions[0];
-  const classifications = [
-    'ELIGIBLE',
-    'POTENTIALLY_ELIGIBLE',
-    'NOT_ELIGIBLE',
-    'CLAIM_NOT_YET_OPEN',
-    'EXPIRED',
-    'NOT_ELIGIBLE',
+  const cases = [
+    ['ELIGIBLE', 'open', '2026-10-01', '2026-11-30'],
+    ['POTENTIALLY_ELIGIBLE', null, null, null],
+    ['NOT_ELIGIBLE', 'open', '2026-10-01', '2026-11-30'],
+    ['CLAIM_NOT_YET_OPEN', 'not_yet_open', '2026-10-09', '2026-11-30'],
+    ['EXPIRED', 'expired', '2026-10-01', '2026-10-07'],
+    ['NOT_ELIGIBLE', 'open', '2026-10-01', '2026-11-30'],
   ] as const;
-  const result = completion({
-    ...populatedClaim,
-    promotions: classifications.map((classification) => ({
+  const promotions: Extract<CheckPurchaseResponse, { outcome: 'resolved' }>['promotions'] =
+    cases.map(([classification, status, opens_on, deadline_on], index) => ({
       ...promotion,
-      eligibility: { ...promotion.eligibility, classification },
-    })),
-  });
+      promotion_id: `00000000-0000-0000-0000-${String(index === 5 ? 12 : index + 10).padStart(12, '0')}`,
+      promotion_variant_id: `00000000-0000-0000-0000-${String(index + 100).padStart(12, '0')}`,
+      eligibility: {
+        classification,
+        reasons:
+          classification === 'NOT_ELIGIBLE'
+            ? [{ code: 'purchase_date_before_start', rule_kind: 'purchase_date' }]
+            : [
+                { code: 'all_configured_rules_satisfied', rule_kind: null },
+                { code: `claim_window_${status ?? 'unspecified'}`, rule_kind: null },
+              ],
+        rule_evaluations:
+          classification === 'NOT_ELIGIBLE'
+            ? [
+                {
+                  kind: 'purchase_date',
+                  status: 'not_satisfied',
+                  reason_code: 'purchase_date_before_start',
+                },
+              ]
+            : promotion.eligibility.rule_evaluations,
+        claim_window_status: status,
+      },
+      claim_window: status === null ? null : { status, opens_on, deadline_on },
+      explanation: [],
+    }));
+  expect(promotions).toHaveLength(6);
+  expect(new Set(promotions.map((match) => match.promotion_id)).size).toBe(5);
+  expect(new Set(promotions.map((match) => match.promotion_variant_id)).size).toBe(6);
+  const result = completion({ ...populatedClaim, promotions });
   expect(result).toEqual([
-    '1 promotion: meets recorded eligibility rules; this is not an approved or paid claim.',
-    '1 promotion: may qualify; more evidence or information could be required.',
-    '2 promotions: does not meet recorded rules.',
-    '1 promotion: claim period has not opened.',
-    '1 promotion: claim period has expired.',
+    '1 promotion match: meets recorded eligibility rules; this is not an approved or paid claim.',
+    '1 promotion match: may qualify; more evidence or information could be required.',
+    '2 promotion matches: does not meet recorded rules.',
+    '1 promotion match: claim period has not opened.',
+    '1 promotion match: claim period has expired.',
   ]);
+  expect(result.join(' ')).not.toMatch(
+    /confirmed benefits?|guaranteed|cashback|claim approved|claimable|£/i,
+  );
 });
 it.each(['brand', 'model', 'retailer'] as const)(
   'describes both unresolved %s statuses without IDs or server text',

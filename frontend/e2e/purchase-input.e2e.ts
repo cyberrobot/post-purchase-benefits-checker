@@ -43,7 +43,7 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
   await page.getByLabel('Product model or SKU', { exact: true }).fill('NOT_ELIGIBLE');
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
   await expect(page.getByRole('status')).toContainText(
-    '1 promotion: does not meet recorded rules.',
+    '1 promotion match: does not meet recorded rules.',
   );
   expect(requests).toHaveLength(3);
   await expect(page.getByRole('status')).not.toContainText(/cashback|claimable|qualify|£/i);

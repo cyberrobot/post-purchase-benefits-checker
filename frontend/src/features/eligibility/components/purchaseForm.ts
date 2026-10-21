@@ -100,7 +100,7 @@ export function completion(data: CheckPurchaseResponse): string[] {
     const count = data.promotions.filter(
       (promotion) => promotion.eligibility.classification === classification,
     ).length;
-    return count ? [`${count} promotion${count === 1 ? '' : 's'}: ${description}.`] : [];
+    return count ? [`${count} promotion match${count === 1 ? '' : 'es'}: ${description}.`] : [];
   });
 }
 export function failure(error: unknown): string {

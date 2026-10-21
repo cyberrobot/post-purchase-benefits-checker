@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { expectReflow } from './support-layout';
+import { checkPurchaseResponseSchema } from '../src/lib/api/eligibility.contract';
 const labels = ['Manufacturer / Brand', 'Product model or SKU', 'Retailer', 'Purchase date'];
 const submit = (page: Page) => page.getByRole('button', { name: 'Find My Benefits' });
 async function fill(page: Page, model = 'Sku./-1 AB') {
@@ -144,20 +145,93 @@ for (const [model, message] of [
     expect(sent).toHaveLength(2);
   });
 }
-test('mixed classifications count every real record truthfully', async ({ page }) => {
+test('six coherent variant matches across five promotions retain every classification', async ({
+  page,
+}) => {
   await page.goto('/check');
   await fill(page, 'MIXED');
+  const responsePromise = page.waitForResponse((response) =>
+    response.url().endsWith('/api/eligibility/check'),
+  );
   await submit(page).click();
+  const data = checkPurchaseResponseSchema.parse(await (await responsePromise).json());
+  expect(data.outcome).toBe('resolved');
+  if (data.outcome !== 'resolved') throw new Error('Expected resolved mixed fixture');
+  expect(data.evaluation_date).toBe('2026-10-08');
+  expect(data.resolved_identity).toEqual({
+    manufacturer_id: '00000000-0000-0000-0000-000000000001',
+    retailer_id: '00000000-0000-0000-0000-000000000002',
+    product_id: '00000000-0000-0000-0000-000000000003',
+  });
+  expect(data.promotions).toHaveLength(6);
+  expect(new Set(data.promotions.map((match) => match.promotion_id)).size).toBe(5);
+  expect(new Set(data.promotions.map((match) => match.promotion_variant_id)).size).toBe(6);
+  expect(data.promotions[2].promotion_id).toBe(data.promotions[5].promotion_id);
+  const expectedCases = [
+    ['ELIGIBLE', 'open', '2026-10-01', '2026-11-30'],
+    ['POTENTIALLY_ELIGIBLE', null, null, null],
+    ['NOT_ELIGIBLE', 'open', '2026-10-01', '2026-11-30'],
+    ['CLAIM_NOT_YET_OPEN', 'not_yet_open', '2026-10-09', '2026-11-30'],
+    ['EXPIRED', 'expired', '2026-10-01', '2026-10-07'],
+    ['NOT_ELIGIBLE', 'open', '2026-10-01', '2026-11-30'],
+  ] as const;
+  for (const [
+    index,
+    [classification, claimStatus, opens_on, deadline_on],
+  ] of expectedCases.entries()) {
+    const match = data.promotions[index];
+    expect(match.eligibility.classification).toBe(classification);
+    expect(match.eligibility.claim_window_status).toBe(claimStatus);
+    expect(match.eligibility.reasons).toEqual(
+      classification === 'NOT_ELIGIBLE'
+        ? [{ code: 'purchase_date_before_start', rule_kind: 'purchase_date' }]
+        : [
+            { code: 'all_configured_rules_satisfied', rule_kind: null },
+            { code: `claim_window_${claimStatus ?? 'unspecified'}`, rule_kind: null },
+          ],
+    );
+    expect(match.eligibility.rule_evaluations).toEqual(
+      classification === 'NOT_ELIGIBLE'
+        ? [
+            {
+              kind: 'purchase_date',
+              status: 'not_satisfied',
+              reason_code: 'purchase_date_before_start',
+            },
+          ]
+        : [{ kind: 'product', status: 'satisfied', reason_code: 'product_match' }],
+    );
+    expect(match.claim_window).toEqual(
+      claimStatus === null ? null : { status: claimStatus, opens_on, deadline_on },
+    );
+    if (claimStatus === 'open') {
+      expect(opens_on! <= data.evaluation_date).toBe(true);
+      expect(deadline_on! >= data.evaluation_date).toBe(true);
+    } else if (claimStatus === 'not_yet_open') {
+      expect(opens_on! > data.evaluation_date).toBe(true);
+    } else if (claimStatus === 'expired') {
+      expect(deadline_on! < data.evaluation_date).toBe(true);
+    }
+    const primary = match.sources.find((source) => source.role === 'primary');
+    expect(primary?.url).toBe(match.provenance.official_source_url);
+    expect(primary?.verified_at).toBe(match.provenance.verified_at);
+    expect(match.last_verified_at).toBe(match.provenance.verified_at);
+    expect(match.sources.find((source) => source.role === 'claim')?.url).toBe(
+      match.provenance.claim_url,
+    );
+  }
   const status = page.getByRole('status');
   for (const message of [
-    '1 promotion: meets recorded eligibility rules; this is not an approved or paid claim.',
-    '1 promotion: may qualify; more evidence or information could be required.',
-    '2 promotions: does not meet recorded rules.',
-    '1 promotion: claim period has not opened.',
-    '1 promotion: claim period has expired.',
+    '1 promotion match: meets recorded eligibility rules; this is not an approved or paid claim.',
+    '1 promotion match: may qualify; more evidence or information could be required.',
+    '2 promotion matches: does not meet recorded rules.',
+    '1 promotion match: claim period has not opened.',
+    '1 promotion match: claim period has expired.',
   ])
     await expect(status).toContainText(message);
-  await expect(status).not.toContainText(/£|cashback|claim approved/i);
+  await expect(status).not.toContainText(
+    /£|cashback|claim approved|confirmed benefits?|guaranteed|claimable/i,
+  );
   await axe(page);
 });
 for (const [model, message] of [
