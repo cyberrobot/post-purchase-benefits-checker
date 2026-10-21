@@ -106,6 +106,15 @@ const server = createServer(
       res.end('{}');
       return;
     }
+    if (purchase.model === 'SLOW' || purchase.model === 'TIMEOUT')
+      await new Promise((resolve) =>
+        setTimeout(resolve, purchase.model === 'TIMEOUT' ? 9000 : 4000),
+      );
+    if (purchase.model === 'MALFORMED') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{bad json');
+      return;
+    }
     if (purchase.model === 'OFFLINE') {
       req.socket.destroy();
       return;
@@ -113,11 +122,27 @@ const server = createServer(
     if (
       purchase.model === 'POPULATED' ||
       purchase.model === 'NOT_ELIGIBLE' ||
-      purchase.model === 'UNSAFE'
+      purchase.model === 'UNSAFE' ||
+      purchase.model === 'MIXED'
     ) {
       const populated = populatedResponse(purchase.model === 'UNSAFE');
       if (purchase.model === 'NOT_ELIGIBLE')
         populated.promotions[0].eligibility.classification = 'NOT_ELIGIBLE';
+      if (purchase.model === 'MIXED') {
+        const original = populated.promotions[0];
+        populated.promotions = [
+          'ELIGIBLE',
+          'POTENTIALLY_ELIGIBLE',
+          'NOT_ELIGIBLE',
+          'CLAIM_NOT_YET_OPEN',
+          'EXPIRED',
+          'NOT_ELIGIBLE',
+        ].map((classification, index) => ({
+          ...original,
+          promotion_id: `00000000-0000-0000-0000-${String(index + 10).padStart(12, '0')}`,
+          eligibility: { ...original.eligibility, classification },
+        }));
+      }
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'X-Request-ID': id,
@@ -127,8 +152,8 @@ const server = createServer(
     }
     let status = 200,
       body;
-    if (purchase.model === 'RATE') {
-      status = 429;
+    if (['RATE', 'UNAVAILABLE', 'BAD_GATEWAY'].includes(purchase.model)) {
+      status = purchase.model === 'RATE' ? 429 : purchase.model === 'UNAVAILABLE' ? 503 : 502;
       body = {
         type: 'about:blank',
         title: 'Rate limited',
@@ -137,11 +162,15 @@ const server = createServer(
         code: 'rate_limited',
         request_id: id,
       };
-    } else if (purchase.model === 'UNKNOWN')
+    } else if (purchase.model === 'UNKNOWN' || purchase.model === 'AMBIGUOUS')
       body = {
         outcome: 'unresolved_identity',
         evaluation_date: '2026-10-08',
-        unresolved_identity: { field: 'model', status: 'not_found', candidate_ids: [] },
+        unresolved_identity: {
+          field: 'model',
+          status: purchase.model === 'AMBIGUOUS' ? 'ambiguous' : 'not_found',
+          candidate_ids: purchase.model === 'AMBIGUOUS' ? [id] : [],
+        },
         explanation: ['Model not found.'],
       };
     else

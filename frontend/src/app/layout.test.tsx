@@ -17,6 +17,7 @@ it('composes a skip link, banner, one page main and heading, and contentinfo', (
   expect(screen.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
     '#main-content',
     '/',
+    '/check',
   ]);
 });
 

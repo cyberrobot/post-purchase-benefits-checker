@@ -13,7 +13,7 @@ const draft = {
   retailer: 'Shop',
   purchase_date: '2024-02-29',
 };
-const labels = ['Manufacturer', 'Model number', 'Retailer', 'Purchase date'];
+const labels = ['Manufacturer / Brand', 'Product model or SKU', 'Retailer', 'Purchase date'];
 function fill() {
   labels.forEach((label, index) =>
     fireEvent.change(screen.getByLabelText(label), {
@@ -35,9 +35,11 @@ beforeEach(() => {
 });
 it('starts empty with four labelled required controls in order and no automatic requests', () => {
   const { container, rerender } = render(<PurchaseInputForm />);
-  expect(Array.from(container.querySelectorAll('input')).map((input) => input.name)).toEqual(
-    Object.keys(draft),
-  );
+  expect(
+    Array.from(container.querySelectorAll<HTMLInputElement>('input[required]')).map(
+      (input) => input.name,
+    ),
+  ).toEqual(Object.keys(draft));
   labels.forEach((label) => {
     const input = screen.getByLabelText(label);
     expect(input).toHaveValue('');
@@ -54,10 +56,10 @@ it('starts empty with four labelled required controls in order and no automatic 
 it('focuses and describes invalid fields, updates errors on correction and blocks requests', () => {
   render(<PurchaseInputForm />);
   submit();
-  const input = screen.getByLabelText('Manufacturer');
+  const input = screen.getByLabelText('Manufacturer / Brand');
   expect(input).toHaveFocus();
   expect(input).toHaveAttribute('aria-invalid', 'true');
-  expect(input).toHaveAccessibleDescription(/Enter the manufacturer/);
+  expect(input).toHaveAccessibleDescription(/Enter the manufacturer \/ brand/);
   fireEvent.change(input, { target: { value: 'Example' } });
   expect(input).not.toHaveAttribute('aria-invalid');
   expect(mutateAsync).not.toHaveBeenCalled();
@@ -87,8 +89,8 @@ it('commits error descriptions before focusing on every invalid submission', asy
     expect(screen.getByLabelText(label)).toHaveFocus();
     expect(mutateAsync).not.toHaveBeenCalled();
   };
-  expectInvalidFocus('Manufacturer', 'Enter the manufacturer');
-  expectInvalidFocus('Manufacturer', 'Enter the manufacturer');
+  expectInvalidFocus('Manufacturer / Brand', 'Enter the manufacturer / brand');
+  expectInvalidFocus('Manufacturer / Brand', 'Enter the manufacturer / brand');
   labels.forEach((label, index) => {
     fireEvent.change(controls[index], { target: { value: Object.values(draft)[index] } });
     if (index < labels.length - 1) {
@@ -102,9 +104,9 @@ it('commits error descriptions before focusing on every invalid submission', asy
     }
   });
   expect(observations.map(({ label }) => label)).toEqual([
-    'Manufacturer',
-    'Manufacturer',
-    'Model number',
+    'Manufacturer / Brand',
+    'Manufacturer / Brand',
+    'Product model or SKU',
     'Retailer',
     'Purchase date',
   ]);
@@ -119,10 +121,10 @@ it('commits error descriptions before focusing on every invalid submission', asy
 it.each([' ', 'x'.repeat(256), 'bad\u0001value'])('blocks invalid identity %p', (brand) => {
   render(<PurchaseInputForm />);
   fill();
-  fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: brand } });
+  fireEvent.change(screen.getByLabelText('Manufacturer / Brand'), { target: { value: brand } });
   submit();
   expect(mutateAsync).not.toHaveBeenCalled();
-  expect(screen.getByLabelText('Manufacturer')).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByLabelText('Manufacturer / Brand')).toHaveAttribute('aria-invalid', 'true');
 });
 it.each(['2026-02-29', '2024-04-31', 'not-a-date', '2024-2-29', ''])(
   'rejects invalid date %p',
@@ -132,8 +134,8 @@ it.each(['2026-02-29', '2024-04-31', 'not-a-date', '2024-2-29', ''])(
     });
   },
 );
-it.each(['2024-02-29', '1900-01-01', '9999-12-31'])(
-  'accepts calendar date without new date policy %p',
+it.each(['2024-02-29', '1900-01-01'])(
+  'accepts historical real calendar date %p',
   (purchase_date) => {
     expect(validatePurchase({ ...draft, purchase_date })).toEqual({});
   },
@@ -164,8 +166,10 @@ it('submits exact raw keys once, locks fields while pending, clears stale result
   expect(screen.getByRole('button')).toBeDisabled();
   await act(async () => complete(resolved));
   expect(screen.getByRole('status')).toHaveTextContent('No matching published promotion');
-  expect(screen.getByLabelText('Model number')).toHaveValue(draft.model);
-  fireEvent.change(screen.getByLabelText('Model number'), { target: { value: 'corrected' } });
+  expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
+  fireEvent.change(screen.getByLabelText('Product model or SKU'), {
+    target: { value: 'corrected' },
+  });
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
   expect(reset).toHaveBeenCalled();
   expect(mutateAsync).toHaveBeenCalledTimes(1);
@@ -189,8 +193,8 @@ it.each(['not_found', 'ambiguous'])(
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
         status === 'ambiguous'
-          ? 'More than one model number matched'
-          : 'model number could not be found',
+          ? 'More than one product model or sku matched'
+          : 'product model or sku could not be found',
       ),
     );
     expect(screen.getByRole('status')).toHaveTextContent('try again');
@@ -210,7 +214,7 @@ it('counts NOT_ELIGIBLE records without promising benefits', async () => {
   submit();
   await waitFor(() =>
     expect(screen.getByRole('status')).toHaveTextContent(
-      '2 promotion records requiring eligibility review. Detailed results are not yet shown.',
+      '2 promotions: does not meet recorded rules.',
     ),
   );
   expect(screen.getByRole('status')).not.toHaveTextContent(/cashback|claimable|qualify|£/i);
@@ -230,9 +234,11 @@ it.each<[ApiErrorKind, string]>([
   submit();
   expect(await screen.findByRole('alert')).toHaveTextContent(message);
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
-  expect(screen.getByLabelText('Model number')).toHaveValue(draft.model);
+  expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
   expect(mutateAsync).toHaveBeenCalledTimes(1);
-  fireEvent.change(screen.getByLabelText('Model number'), { target: { value: 'corrected' } });
+  fireEvent.change(screen.getByLabelText('Product model or SKU'), {
+    target: { value: 'corrected' },
+  });
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   submit();
   await waitFor(() =>
@@ -251,4 +257,65 @@ it.each<[number, string]>([
   fill();
   submit();
   expect(await screen.findByRole('alert')).toHaveTextContent(message);
+});
+it('discloses optional price, validates it and sends the exact fifth string key only when entered', async () => {
+  render(<PurchaseInputForm />);
+  fill();
+  const disclosure = screen.getByText('Add optional purchase price');
+  expect(disclosure.closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(disclosure);
+  const price = screen.getByLabelText('Purchase price (GBP)');
+  fireEvent.change(price, { target: { value: '£799.99' } });
+  submit();
+  expect(price).toHaveFocus();
+  expect(price).toHaveAttribute('aria-invalid', 'true');
+  expect(price).toHaveAccessibleDescription(/GBP amount/);
+  expect(mutateAsync).not.toHaveBeenCalled();
+  fireEvent.change(price, { target: { value: '799.99' } });
+  expect(price).not.toHaveAttribute('aria-invalid');
+  submit();
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching'));
+  expect(mutateAsync).toHaveBeenCalledWith({ ...draft, purchase_price: '799.99' });
+  fireEvent.change(price, { target: { value: '' } });
+  expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  submit();
+  await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
+  expect(mutateAsync).toHaveBeenLastCalledWith(draft);
+});
+it('does not present a late result after a draft revision or unmount', async () => {
+  let complete!: (value: unknown) => void;
+  mutateAsync.mockReturnValueOnce(
+    new Promise((resolve) => {
+      complete = resolve;
+    }),
+  );
+  const { unmount } = render(<PurchaseInputForm />);
+  fill();
+  submit();
+  // Programmatic edits also invalidate an already submitted snapshot.
+  fireEvent.change(screen.getByLabelText('Product model or SKU'), {
+    target: { value: 'corrected' },
+  });
+  await act(async () => complete(resolved));
+  expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  mutateAsync.mockReturnValueOnce(
+    new Promise((resolve) => {
+      complete = resolve;
+    }),
+  );
+  submit();
+  unmount();
+  await act(async () => complete(resolved));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+it('retains values and permits manual retry without requiring edits', async () => {
+  mutateAsync.mockRejectedValueOnce(new ApiError('timeout'));
+  render(<PurchaseInputForm />);
+  fill();
+  submit();
+  expect(await screen.findByRole('alert')).toHaveTextContent('incomplete');
+  expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
+  submit();
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching'));
+  expect(mutateAsync).toHaveBeenCalledTimes(2);
 });

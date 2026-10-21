@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
 import { PurchaseInputForm } from '@/features/eligibility/components/PurchaseInputForm';
@@ -18,6 +19,11 @@ export default function Home() {
             promotions.
           </p>
         </div>
+        <p className="mb-6 text-center text-small">
+          <Link href="/check" className="font-semibold text-brand underline underline-offset-4">
+            Open the dedicated purchase checker
+          </Link>
+        </p>
         <Card className="p-6 md:p-8">
           <PurchaseInputForm />
         </Card>
