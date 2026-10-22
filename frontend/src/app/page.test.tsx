@@ -14,7 +14,7 @@ it('introduces purchase checking with the actual four-field entry form', () => {
     'Find benefits from a purchase',
   );
   expect(within(main).getByRole('form', { name: 'Check a purchase' })).toBeVisible();
-  for (const label of ['Manufacturer', 'Model number', 'Retailer', 'Purchase date'])
+  for (const label of ['Manufacturer / Brand', 'Product model or SKU', 'Retailer', 'Purchase date'])
     expect(screen.getByLabelText(label)).toBeRequired();
   expect(screen.getByRole('button', { name: 'Find My Benefits' })).toHaveAttribute(
     'type',

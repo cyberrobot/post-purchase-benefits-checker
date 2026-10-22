@@ -1,7 +1,7 @@
 # BenefitScout frontend
 
 A standalone Next.js App Router application with React, strict TypeScript and Tailwind CSS v4.
-The public `/` route provides a four-field purchase checker with validation and minimal factual feedback.
+The public `/check` route and homepage `/` share a purchase checker with four required fields, optional GBP purchase price and factual response summaries.
 
 ## Prerequisites and setup
 
@@ -55,7 +55,7 @@ and no horizontal overflow. Component tests cover the accessible heading and pur
 ## Layout and boundaries
 
 - `src/app/layout.tsx`: server root layout, English language, metadata and global CSS.
-- `src/app/page.tsx`: synchronous Server Component for `/`, with colocated `page.test.tsx`.
+- `src/app/page.tsx` and `src/app/check/page.tsx`: Server Components for `/` and `/check`, with colocated page tests and the same client form.
 - `src/app/globals.css`: Tailwind v4 import and system font foundation.
 - `scripts/smoke.mjs`: production HTTP verification used locally and by frontend CI.
 - Configuration files at this directory's root: TypeScript, ESLint, Jest and PostCSS.
@@ -68,7 +68,7 @@ Prettier discovers the shared repository configuration and excludes generated fi
 
 Future integration must deliberately consume the existing backend
 `POST /api/v1/eligibility/check` REST contract. The backend owns deterministic eligibility using
-published promotion data. The four-field purchase form explicitly calls the existing same-origin bridge; the backend remains the eligibility authority. No auth or persistence is introduced. Any future `NEXT_PUBLIC_*` values are included in browser bundles
+published promotion data. The shared purchase form explicitly calls the existing same-origin bridge; the backend remains the eligibility authority. No auth or persistence is introduced. Any future `NEXT_PUBLIC_*` values are included in browser bundles
 and must never contain secrets.
 
 Detailed results, broader homepage content, authentication and hosting belong to later frontend changes.
@@ -76,8 +76,7 @@ Detailed results, broader homepage content, authentication and hosting belong to
 ## Interface foundation (FE-02)
 
 `RootLayout` owns the header, footer and skip link. Each public page must own exactly one
-`<main id="main-content" tabIndex={-1}>` and one `h1`. The header intentionally publishes only the
-home wordmark today. `SiteHeader` accepts a typed `navigation` list; supply only implemented
+`<main id="main-content" tabIndex={-1}>` and one `h1`. The header publishes the home wordmark; the homepage links to the dedicated `/check` route. `SiteHeader` accepts a typed `navigation` list; supply only implemented
 paths or existing anchors. With items configured, desktop links and a native mobile `details`
 disclosure are provided. Its small client boundary adds Escape/focus restoration and closes on
 selection; native disclosure and links remain usable without JavaScript.
@@ -208,7 +207,7 @@ no retries or persistence. `useCheckPurchaseMutation` runs only on explicit
 mutation. Mutation data is transient (zero cache retention after it becomes
 inactive); components should call `reset` when done. TanStack does not automatically
 cancel mutations. Standalone `checkPurchase` accepts a caller AbortSignal.
-The homepage provides the four-field purchase checker with accessible validation and safe outcome/error feedback; detailed results are future work. Backend REST/MCP and database contracts are unchanged.
+Both `/` and `/check` provide the shared purchase checker with accessible validation and safe outcome/error feedback; detailed results are future work. Backend REST/MCP and database contracts are unchanged.
 
 `pnpm test:e2e` manages a deterministic upstream fixture on loopback port 3102 and
 the production Next.js server on 3101, supplying the origin only at runtime.
@@ -218,11 +217,14 @@ connection responses. Ordinary smoke checks use 3100 without an origin.
 
 ## Purchase entry (FE-04)
 
-On `/`, enter the manufacturer, exact model/SKU, retailer and receipt purchase date, then choose
+On `/` or `/check`, enter the manufacturer/brand, exact model/SKU, retailer and receipt purchase date, then choose
 **Find My Benefits**. These are free-text fields because no catalogue lookup is available.
-All four fields start empty and are required. Validation uses the existing API schema, accepts
-valid historical and future calendar dates, and preserves model punctuation and date-only strings.
-Purchase price is omitted. Invalid submission focuses the first invalid field and sends no request.
+All four fields start empty and are required. Validation uses the existing API schema and preserves model punctuation and date-only strings.
+FE-05 adds a **form-only** no-future-purchase policy using today’s `Europe/London` calendar date.
+The shared Zod/API calendar-date contract still accepts real future dates. The collapsed **Add optional
+purchase price** disclosure accepts an exact GBP decimal string (up to 12 whole digits and 2 decimal
+places); currency signs, thousands separators, exponent notation and floats are not converted.
+Blank price is omitted entirely; channel and condition are unsupported and are not collected. Invalid submission focuses the first invalid field and sends no request.
 
 A valid submit sends one request through `useCheckPurchaseMutation` and the existing same-origin
 bridge. Fields and the CTA are disabled while pending. Errors preserve entered values; correction
@@ -230,10 +232,12 @@ clears stale feedback and enables a manual retry. The form has no automatic chec
 purchase storage. Live checks require the existing server-only `BENEFITSCOUT_API_ORIGIN`; the page
 and build work without it, and an explicit unconfigured check reports unavailable.
 
-Completion distinguishes an unresolved identity, no matching published promotion, and a count of
-returned promotion records requiring eligibility review. Returned records can be ineligible; the
-count does not promise cashback, eligibility or claimable benefits. Detailed results, claims,
-source evidence presentation, optional purchase price and autocomplete remain follow-up work.
+Completion distinguishes unresolved identity correction, no matching published promotion and counts
+for every reported classification: eligible under recorded rules, potentially eligible, not eligible,
+claim period not yet open and expired. Counts include unfavourable records. An eligibility summary
+does not approve or pay a claim, calculate claim windows or promise cashback. Safe opaque request
+IDs are shown as support references on failures. Editing clears old responses/errors; unmounting
+invalidates late responses. Values and responses remain ephemeral. Detailed result cards, claims, source evidence presentation and autocomplete remain follow-up work.
 
 `pnpm test` includes focused form validation, calendar boundaries, exact request shape, pending
 protection, each outcome/error and correction/retry tests. `pnpm test:e2e` fills the rendered controls
@@ -242,3 +246,23 @@ offline and unsafe-response cases. Shell tests check the real form at 320–1440
 text size, including invalid messages. Axe scans cover both initial and invalid interactive forms.
 The fixture accepts omitted/null purchase price and the FE-03 configured price. Native 200% zoom,
 VoiceOver/NVDA announcements and UK locale date-picker behaviour still require manual inspection.
+
+## Purchase check integration (FE-05)
+
+`/check` is a Server Component with one direct-child main and heading. It reuses the same client
+form and explicit FE-03 mutation as `/`; no new backend API, environment variable, dependency,
+browser storage or automatic retry is introduced. The CTA rests in navy and hovers violet, with
+keyboard focus and disabled/busy states. Required fields follow manufacturer, model, retailer,
+date order in a two-column desktop grid and one column on mobile. The optional price disclosure
+follows the required fields. Free text does not imply recognition or retailer authorisation.
+
+Browser acceptance checks both routes, exact supported payloads, no unsolicited checks, correction,
+all classifications, rate limiting, upstream 502/503, bounded upstream timeout, malformed/unsafe
+200 responses, pending protection and manual retries. Axe A/AA scans cover pristine, invalid, pending
+and classified states. Shared reflow checks cover 320–1440px and 200% root text size. Production smoke
+checks `/` and `/check` without API configuration. Live checks still require the pre-existing
+server-only `BENEFITSCOUT_API_ORIGIN`; lack of a backend produces a recoverable service error.
+
+Native Safari date input behaviour, native 200% browser zoom and VoiceOver/NVDA announcements
+remain manual follow-up. Trusted lookup dropdowns, backend-supported channel/condition, full result
+cards/claim workflows/source panels, saved history and accounts are outside FE-05.

@@ -106,6 +106,15 @@ const server = createServer(
       res.end('{}');
       return;
     }
+    if (purchase.model === 'SLOW' || purchase.model === 'TIMEOUT')
+      await new Promise((resolve) =>
+        setTimeout(resolve, purchase.model === 'TIMEOUT' ? 9000 : 4000),
+      );
+    if (purchase.model === 'MALFORMED') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{bad json');
+      return;
+    }
     if (purchase.model === 'OFFLINE') {
       req.socket.destroy();
       return;
@@ -113,11 +122,62 @@ const server = createServer(
     if (
       purchase.model === 'POPULATED' ||
       purchase.model === 'NOT_ELIGIBLE' ||
-      purchase.model === 'UNSAFE'
+      purchase.model === 'UNSAFE' ||
+      purchase.model === 'MIXED'
     ) {
       const populated = populatedResponse(purchase.model === 'UNSAFE');
-      if (purchase.model === 'NOT_ELIGIBLE')
-        populated.promotions[0].eligibility.classification = 'NOT_ELIGIBLE';
+      const original = populated.promotions[0];
+      // Mirrors classify_eligibility: a failed rule precedes claim timing;
+      // satisfied rules use the recorded claim state (including unspecified).
+      const notEligible = {
+        ...original,
+        eligibility: {
+          classification: 'NOT_ELIGIBLE',
+          reasons: [{ code: 'purchase_date_before_start', rule_kind: 'purchase_date' }],
+          rule_evaluations: [
+            {
+              kind: 'purchase_date',
+              status: 'not_satisfied',
+              reason_code: 'purchase_date_before_start',
+            },
+          ],
+          claim_window_status: 'open',
+        },
+        explanation: ['The purchase date is before the recorded purchase period.'],
+      };
+      if (purchase.model === 'NOT_ELIGIBLE') populated.promotions = [notEligible];
+      if (purchase.model === 'MIXED') {
+        // Evaluation is 2026-10-08: open includes that date, future starts the
+        // following day, and expired ends the preceding day.
+        const withClaimState = (classification, status, opens_on, deadline_on) => ({
+          ...original,
+          eligibility: {
+            ...original.eligibility,
+            classification,
+            reasons: [
+              { code: 'all_configured_rules_satisfied', rule_kind: null },
+              { code: `claim_window_${status ?? 'unspecified'}`, rule_kind: null },
+            ],
+            claim_window_status: status,
+          },
+          claim_window: status === null ? null : { status, opens_on, deadline_on },
+          explanation: [],
+        });
+        populated.promotions = [
+          original,
+          withClaimState('POTENTIALLY_ELIGIBLE', null),
+          notEligible,
+          withClaimState('CLAIM_NOT_YET_OPEN', 'not_yet_open', '2026-10-09', '2026-11-30'),
+          withClaimState('EXPIRED', 'expired', '2026-10-01', '2026-10-07'),
+          notEligible,
+        ].map((match, index) => ({
+          ...match,
+          // The two failed variants belong to one promotion, but remain two matches.
+          promotion_id: `00000000-0000-0000-0000-${String(index === 5 ? 12 : index + 10).padStart(12, '0')}`,
+          promotion_variant_id: `00000000-0000-0000-0000-${String(index + 100).padStart(12, '0')}`,
+          variant_name: `Variant ${index + 1}`,
+        }));
+      }
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'X-Request-ID': id,
@@ -127,8 +187,8 @@ const server = createServer(
     }
     let status = 200,
       body;
-    if (purchase.model === 'RATE') {
-      status = 429;
+    if (['RATE', 'UNAVAILABLE', 'BAD_GATEWAY'].includes(purchase.model)) {
+      status = purchase.model === 'RATE' ? 429 : purchase.model === 'UNAVAILABLE' ? 503 : 502;
       body = {
         type: 'about:blank',
         title: 'Rate limited',
@@ -137,11 +197,15 @@ const server = createServer(
         code: 'rate_limited',
         request_id: id,
       };
-    } else if (purchase.model === 'UNKNOWN')
+    } else if (purchase.model === 'UNKNOWN' || purchase.model === 'AMBIGUOUS')
       body = {
         outcome: 'unresolved_identity',
         evaluation_date: '2026-10-08',
-        unresolved_identity: { field: 'model', status: 'not_found', candidate_ids: [] },
+        unresolved_identity: {
+          field: 'model',
+          status: purchase.model === 'AMBIGUOUS' ? 'ambiguous' : 'not_found',
+          candidate_ids: purchase.model === 'AMBIGUOUS' ? [id] : [],
+        },
         explanation: ['Model not found.'],
       };
     else

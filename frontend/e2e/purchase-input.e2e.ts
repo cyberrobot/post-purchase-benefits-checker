@@ -1,8 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 async function fill(page: Page, model = 'SKU /-1') {
-  await page.getByLabel('Manufacturer', { exact: true }).fill('Example');
-  await page.getByLabel('Model number', { exact: true }).fill(model);
+  await page.getByLabel('Manufacturer / Brand', { exact: true }).fill('Example');
+  await page.getByLabel('Product model or SKU', { exact: true }).fill(model);
   await page.getByLabel('Retailer', { exact: true }).fill('Shop');
   await page.getByLabel('Purchase date', { exact: true }).fill('2024-02-29');
 }
@@ -21,7 +21,7 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
   await page.goto('/');
   expect(requests).toEqual([]);
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
-  await expect(page.getByLabel('Manufacturer', { exact: true })).toBeFocused();
+  await expect(page.getByLabel('Manufacturer / Brand', { exact: true })).toBeFocused();
   expect(requests).toEqual([]);
   await fill(page);
   expect(requests).toEqual([]);
@@ -34,16 +34,16 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
     retailer: 'Shop',
     purchase_date: '2024-02-29',
   });
-  await page.getByLabel('Model number', { exact: true }).fill('UNKNOWN');
+  await page.getByLabel('Product model or SKU', { exact: true }).fill('UNKNOWN');
   await expect(page.getByRole('status')).toBeEmpty();
   expect(requests).toHaveLength(1);
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
-  await expect(page.getByRole('status')).toContainText('model number could not be found');
+  await expect(page.getByRole('status')).toContainText('product model or sku could not be found');
   expect(requests).toHaveLength(2);
-  await page.getByLabel('Model number', { exact: true }).fill('NOT_ELIGIBLE');
+  await page.getByLabel('Product model or SKU', { exact: true }).fill('NOT_ELIGIBLE');
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
   await expect(page.getByRole('status')).toContainText(
-    '1 promotion record requiring eligibility review. Detailed results are not yet shown.',
+    '1 promotion match: does not meet recorded rules.',
   );
   expect(requests).toHaveLength(3);
   await expect(page.getByRole('status')).not.toContainText(/cashback|claimable|qualify|£/i);
@@ -76,9 +76,9 @@ for (const [model, text] of [
     const alert = page.getByRole('form', { name: 'Check a purchase' }).getByRole('alert');
     await expect(alert).toContainText(text);
     expect(requests).toBe(1);
-    await expect(page.getByLabel('Model number', { exact: true })).toHaveValue(model);
+    await expect(page.getByLabel('Product model or SKU', { exact: true })).toHaveValue(model);
     await expect(page.getByRole('status')).toBeEmpty();
-    await page.getByLabel('Model number', { exact: true }).fill('SKU-1');
+    await page.getByLabel('Product model or SKU', { exact: true }).fill('SKU-1');
     await expect(alert).toHaveCount(0);
     expect(requests).toBe(1);
     await page.getByRole('button', { name: 'Find My Benefits' }).click();
@@ -91,9 +91,9 @@ test('invalid form remains accessible and keyboard order follows the four fields
   page,
 }) => {
   await page.goto('/');
-  const manufacturer = page.getByLabel('Manufacturer', { exact: true });
+  const manufacturer = page.getByLabel('Manufacturer / Brand', { exact: true });
   await manufacturer.focus();
-  for (const label of ['Model number', 'Retailer', 'Purchase date']) {
+  for (const label of ['Product model or SKU', 'Retailer', 'Purchase date']) {
     // Native date fields have several browser-managed segments; enter via Tab from retailer only.
     await page.keyboard.press('Tab');
     await expect(page.getByLabel(label, { exact: true })).toBeFocused();
