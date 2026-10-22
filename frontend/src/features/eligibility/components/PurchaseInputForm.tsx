@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { usePurchaseCheckSession } from '../session/PurchaseCheckSession';
 import { Button } from '@/components/ui/Button';
 import { useCheckPurchaseMutation } from '../api/useCheckPurchaseMutation';
 import { purchaseRequestSchema } from '@/lib/api/eligibility.contract';
@@ -13,15 +15,16 @@ import {
   type Field,
 } from './purchaseForm';
 export { validatePurchase } from './purchaseForm';
-const empty: Draft = { brand: '', model: '', retailer: '', purchase_date: '' };
 export function PurchaseInputForm() {
   const id = useId();
-  const [draft, setDraft] = useState<Draft>(empty);
+  const router = useRouter();
+  const session = usePurchaseCheckSession();
+  const [draft, setDraft] = useState<Draft>(session.draft);
   const [attempted, setAttempted] = useState(false);
   const [focusRequest, setFocusRequest] = useState<{ field: Field }>();
   const [feedback, setFeedback] = useState<{ lines: string[]; failed: boolean }>();
   const [pending, setPending] = useState(false);
-  const [priceOpen, setPriceOpen] = useState(false);
+  const [priceOpen, setPriceOpen] = useState(Boolean(session.draft.purchase_price));
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const revision = useRef(0);
@@ -39,7 +42,9 @@ export function PurchaseInputForm() {
   }, [focusRequest]);
   function edit(field: Field, value: string) {
     revision.current++;
-    setDraft((current) => ({ ...current, [field]: value }));
+    const next = { ...draft, [field]: value };
+    setDraft(next);
+    session.edit(next);
     setFeedback(undefined);
     mutation.reset();
   }
@@ -64,8 +69,11 @@ export function PurchaseInputForm() {
     setPending(true);
     try {
       const data = await mutation.mutateAsync(result.data);
-      if (mounted.current && submittedRevision === revision.current)
+      if (mounted.current && submittedRevision === revision.current) {
+        session.publish(result.data, data);
         setFeedback({ lines: completion(data), failed: false });
+        router.push('/results');
+      }
     } catch (error) {
       if (mounted.current && submittedRevision === revision.current)
         setFeedback({ lines: [failure(error)], failed: true });

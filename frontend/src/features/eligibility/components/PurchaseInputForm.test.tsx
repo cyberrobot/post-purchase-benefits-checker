@@ -1,10 +1,21 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  PurchaseCheckSessionProvider,
+  usePurchaseCheckSession,
+} from '../session/PurchaseCheckSession';
+import type { ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { act, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { PurchaseInputForm, validatePurchase } from './PurchaseInputForm';
 import { useCheckPurchaseMutation } from '../api/useCheckPurchaseMutation';
 import { ApiError, type ApiErrorKind } from '@/lib/api/errors';
 import { resolved, unresolved } from '@/lib/api/fixtures';
 import { populatedClaim } from '@/lib/api/promotion.fixture';
 jest.mock('../api/useCheckPurchaseMutation');
+jest.mock('next/navigation');
+const push = jest.fn();
+function render(ui: ReactNode) {
+  return rtlRender(ui, { wrapper: PurchaseCheckSessionProvider });
+}
 const mutateAsync = jest.fn();
 const reset = jest.fn();
 const draft = {
@@ -26,6 +37,7 @@ function submit() {
 }
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<typeof useRouter>);
   jest
     .mocked(useCheckPurchaseMutation)
     .mockReturnValue({ mutateAsync, reset } as unknown as ReturnType<
@@ -166,6 +178,8 @@ it('submits exact raw keys once, locks fields while pending, clears stale result
   expect(screen.getByRole('button')).toBeDisabled();
   await act(async () => complete(resolved));
   expect(screen.getByRole('status')).toHaveTextContent('No matching published promotion');
+  expect(push).toHaveBeenCalledWith('/results');
+  expect(push).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
   fireEvent.change(screen.getByLabelText('Product model or SKU'), {
     target: { value: 'corrected' },
@@ -316,6 +330,7 @@ it('does not present a late result after a draft revision or unmount', async () 
   });
   await act(async () => complete(resolved));
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  expect(push).not.toHaveBeenCalled();
   mutateAsync.mockReturnValueOnce(
     new Promise((resolve) => {
       complete = resolve;
@@ -336,4 +351,27 @@ it('retains values and permits manual retry without requiring edits', async () =
   submit();
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching'));
   expect(mutateAsync).toHaveBeenCalledTimes(2);
+});
+
+it('publishes the exact matching submitted snapshot and invalidates it on an edit', async () => {
+  function Probe() {
+    const { snapshot } = usePurchaseCheckSession();
+    return <output data-testid="snapshot">{JSON.stringify(snapshot)}</output>;
+  }
+  render(
+    <>
+      <PurchaseInputForm />
+      <Probe />
+    </>,
+  );
+  fill();
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(screen.getByTestId('snapshot').textContent!)).toEqual({
+    submittedPurchase: draft,
+    response: resolved,
+  });
+  fireEvent.change(screen.getByLabelText('Retailer'), { target: { value: 'Another shop' } });
+  expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
 });

@@ -1,3 +1,4 @@
+import { PurchaseCheckSessionProvider } from '@/features/eligibility/session/PurchaseCheckSession';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import type { Metadata } from 'next';
 import './globals.css';
@@ -21,7 +22,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           Skip to main content
         </a>
         <SiteHeader />
-        <QueryProvider>{children}</QueryProvider>
+        <QueryProvider>
+          <PurchaseCheckSessionProvider>{children}</PurchaseCheckSessionProvider>
+        </QueryProvider>
         <SiteFooter />
       </body>
     </html>
