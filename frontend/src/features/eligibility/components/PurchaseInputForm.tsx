@@ -1,5 +1,7 @@
 'use client';
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { usePurchaseCheckSession } from '../session/PurchaseCheckSession';
 import { Button } from '@/components/ui/Button';
 import { useCheckPurchaseMutation } from '../api/useCheckPurchaseMutation';
 import { purchaseRequestSchema } from '@/lib/api/eligibility.contract';
@@ -13,15 +15,22 @@ import {
   type Field,
 } from './purchaseForm';
 export { validatePurchase } from './purchaseForm';
-const empty: Draft = { brand: '', model: '', retailer: '', purchase_date: '' };
 export function PurchaseInputForm() {
   const id = useId();
-  const [draft, setDraft] = useState<Draft>(empty);
+  const router = useRouter();
+  const session = usePurchaseCheckSession();
+  const [draft, setDraft] = useState<Draft>(session.draft);
   const [attempted, setAttempted] = useState(false);
   const [focusRequest, setFocusRequest] = useState<{ field: Field }>();
   const [feedback, setFeedback] = useState<{ lines: string[]; failed: boolean }>();
-  const [pending, setPending] = useState(false);
-  const [priceOpen, setPriceOpen] = useState(false);
+  const [submissionPending, setPending] = useState(false);
+  const [navigationStarted, setNavigationPending] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryPending, startRecovery] = useTransition();
+  const recovered = recovering && !recoveryPending;
+  const pending = submissionPending && !recovered;
+  const navigationPending = navigationStarted && !recovered;
+  const [priceOpen, setPriceOpen] = useState(Boolean(session.draft.purchase_price));
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const revision = useRef(0);
@@ -32,14 +41,23 @@ export function PurchaseInputForm() {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      inFlight.current = false;
     };
   }, []);
   useEffect(() => {
     if (focusRequest) inputs.current[focusRequest.field]?.focus();
   }, [focusRequest]);
+  useEffect(() => {
+    if (recovering && !recoveryPending) {
+      inFlight.current = false;
+      inputs.current.brand?.focus();
+    }
+  }, [recovering, recoveryPending]);
   function edit(field: Field, value: string) {
     revision.current++;
-    setDraft((current) => ({ ...current, [field]: value }));
+    const next = { ...draft, [field]: value };
+    setDraft(next);
+    session.edit(next);
     setFeedback(undefined);
     mutation.reset();
   }
@@ -59,19 +77,31 @@ export function PurchaseInputForm() {
     }
     const result = purchaseRequestSchema.safeParse(requestFromDraft(draft));
     if (!result.success) return;
+    // A new validated check invalidates earlier results, even with unchanged inputs.
+    session.edit(draft);
     const submittedRevision = revision.current;
     inFlight.current = true;
+    setRecovering(false);
+    setNavigationPending(false);
     setPending(true);
+    let navigating = false;
     try {
       const data = await mutation.mutateAsync(result.data);
-      if (mounted.current && submittedRevision === revision.current)
+      if (mounted.current && submittedRevision === revision.current) {
+        session.publish(result.data, data);
         setFeedback({ lines: completion(data), failed: false });
+        router.push('/results');
+        navigating = true;
+        setNavigationPending(true);
+      }
     } catch (error) {
       if (mounted.current && submittedRevision === revision.current)
         setFeedback({ lines: [failure(error)], failed: true });
     } finally {
-      inFlight.current = false;
-      if (mounted.current) setPending(false);
+      if (!navigating) {
+        inFlight.current = false;
+        if (mounted.current) setPending(false);
+      }
     }
   }
   const inputClass = (field: Field) =>
@@ -180,7 +210,9 @@ export function PurchaseInputForm() {
       )}
       <div role="status" aria-live="polite" aria-atomic="true" className="mt-4 min-h-6 text-small">
         {pending
-          ? 'Checking your purchase…'
+          ? navigationPending
+            ? `Opening your results… ${feedback?.lines.join(' ') ?? ''}`
+            : 'Checking your purchase…'
           : feedback && !feedback.failed
             ? feedback.lines.map((line) => (
                 <span key={line} className="mt-2 block">
@@ -189,6 +221,33 @@ export function PurchaseInputForm() {
               ))
             : null}
       </div>
+      {navigationPending && (
+        <div className="mt-4 text-small">
+          <p>If your results do not open, return to the form to try again.</p>
+          <button
+            type="button"
+            className="mt-2 min-h-12 rounded-control border border-brand px-4 py-2 font-semibold text-brand"
+            disabled={recoveryPending || recovering}
+            onClick={() => {
+              revision.current++;
+              session.edit(draft);
+              setFeedback(undefined);
+              // A newer App Router navigation discards the pending results action.
+              // Keep the submission guard until that replacement transition commits.
+              startRecovery(() => {
+                try {
+                  router.replace('/check');
+                  setRecovering(true);
+                } catch (error) {
+                  setFeedback({ lines: [failure(error)], failed: true });
+                }
+              });
+            }}
+          >
+            Return to purchase form
+          </button>
+        </div>
+      )}
       {feedback?.failed && (
         <p role="alert" className="mt-4 text-small">
           {feedback.lines[0]}

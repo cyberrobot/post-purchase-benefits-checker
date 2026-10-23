@@ -1,10 +1,23 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  PurchaseCheckSessionProvider,
+  usePurchaseCheckSession,
+} from '../session/PurchaseCheckSession';
+import type { ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { act, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { PurchaseInputForm, validatePurchase } from './PurchaseInputForm';
 import { useCheckPurchaseMutation } from '../api/useCheckPurchaseMutation';
 import { ApiError, type ApiErrorKind } from '@/lib/api/errors';
 import { resolved, unresolved } from '@/lib/api/fixtures';
 import { populatedClaim } from '@/lib/api/promotion.fixture';
+import { checkPurchaseResponseSchema } from '@/lib/api/eligibility.contract';
 jest.mock('../api/useCheckPurchaseMutation');
+jest.mock('next/navigation');
+const push = jest.fn();
+const replace = jest.fn();
+function render(ui: ReactNode) {
+  return rtlRender(ui, { wrapper: PurchaseCheckSessionProvider });
+}
 const mutateAsync = jest.fn();
 const reset = jest.fn();
 const draft = {
@@ -26,6 +39,9 @@ function submit() {
 }
 beforeEach(() => {
   jest.clearAllMocks();
+  jest
+    .mocked(useRouter)
+    .mockReturnValue({ push, replace } as unknown as ReturnType<typeof useRouter>);
   jest
     .mocked(useCheckPurchaseMutation)
     .mockReturnValue({ mutateAsync, reset } as unknown as ReturnType<
@@ -166,7 +182,11 @@ it('submits exact raw keys once, locks fields while pending, clears stale result
   expect(screen.getByRole('button')).toBeDisabled();
   await act(async () => complete(resolved));
   expect(screen.getByRole('status')).toHaveTextContent('No matching published promotion');
+  expect(push).toHaveBeenCalledWith('/results');
+  expect(push).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
   fireEvent.change(screen.getByLabelText('Product model or SKU'), {
     target: { value: 'corrected' },
   });
@@ -294,6 +314,8 @@ it('discloses optional price, validates it and sends the exact fifth string key 
   submit();
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching'));
   expect(mutateAsync).toHaveBeenCalledWith({ ...draft, purchase_price: '799.99' });
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
   fireEvent.change(price, { target: { value: '' } });
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
   submit();
@@ -316,6 +338,7 @@ it('does not present a late result after a draft revision or unmount', async () 
   });
   await act(async () => complete(resolved));
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  expect(push).not.toHaveBeenCalled();
   mutateAsync.mockReturnValueOnce(
     new Promise((resolve) => {
       complete = resolve;
@@ -335,5 +358,148 @@ it('retains values and permits manual retry without requiring edits', async () =
   expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
   submit();
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching'));
+  expect(mutateAsync).toHaveBeenCalledTimes(2);
+});
+
+it('publishes the exact matching submitted snapshot and invalidates it on an edit', async () => {
+  function Probe() {
+    const { snapshot } = usePurchaseCheckSession();
+    return <output data-testid="snapshot">{JSON.stringify(snapshot)}</output>;
+  }
+  render(
+    <>
+      <PurchaseInputForm />
+      <Probe />
+    </>,
+  );
+  fill();
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(screen.getByTestId('snapshot').textContent!)).toEqual({
+    submittedPurchase: draft,
+    response: resolved,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
+  fireEvent.change(screen.getByLabelText('Retailer'), { target: { value: 'Another shop' } });
+  expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+});
+
+it('supersedes pending navigation, invalidates its snapshot and publishes only an explicit retry', async () => {
+  function Probe() {
+    return (
+      <output data-testid="snapshot">{JSON.stringify(usePurchaseCheckSession().snapshot)}</output>
+    );
+  }
+  render(
+    <>
+      <PurchaseInputForm />
+      <Probe />
+    </>,
+  );
+  fill();
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
+  expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
+  expect(screen.getByLabelText('Retailer')).toHaveValue(draft.retailer);
+  expect(screen.getByLabelText('Retailer')).toBeEnabled();
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+  mutateAsync.mockResolvedValueOnce(unresolved);
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(2));
+  expect(mutateAsync).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(screen.getByTestId('snapshot').textContent!).response).toEqual(unresolved);
+});
+
+it('keeps submission locked if recovery navigation throws and permits another recovery attempt', async () => {
+  replace.mockImplementationOnce(() => {
+    throw new Error('Navigation unavailable');
+  });
+  render(<PurchaseInputForm />);
+  fill();
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(screen.getByRole('alert')).toBeVisible();
+  expect(screen.getByLabelText('Retailer')).toBeDisabled();
+  submit();
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(screen.getByLabelText('Retailer')).toBeEnabled();
+  expect(replace).toHaveBeenCalledTimes(2);
+});
+
+it('blocks click and Enter submissions after API success while navigation is delayed', async () => {
+  const { unmount } = render(<PurchaseInputForm />);
+  fill();
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  const button = screen.getByRole('button', { name: 'Checking…' });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  fireEvent.keyDown(screen.getByLabelText('Retailer'), { key: 'Enter' });
+  submit();
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+  expect(push).toHaveBeenCalledTimes(1);
+  labels.forEach((label) => expect(screen.getByLabelText(label)).toBeDisabled());
+  unmount();
+  render(<PurchaseInputForm />);
+  expect(screen.getByRole('button', { name: 'Find My Benefits' })).toBeEnabled();
+});
+it('recovers from a synchronous navigation failure and allows unchanged manual retry', async () => {
+  push.mockImplementationOnce(() => {
+    throw new Error('Navigation unavailable');
+  });
+  render(<PurchaseInputForm />);
+  fill();
+  submit();
+  await screen.findByRole('alert');
+  expect(screen.getByRole('button', { name: 'Find My Benefits' })).toBeEnabled();
+  expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(2));
+  expect(mutateAsync).toHaveBeenCalledTimes(2);
+});
+it('invalidates an earlier snapshot on unchanged validated submission and retains the draft on failure', async () => {
+  function Probe() {
+    const session = usePurchaseCheckSession();
+    return (
+      <>
+        <button onClick={() => session.publish(draft, checkPurchaseResponseSchema.parse(resolved))}>
+          Seed earlier result
+        </button>
+        <output data-testid="snapshot">{JSON.stringify(session.snapshot)}</output>
+      </>
+    );
+  }
+  render(
+    <>
+      <PurchaseInputForm />
+      <Probe />
+    </>,
+  );
+  fill();
+  fireEvent.click(screen.getByRole('button', { name: 'Seed earlier result' }));
+  expect(screen.getByTestId('snapshot')).not.toHaveTextContent('null');
+  let fail!: (error: Error) => void;
+  mutateAsync.mockReturnValueOnce(
+    new Promise((_, reject) => {
+      fail = reject;
+    }),
+  );
+  submit();
+  expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
+  await act(async () => fail(new ApiError('unavailable')));
+  expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
+  expect(push).not.toHaveBeenCalled();
+  labels.forEach((label, index) =>
+    expect(screen.getByLabelText(label)).toHaveValue(Object.values(draft)[index]),
+  );
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  expect(screen.getByTestId('snapshot')).not.toHaveTextContent('null');
   expect(mutateAsync).toHaveBeenCalledTimes(2);
 });

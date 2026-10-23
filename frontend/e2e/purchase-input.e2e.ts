@@ -26,7 +26,10 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
   await fill(page);
   expect(requests).toEqual([]);
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
-  await expect(page.getByRole('status')).toContainText('No matching published promotion');
+  await expect(page).toHaveURL('/results');
+  await expect(
+    page.getByRole('heading', { name: 'No matching published promotions' }),
+  ).toBeVisible();
   expect(requests).toHaveLength(1);
   expect(JSON.parse(requests[0])).toEqual({
     brand: 'Example',
@@ -34,19 +37,21 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
     retailer: 'Shop',
     purchase_date: '2024-02-29',
   });
+  await page.getByRole('link', { name: 'Edit purchase details', exact: true }).click();
   await page.getByLabel('Product model or SKU', { exact: true }).fill('UNKNOWN');
   await expect(page.getByRole('status')).toBeEmpty();
   expect(requests).toHaveLength(1);
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
-  await expect(page.getByRole('status')).toContainText('product model or sku could not be found');
+  await expect(page).toHaveURL('/results');
+  await expect(page.getByRole('main')).toContainText('product model or sku could not be found');
   expect(requests).toHaveLength(2);
+  await page.getByRole('link', { name: 'Edit purchase details', exact: true }).first().click();
   await page.getByLabel('Product model or SKU', { exact: true }).fill('NOT_ELIGIBLE');
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
-  await expect(page.getByRole('status')).toContainText(
-    '1 promotion match: does not meet recorded rules.',
-  );
+  await expect(page).toHaveURL('/results');
+  await expect(page.getByRole('button', { name: 'Not eligible (1)', exact: true })).toBeVisible();
   expect(requests).toHaveLength(3);
-  await expect(page.getByRole('status')).not.toContainText(/cashback|claimable|qualify|£/i);
+  await expect(page.getByRole('article')).toContainText('At least one recorded rule is not met.');
   expect(errors).toEqual([]);
 });
 for (const [model, text] of [
@@ -82,7 +87,10 @@ for (const [model, text] of [
     await expect(alert).toHaveCount(0);
     expect(requests).toBe(1);
     await page.getByRole('button', { name: 'Find My Benefits' }).click();
-    await expect(page.getByRole('status')).toContainText('No matching published promotion');
+    await expect(page).toHaveURL('/results');
+    await expect(
+      page.getByRole('heading', { name: 'No matching published promotions' }),
+    ).toBeVisible();
     expect(requests).toBe(2);
     expect(errors).toEqual([]);
   });
