@@ -38,6 +38,8 @@ for (const path of ['/', '/check']) {
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expect(page.getByRole('main')).toBeFocused();
     await expect(page.getByRole('heading', { name: 'Submitted brand · POPULATED' })).toBeVisible();
+    const editLink = page.getByRole('link', { name: /Edit purchase details/ });
+    await expect(editLink).toHaveCSS('color', 'rgb(80, 70, 230)');
     await expect(page.getByRole('main')).toContainText('Submitted shop');
     await expect(page.getByRole('main')).toContainText('29 Feb 2024');
     await expect(page.getByRole('main')).toContainText('08 Oct 2026');
@@ -254,4 +256,37 @@ test('an unchanged recheck failure invalidates results across history and preser
   await expect(page.getByRole('heading', { name: 'Fresh retry response' })).toBeVisible();
   await expect(page.getByRole('article')).toHaveCount(1);
   expect(requests).toBe(3);
+});
+
+test('keyboard view controls show recorded matrix outcomes without another request', async ({
+  page,
+}) => {
+  let requests = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/api/')) requests++;
+  });
+  await check(page, 'MIXED');
+  const matrix = page.getByRole('button', { name: 'Rule Matrix', exact: true });
+  await matrix.focus();
+  await page.keyboard.press('Enter');
+  await expect(matrix).toHaveAttribute('aria-pressed', 'true');
+  const table = page.getByRole('table', { name: /Recorded rule matrix/ });
+  await expect(table.getByRole('row')).toHaveCount(7);
+  await expect(page.getByRole('article')).toHaveCount(0);
+  await expect(table).toContainText('product: satisfied');
+  await expect(table).toContainText('purchase date: not satisfied');
+  await expect(table).toContainText('purchase date before start');
+  await page.getByRole('button', { name: 'Not eligible (2)', exact: true }).click();
+  await expect(table.getByRole('row')).toHaveCount(3);
+  await axe(page);
+  for (const width of [320, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectReflow(page, width);
+  }
+  const cards = page.getByRole('button', { name: 'Cards', exact: true });
+  await cards.focus();
+  await page.keyboard.press('Space');
+  await expect(cards).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('article')).toHaveCount(2);
+  expect(requests).toBe(1);
 });

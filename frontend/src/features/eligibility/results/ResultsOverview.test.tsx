@@ -46,6 +46,12 @@ it('shows the exact purchase, all benefits, source verification and functional s
   expect(screen.getByText('£999,999,999,999.99')).toBeVisible();
   expect(screen.getByText('29 Feb 2024')).toBeVisible();
   expect(screen.getByText('08 Oct 2026')).toBeVisible();
+  const summary = screen.getByRole('region', { name: 'Checked purchase summary' });
+  expect(summary).toHaveClass('wrap-anywhere');
+  expect(within(summary).getByText('My Shop')).toHaveClass('wrap-anywhere');
+  expect(within(summary).getByRole('link', { name: /Edit purchase details/ })).toHaveClass(
+    'text-brand',
+  );
   const card = screen.getByRole('article');
   expect(within(card).getByRole('heading', { name: '£10.00 cashback' })).toBeVisible();
   expect(within(card).getByRole('heading', { name: 'Percentage cashback' })).toBeVisible();
@@ -206,4 +212,42 @@ it('shows unavailable monetary reward wording for cashback without supplied deta
   });
   expect(screen.getByText('No monetary reward amount supplied.')).toBeVisible();
   expect(screen.queryByRole('heading', { name: '£10.00 cashback' })).not.toBeInTheDocument();
+});
+
+it('switches between cards and actual recorded rule rows while preserving filters and missing outcomes', () => {
+  if (populatedClaim.outcome !== 'resolved' || !promotion) throw new Error('fixture');
+  show({
+    ...populatedClaim,
+    promotions: [
+      promotion,
+      {
+        ...promotion,
+        promotion_variant_id: 'missing-rules',
+        variant_name: 'Variant without evaluations',
+        eligibility: {
+          ...promotion.eligibility,
+          rule_evaluations: [],
+          classification: 'NOT_ELIGIBLE',
+        },
+      },
+    ],
+  });
+  const matrix = screen.getByRole('button', { name: 'Rule Matrix' });
+  expect(matrix).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(matrix);
+  expect(matrix).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  const table = screen.getByRole('table', { name: /Recorded rule matrix/ });
+  expect(within(table).getAllByRole('row')).toHaveLength(3);
+  expect(within(table).getByText('product: satisfied')).toBeVisible();
+  expect(within(table).getByText('Not supplied')).toBeVisible();
+  expect(within(table).getByText('Variant without evaluations')).toBeVisible();
+  for (const rule of promotion.eligibility.rule_evaluations) {
+    expect(within(table).getByText(rule.reason_code.replaceAll('_', ' '))).toBeVisible();
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Not eligible (1)' }));
+  expect(within(table).getAllByRole('row')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Cards' }));
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('article')).toHaveLength(1);
 });
