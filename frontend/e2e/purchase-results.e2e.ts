@@ -48,18 +48,20 @@ for (const path of ['/', '/check']) {
     );
     const card = page.getByRole('article');
     await expect(card.getByRole('heading', { name: '£10.00 cashback' })).toBeVisible();
-    await expect(card).toContainText('Source last verified: 2 Oct 2026');
-    await expect(card).toContainText('not an approved or paid claim');
-    const summary = card.locator('summary', { hasText: 'View claim requirements' });
-    await summary.focus();
+    await expect(card).toContainText('Submitted brand · Verified 02 Oct 2026');
+    const fullDetails = card.getByRole('button', { name: 'View Full Promotion Details' });
+    await fullDetails.focus();
     await page.keyboard.press('Enter');
+    await expect(fullDetails).toHaveAttribute('aria-expanded', 'true');
+    await expect(card).toContainText('not an approved or paid claim');
+    await expect(card.getByRole('heading', { name: 'Claim requirements' })).toBeVisible();
     await expect(card.getByText('Keep your receipt.')).toBeVisible();
     const rules = card.locator('summary', { hasText: 'Recorded rules' });
     await rules.focus();
     await page.keyboard.press('Enter');
     await expect(card.getByText('product: satisfied')).toBeVisible();
     for (const [label, href] of [
-      ['Official promotion source / terms', 'https://example.com/offer'],
+      ['Official Portal Terms', 'https://example.com/offer'],
       ['Open official claim site', 'https://example.com/claim'],
     ]) {
       const link = card.getByRole('link', { name: new RegExp(label) });
@@ -194,7 +196,11 @@ for (const width of [320, 360, 375, 768, 1024, 1280, 1440]) {
   test(`results cards and expanded details reflow at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await check(page, 'MIXED');
-    await page.getByRole('article').first().locator('summary').first().click();
+    await page
+      .getByRole('article')
+      .first()
+      .getByRole('button', { name: 'View Full Promotion Details' })
+      .click();
     await expectReflow(page, width);
   });
 }
@@ -289,4 +295,115 @@ test('keyboard view controls show recorded matrix outcomes without another reque
   await expect(cards).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('article')).toHaveCount(2);
   expect(requests).toBe(1);
+});
+
+for (const releaseTiming of ['before retry', 'after retry']) {
+  test(`recovery supersedes a delayed results transition released ${releaseTiming}`, async ({
+    page,
+  }) => {
+    let releaseResults!: () => void;
+    const resultsGate = new Promise<void>((resolve) => {
+      releaseResults = resolve;
+    });
+    let resultsStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      resultsStarted = resolve;
+    });
+    let resultsReleased!: () => void;
+    const released = new Promise<void>((resolve) => {
+      resultsReleased = resolve;
+    });
+    let held = false;
+    await page.route('**/results?*', async (route) => {
+      if (held || route.request().headers()['rsc'] !== '1') return route.continue();
+      held = true;
+      const response = await route.fetch();
+      resultsStarted();
+      await resultsGate;
+      await route.fulfill({ response });
+      resultsReleased();
+    });
+    let requests = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().includes('/api/eligibility/check'))
+        requests++;
+    });
+    await page.goto('/check');
+    await page.getByLabel('Manufacturer / Brand', { exact: true }).fill('Submitted brand');
+    await page.getByLabel('Product model or SKU', { exact: true }).fill('POPULATED');
+    await page.getByLabel('Retailer', { exact: true }).fill('Submitted shop');
+    await page.getByLabel('Purchase date', { exact: true }).fill('2024-02-29');
+    await page.getByRole('button', { name: 'Find My Benefits' }).click();
+    await started;
+    await expect(page.getByRole('button', { name: 'Checking…' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Return to purchase form' }).click();
+    await expect(page).toHaveURL('/check');
+    await expect(page.getByLabel('Retailer', { exact: true })).toBeEnabled();
+    if (releaseTiming === 'before retry') {
+      releaseResults();
+      await released;
+      await expect(page).toHaveURL('/check');
+    }
+    await expect(page.getByLabel('Product model or SKU', { exact: true })).toHaveValue('POPULATED');
+    await expect(page.getByLabel('Retailer', { exact: true })).toHaveValue('Submitted shop');
+    expect(requests).toBe(1);
+    await page.getByLabel('Product model or SKU', { exact: true }).fill('MIXED');
+    await page.getByRole('button', { name: 'Find My Benefits' }).click();
+    await expect(page).toHaveURL('/results');
+    await expect(page.getByRole('heading', { name: 'Submitted brand · MIXED' })).toBeVisible();
+    await expect(page.getByRole('article')).toHaveCount(6);
+    if (releaseTiming === 'after retry') {
+      releaseResults();
+      await released;
+      await expect(page).toHaveURL('/results');
+      await expect(page.getByRole('heading', { name: 'Submitted brand · MIXED' })).toBeVisible();
+      await expect(page.getByRole('article')).toHaveCount(6);
+    }
+    expect(requests).toBe(2);
+  });
+}
+
+test('upcoming card has functional guide, navy action hierarchy and responsive visual balance', async ({
+  page,
+}, testInfo) => {
+  await check(page, 'MIXED');
+  await page.getByRole('button', { name: 'Upcoming claim period (1)', exact: true }).click();
+  const card = page.getByRole('article');
+  await expect(card.getByText(/Claim not yet open/)).toBeVisible();
+  const guide = card.getByRole('button', { name: 'Claim Window Guide' });
+  await expect(guide).toHaveCSS('background-color', 'rgb(16, 24, 47)');
+  await guide.focus();
+  await page.keyboard.press('Enter');
+  await expect(card.getByRole('region', { name: 'Claim window guide' })).toBeVisible();
+  await expect(card.getByRole('region', { name: 'Claim window guide' })).toContainText(
+    '09 Oct 2026',
+  );
+  await expect(card.getByRole('region', { name: 'Claim window guide' })).toContainText(
+    '30 Nov 2026',
+  );
+  await guide.press('Space');
+  await expect(guide).toHaveAttribute('aria-expanded', 'false');
+  for (const width of [320, 375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expectReflow(page, width);
+    if (width >= 1024) {
+      const title = await card.getByRole('heading', { level: 2 }).boundingBox();
+      const benefit = await card
+        .getByRole('heading', { level: 3 })
+        .first()
+        .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+      const titleFont = await card
+        .getByRole('heading', { level: 2 })
+        .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+      const action = await guide.boundingBox();
+      expect(action!.x).toBeGreaterThan(title!.x + title!.width);
+      expect(action!.y).toBeLessThan(title!.y);
+      expect(benefit).toBeGreaterThan(titleFont);
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`promotion-card-${width}.png`),
+      fullPage: true,
+    });
+  }
+  await axe(page);
 });

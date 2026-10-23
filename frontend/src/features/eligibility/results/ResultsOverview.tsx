@@ -15,52 +15,138 @@ import {
   type Classification,
   type Promotion,
 } from './presentation';
-function PromotionCard({ promotion }: { promotion: Promotion }) {
+function RuleDetails({ promotion }: { promotion: Promotion }) {
+  return (
+    <details className="mt-5 rounded-control border border-border p-4">
+      <summary className="cursor-pointer font-semibold">Recorded rules</summary>
+      <h4 className="mt-3 font-semibold">Rule outcomes</h4>
+      {promotion.eligibility.rule_evaluations.length ? (
+        <ul className="mt-2 space-y-3">
+          {promotion.eligibility.rule_evaluations.map((rule, i) => (
+            <li key={i}>
+              {words(rule.kind)}: <strong>{words(rule.status)}</strong>
+              <span className="block text-small">{words(rule.reason_code)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>Not supplied</p>
+      )}
+      <h4 className="mt-4 font-semibold">Recorded reasons</h4>
+      {promotion.eligibility.reasons.length ? (
+        <ul className="mt-2 space-y-2">
+          {promotion.eligibility.reasons.map((reason, i) => (
+            <li key={i}>{words(reason.code)}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>Not supplied</p>
+      )}
+    </details>
+  );
+}
+function criterionLabel(reason: string) {
+  const labels: Record<string, string> = {
+    retailer_match: 'Retailer matches recorded promotion rules',
+    purchase_date_match: 'Purchase date meets the recorded date rule',
+    purchase_price_unknown: 'Purchase price could not be evaluated',
+    product_match: 'Product matches recorded promotion rules',
+    manufacturer_match: 'Manufacturer matches recorded promotion rules',
+    purchase_channel_match: 'Purchase channel matches recorded promotion rules',
+    country_match: 'Country matches recorded promotion rules',
+    condition_match: 'Product condition matches recorded promotion rules',
+    purchase_price_match: 'Purchase price meets the recorded price rule',
+    purchase_date_before_start: 'Purchase date is before the recorded promotion starts',
+    purchase_date_after_end: 'Purchase date is after the recorded promotion ends',
+    purchase_price_below_minimum: 'Purchase price is below the recorded minimum',
+    purchase_price_above_maximum: 'Purchase price is above the recorded maximum',
+  };
+  if (labels[reason]) return labels[reason];
+  if (reason.endsWith('_unknown'))
+    return `${words(reason.replace('_unknown', ''))} could not be evaluated`;
+  if (reason.endsWith('_mismatch'))
+    return `${words(reason.replace('_mismatch', ''))} does not match recorded promotion rules`;
+  return words(reason);
+}
+function ClockIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5 shrink-0"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+function PromotionCard({
+  promotion,
+  manufacturer,
+}: {
+  promotion: Promotion;
+  manufacturer: string;
+}) {
   const status = statuses.find((s) => s.value === promotion.eligibility.classification)!;
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const id = `promotion-${promotion.promotion_variant_id}`;
+  const upcoming = promotion.eligibility.classification === 'CLAIM_NOT_YET_OPEN';
+  const actionClass =
+    'flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-control px-4 py-3 text-center text-small font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand';
   return (
     <article
-      aria-labelledby={`promotion-${promotion.promotion_variant_id}`}
-      className={`min-w-0 rounded-feature border-2 bg-surface p-5 shadow-card wrap-anywhere md:p-8 ${promotion.eligibility.classification === 'ELIGIBLE' ? 'border-success' : 'border-border'}`}
+      aria-labelledby={id}
+      className="min-w-0 rounded-feature border border-border bg-surface p-5 shadow-sm wrap-anywhere md:p-8 lg:p-10"
     >
-      <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,19rem)]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] lg:gap-8">
         <div className="min-w-0">
-          <span
-            className={`inline-block rounded-full border px-3 py-1 text-small font-semibold ${status.accent}`}
-          >
-            <span aria-hidden="true">{status.icon} </span>
-            {status.label}
-          </span>
-          <p className="mt-3 text-small text-ink-muted">
-            Source last verified:{' '}
-            <time dateTime={promotion.last_verified_at}>
-              {timestamp(promotion.last_verified_at)}
-            </time>
-          </p>
-          <h2
-            id={`promotion-${promotion.promotion_variant_id}`}
-            className="mt-4 text-card font-bold md:text-[2rem]"
-          >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold tracking-wide uppercase ${status.accent}`}
+            >
+              <span aria-hidden="true">{status.icon}</span>
+              {upcoming ? 'Claim not yet open' : status.label}
+            </span>
+            <p className="text-small text-ink-muted">
+              {manufacturer && <>{manufacturer} · </>}Verified{' '}
+              <time dateTime={promotion.last_verified_at}>
+                {calendarDate(new Date(promotion.last_verified_at).toISOString().slice(0, 10))}
+              </time>
+            </p>
+          </div>
+          <h2 id={id} className="mt-3 text-2xl leading-tight font-bold text-ink md:text-[1.875rem]">
             {promotion.promotion_name || 'Promotion name not supplied'}
           </h2>
-          {promotion.variant_name && (
+          {promotion.variant_name && promotion.variant_name !== promotion.promotion_name && (
             <p className="mt-1 font-semibold text-ink-muted">{promotion.variant_name}</p>
           )}
-          <p className="mt-3 text-small">{status.meaning}</p>
-          <div className="mt-6 space-y-5">
+          <div className="mt-5 space-y-3">
             {promotion.benefits.length ? (
-              promotion.benefits.map((benefit) => (
+              promotion.benefits.map((benefit, index) => (
                 <div key={benefit.benefit_id}>
-                  <h3 className="text-card font-bold">
-                    {benefit.cashback_reward_gbp !== null
-                      ? `${gbp(benefit.cashback_reward_gbp)} cashback`
-                      : benefit.name || words(benefit.benefit_type)}
-                  </h3>
-                  <p className="text-small text-ink-muted">
-                    {benefit.name} · {words(benefit.benefit_type)}
-                  </p>
-                  {benefit.description && <p className="mt-1">{benefit.description}</p>}
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h3
+                      className={
+                        index === 0
+                          ? 'text-3xl leading-tight font-bold text-ink md:text-[2.5rem]'
+                          : 'text-xl leading-snug font-bold text-ink'
+                      }
+                    >
+                      {benefit.benefit_type === 'cashback' && benefit.cashback_reward_gbp !== null
+                        ? `${gbp(benefit.cashback_reward_gbp)} cashback`
+                        : benefit.name || words(benefit.benefit_type)}
+                    </h3>
+                    {benefit.benefit_type === 'cashback' &&
+                      benefit.cashback_reward_gbp !== null && (
+                        <span className="text-small text-ink-muted">recorded cashback benefit</span>
+                      )}
+                  </div>
                   {benefit.benefit_type === 'cashback' && benefit.cashback_reward_gbp === null && (
-                    <p className="mt-1 text-small">
+                    <p className="mt-1 text-small text-ink-muted">
                       {benefit.reward_unavailable_explanation ||
                         (benefit.reward_unavailable_reason
                           ? words(benefit.reward_unavailable_reason)
@@ -73,115 +159,202 @@ function PromotionCard({ promotion }: { promotion: Promotion }) {
               <p>No benefit details supplied.</p>
             )}
           </div>
-          <div className="mt-6 rounded-control bg-surface-muted p-4">
-            <h3 className="font-semibold">Recorded explanation</h3>
-            {promotion.explanation.length ? (
-              promotion.explanation.map((line, i) => (
-                <p className="mt-2" key={i}>
-                  {line}
-                </p>
-              ))
-            ) : (
-              <p className="mt-2">No explanation supplied.</p>
-            )}
-          </div>
-          <div className="mt-6 border-t border-border pt-4 text-small">
+          <div className="mt-5 rounded-control border border-border/60 bg-surface-muted p-4 text-small leading-relaxed md:p-5">
             <p>
-              Recorded claim timing:{' '}
-              {promotion.eligibility.claim_window_status === 'open'
-                ? 'Claim period open'
-                : promotion.eligibility.claim_window_status
-                  ? words(promotion.eligibility.claim_window_status)
-                  : 'Not supplied'}
+              <strong className="text-ink">Rule explanation: </strong>
+              {promotion.explanation[0] || 'No explanation supplied.'}
             </p>
-            {promotion.claim_window && (
-              <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-                <div>
-                  <dt className="font-semibold">Claim opens</dt>
-                  <dd>
-                    <time dateTime={promotion.claim_window.opens_on}>
-                      {calendarDate(promotion.claim_window.opens_on)}
-                    </time>
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-semibold">Claim deadline</dt>
-                  <dd>
-                    <time dateTime={promotion.claim_window.deadline_on}>
-                      {calendarDate(promotion.claim_window.deadline_on)}
-                    </time>
-                  </dd>
-                </div>
-              </dl>
-            )}
-            <p className="mt-2">Publication status: {words(promotion.promotion_status)}</p>
-          </div>
-        </div>
-        <div className="min-w-0 space-y-4">
-          <details className="rounded-control border border-border p-4">
-            <summary className="cursor-pointer font-semibold">View claim requirements</summary>
-            {promotion.requirements.length ? (
-              <ul className="mt-3 list-disc space-y-3 pl-5">
-                {promotion.requirements.map((requirement, i) => (
-                  <li key={i}>
-                    <span className="font-semibold">{words(requirement.requirement_type)}</span>
-                    {requirement.description && <p>{requirement.description}</p>}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 text-small">
-                The response lists no requirements. Check the official terms for what is needed.
+            {promotion.explanation.slice(1).map((line, i) => (
+              <p key={i} className="mt-1">
+                {line}
               </p>
-            )}
-          </details>
-          <details className="rounded-control border border-border p-4">
-            <summary className="cursor-pointer font-semibold">Recorded rules</summary>
-            <h3 className="mt-3 font-semibold">Rule outcomes</h3>
-            {promotion.eligibility.rule_evaluations.length ? (
-              <ul className="mt-2 space-y-3">
-                {promotion.eligibility.rule_evaluations.map((rule, i) => (
-                  <li key={i}>
-                    {words(rule.kind)}: <strong>{words(rule.status)}</strong>
-                    <br />
-                    <span className="text-small">{words(rule.reason_code)}</span>
+            ))}
+          </div>
+          <section
+            aria-label="Evaluated criteria points"
+            className="mt-5 border-t border-border pt-4"
+          >
+            <h3 className="text-xs font-bold tracking-wider text-ink-muted uppercase">
+              Evaluated criteria points:
+            </h3>
+            <ul className="mt-3 grid gap-x-6 gap-y-2 text-small text-ink-muted sm:grid-cols-2">
+              {promotion.eligibility.rule_evaluations.map((rule, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span
+                    aria-hidden="true"
+                    className={`shrink-0 font-semibold ${rule.status === 'satisfied' ? 'text-success' : rule.status === 'unknown' ? 'text-amber-700' : 'text-red-700'}`}
+                  >
+                    {rule.status === 'satisfied' ? '✓' : rule.status === 'unknown' ? '?' : '×'}
+                  </span>
+                  <span>
+                    <span className="sr-only">{words(rule.status)}: </span>
+                    {criterionLabel(rule.reason_code)}
+                  </span>
+                </li>
+              ))}
+              {!promotion.eligibility.rule_evaluations.length && (
+                <li>Rule evaluations: Not supplied</li>
+              )}
+              {promotion.claim_window ? (
+                <>
+                  <li className="flex items-start gap-2">
+                    <ClockIcon />
+                    <span>
+                      Claim window opens{' '}
+                      <time dateTime={promotion.claim_window.opens_on}>
+                        {calendarDate(promotion.claim_window.opens_on)}
+                      </time>
+                    </span>
                   </li>
-                ))}
-              </ul>
-            ) : (
-              <p>Not supplied</p>
-            )}
-            <h3 className="mt-4 font-semibold">Recorded reasons</h3>
-            {promotion.eligibility.reasons.length ? (
-              <ul className="mt-2 space-y-2">
-                {promotion.eligibility.reasons.map((reason, i) => (
-                  <li key={i}>{words(reason.code)}</li>
-                ))}
-              </ul>
-            ) : (
-              <p>Not supplied</p>
-            )}
-          </details>
-          <ButtonLink
+                  <li className="flex items-start gap-2">
+                    <ClockIcon />
+                    <span>
+                      Claim deadline{' '}
+                      <time dateTime={promotion.claim_window.deadline_on}>
+                        {calendarDate(promotion.claim_window.deadline_on)}
+                      </time>
+                    </span>
+                  </li>
+                </>
+              ) : (
+                <li className="flex items-start gap-2">
+                  <ClockIcon />
+                  <span>
+                    Claim timing:{' '}
+                    {promotion.eligibility.claim_window_status
+                      ? words(promotion.eligibility.claim_window_status)
+                      : 'Not supplied'}
+                  </span>
+                </li>
+              )}
+            </ul>
+          </section>
+        </div>
+        <div className="min-w-0 space-y-3 lg:pt-2">
+          {upcoming && (
+            <button
+              type="button"
+              aria-expanded={guideOpen}
+              aria-controls={`${id}-guide`}
+              onClick={() => setGuideOpen(!guideOpen)}
+              className={`${actionClass} bg-ink text-white hover:bg-ink/90`}
+            >
+              <ClockIcon />
+              Claim Window Guide
+            </button>
+          )}
+          <button
+            type="button"
+            aria-expanded={detailsOpen}
+            aria-controls={`${id}-details`}
+            onClick={() => setDetailsOpen(!detailsOpen)}
+            className={`${actionClass} bg-surface-muted text-ink-muted hover:bg-border`}
+          >
+            View Full Promotion Details
+          </button>
+          <a
             href={promotion.provenance.official_source_url}
             target="_blank"
-            variant="secondary"
-            className="w-full"
+            rel="noopener noreferrer"
+            className={`${actionClass} border border-border bg-surface text-ink-muted hover:bg-surface-muted`}
           >
-            Official promotion source / terms <span className="sr-only">(opens in a new tab)</span>
-            <span aria-hidden="true"> ↗</span>
-          </ButtonLink>
-          <ButtonLink
-            href={promotion.provenance.claim_url}
-            target="_blank"
-            variant="secondary"
-            className="w-full"
-          >
-            Open official claim site <span className="sr-only">(opens in a new tab)</span>
-            <span aria-hidden="true"> ↗</span>
-          </ButtonLink>
+            Official Portal Terms <span aria-hidden="true">↗</span>
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
         </div>
       </div>
+      {upcoming && (
+        <section
+          id={`${id}-guide`}
+          hidden={!guideOpen}
+          aria-label="Claim window guide"
+          className="mt-6 rounded-control border border-border bg-surface-muted p-5 text-small"
+        >
+          <h3 className="font-bold">Claim window guide</h3>
+          <p className="mt-2">{status.meaning}</p>
+          {promotion.claim_window ? (
+            <p className="mt-2">
+              Recorded opening date: {calendarDate(promotion.claim_window.opens_on)}. Recorded
+              deadline: {calendarDate(promotion.claim_window.deadline_on)}.
+            </p>
+          ) : (
+            <p className="mt-2">Opening and deadline dates were not supplied.</p>
+          )}
+        </section>
+      )}
+      <section
+        id={`${id}-details`}
+        hidden={!detailsOpen}
+        aria-label="Full promotion details"
+        className="mt-6 border-t border-border pt-5 text-small"
+      >
+        <h3 className="font-bold">Full promotion details</h3>
+        <p className="mt-2">{status.meaning}</p>
+        <p className="mt-2">Publication status: {words(promotion.promotion_status)}</p>
+        {promotion.benefits.map((benefit) => (
+          <div key={benefit.benefit_id} className="mt-4">
+            <h4 className="font-semibold">
+              {benefit.name || words(benefit.benefit_type)} · {words(benefit.benefit_type)}
+            </h4>
+            {benefit.description && <p className="mt-1">{benefit.description}</p>}
+          </div>
+        ))}
+        <h4 className="mt-5 font-semibold">Claim requirements</h4>
+        {promotion.requirements.length ? (
+          <ul className="mt-2 list-disc space-y-2 pl-5">
+            {promotion.requirements.map((requirement, i) => (
+              <li key={i}>
+                <span className="font-semibold">{words(requirement.requirement_type)}</span>
+                {requirement.description && <p>{requirement.description}</p>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2">
+            The response lists no requirements. Check the official terms for what is needed.
+          </p>
+        )}
+        <RuleDetails promotion={promotion} />
+        <h4 className="mt-5 font-semibold">Source metadata</h4>
+        <p className="mt-2">
+          Source last verified:{' '}
+          <time dateTime={promotion.last_verified_at}>{timestamp(promotion.last_verified_at)}</time>
+        </p>
+        <p>
+          Source type: {words(promotion.provenance.source_type)} · Retrieved{' '}
+          {timestamp(promotion.provenance.retrieved_at)} · Verified{' '}
+          {timestamp(promotion.provenance.verified_at)}
+        </p>
+        <a
+          href={promotion.provenance.claim_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-block min-h-11 py-2 font-semibold text-ink underline underline-offset-4"
+        >
+          Open official claim site{' '}
+          <span className="sr-only">
+            (opens in a new tab; claim availability is subject to recorded timing and official
+            terms)
+          </span>
+          <span aria-hidden="true"> ↗</span>
+        </a>
+        <ul className="mt-3 space-y-3">
+          {promotion.sources.map((source) => (
+            <li key={source.source_id}>
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-4"
+              >
+                {words(source.role)} source<span className="sr-only"> (opens in a new tab)</span>
+              </a>{' '}
+              · {words(source.source_type)} · Retrieved {timestamp(source.retrieved_at)} · Verified{' '}
+              {source.verified_at ? timestamp(source.verified_at) : 'Not supplied'}
+            </li>
+          ))}
+        </ul>
+      </section>
     </article>
   );
 }
@@ -427,7 +600,11 @@ export function ResultsOverview() {
               <RuleMatrix promotions={selected} />
             ) : (
               selected.map((promotion) => (
-                <PromotionCard key={promotion.promotion_variant_id} promotion={promotion} />
+                <PromotionCard
+                  key={promotion.promotion_variant_id}
+                  promotion={promotion}
+                  manufacturer={purchase.brand}
+                />
               ))
             )
           ) : (

@@ -58,12 +58,13 @@ it('shows the exact purchase, all benefits, source verification and functional s
   expect(
     within(card).getByText('Provide the purchase price to calculate the cashback reward.'),
   ).toBeVisible();
-  expect(within(card).getByText(/Source last verified/)).toHaveTextContent('2 Oct 2026');
+  expect(within(card).getByText('02 Oct 2026').parentElement).toHaveTextContent('My Brand');
+  const detailsButton = within(card).getByRole('button', { name: 'View Full Promotion Details' });
+  expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(detailsButton);
   expect(within(card).getByText(/not an approved or paid claim/)).toBeVisible();
-  expect(within(card).getByText('Claim period open', { exact: false })).toBeVisible();
-  expect(within(card).getByText('View claim requirements').closest('details')).not.toHaveAttribute(
-    'open',
-  );
+  expect(within(card).getByText(/Claim window opens/)).toHaveTextContent('01 Oct 2026');
+  expect(within(card).getByText('Recorded rules').closest('details')).not.toHaveAttribute('open');
   for (const link of within(card).getAllByRole('link')) {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener noreferrer'));
@@ -116,7 +117,8 @@ it('renders null and empty details honestly and zero filtered state can reset', 
   });
   expect(screen.getByText('No benefit details supplied.')).toBeVisible();
   expect(screen.getByText('No explanation supplied.')).toBeVisible();
-  expect(screen.getByText(/The response lists no requirements/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'View Full Promotion Details' }));
+  expect(screen.getByText(/The response lists no requirements/)).toBeVisible();
   expect(screen.queryByText(/Claim opens/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Not eligible (0)' }));
   expect(screen.getByRole('heading', { name: 'No results in this category' })).toBeVisible();
@@ -250,4 +252,57 @@ it('switches between cards and actual recorded rule rows while preserving filter
   fireEvent.click(screen.getByRole('button', { name: 'Cards' }));
   expect(screen.queryByRole('table')).not.toBeInTheDocument();
   expect(screen.getAllByRole('article')).toHaveLength(1);
+});
+
+it('keeps long supplementary descriptions collapsed and exposes truthful upcoming dates with keyboard controls', () => {
+  if (populatedClaim.outcome !== 'resolved' || !promotion) throw new Error('fixture');
+  show({
+    ...populatedClaim,
+    promotions: [
+      {
+        ...promotion,
+        eligibility: {
+          ...promotion.eligibility,
+          classification: 'CLAIM_NOT_YET_OPEN',
+          claim_window_status: 'not_yet_open',
+          rule_evaluations: [
+            { kind: 'retailer', status: 'satisfied', reason_code: 'retailer_match' },
+            { kind: 'purchase_price', status: 'unknown', reason_code: 'purchase_price_unknown' },
+            {
+              kind: 'purchase_date',
+              status: 'not_satisfied',
+              reason_code: 'purchase_date_before_start',
+            },
+          ],
+        },
+        claim_window: { status: 'not_yet_open', opens_on: '2026-11-27', deadline_on: '2026-12-31' },
+        benefits: [
+          { ...promotion.benefits[0], description: 'A long supplementary benefit description.' },
+        ],
+      },
+    ],
+  });
+  const card = screen.getByRole('article');
+  expect(within(card).getByText('Claim not yet open')).toBeVisible();
+  expect(within(card).getByText('Retailer matches recorded promotion rules')).toBeVisible();
+  expect(within(card).getByText('Purchase price could not be evaluated')).toBeVisible();
+  expect(
+    within(card).getByText('Purchase date is before the recorded promotion starts'),
+  ).toBeVisible();
+  expect(within(card).getByText('A long supplementary benefit description.')).not.toBeVisible();
+  const guide = within(card).getByRole('button', { name: 'Claim Window Guide' });
+  fireEvent.click(guide);
+  expect(guide).toHaveAttribute('aria-expanded', 'true');
+  expect(within(card).getByRole('region', { name: 'Claim window guide' })).toHaveTextContent(
+    '27 Nov 2026',
+  );
+  expect(within(card).getByRole('region', { name: 'Claim window guide' })).toHaveTextContent(
+    '31 Dec 2026',
+  );
+  fireEvent.click(within(card).getByRole('button', { name: 'View Full Promotion Details' }));
+  expect(within(card).getByText('A long supplementary benefit description.')).toBeVisible();
+  expect(within(card).getByRole('link', { name: /Official Portal Terms/ })).toHaveAttribute(
+    'href',
+    promotion.provenance.official_source_url,
+  );
 });

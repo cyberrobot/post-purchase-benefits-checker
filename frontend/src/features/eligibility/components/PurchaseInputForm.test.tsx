@@ -14,6 +14,7 @@ import { checkPurchaseResponseSchema } from '@/lib/api/eligibility.contract';
 jest.mock('../api/useCheckPurchaseMutation');
 jest.mock('next/navigation');
 const push = jest.fn();
+const replace = jest.fn();
 function render(ui: ReactNode) {
   return rtlRender(ui, { wrapper: PurchaseCheckSessionProvider });
 }
@@ -38,7 +39,9 @@ function submit() {
 }
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<typeof useRouter>);
+  jest
+    .mocked(useRouter)
+    .mockReturnValue({ push, replace } as unknown as ReturnType<typeof useRouter>);
   jest
     .mocked(useCheckPurchaseMutation)
     .mockReturnValue({ mutateAsync, reset } as unknown as ReturnType<
@@ -183,6 +186,7 @@ it('submits exact raw keys once, locks fields while pending, clears stale result
   expect(push).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
   fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
   fireEvent.change(screen.getByLabelText('Product model or SKU'), {
     target: { value: 'corrected' },
   });
@@ -311,6 +315,7 @@ it('discloses optional price, validates it and sends the exact fifth string key 
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching'));
   expect(mutateAsync).toHaveBeenCalledWith({ ...draft, purchase_price: '799.99' });
   fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
   fireEvent.change(price, { target: { value: '' } });
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
   submit();
@@ -375,9 +380,56 @@ it('publishes the exact matching submitted snapshot and invalidates it on an edi
     response: resolved,
   });
   fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
   fireEvent.change(screen.getByLabelText('Retailer'), { target: { value: 'Another shop' } });
   expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
   expect(mutateAsync).toHaveBeenCalledTimes(1);
+});
+
+it('supersedes pending navigation, invalidates its snapshot and publishes only an explicit retry', async () => {
+  function Probe() {
+    return (
+      <output data-testid="snapshot">{JSON.stringify(usePurchaseCheckSession().snapshot)}</output>
+    );
+  }
+  render(
+    <>
+      <PurchaseInputForm />
+      <Probe />
+    </>,
+  );
+  fill();
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(replace).toHaveBeenCalledWith('/check');
+  expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
+  expect(screen.getByLabelText('Retailer')).toHaveValue(draft.retailer);
+  expect(screen.getByLabelText('Retailer')).toBeEnabled();
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+  mutateAsync.mockResolvedValueOnce(unresolved);
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(2));
+  expect(mutateAsync).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(screen.getByTestId('snapshot').textContent!).response).toEqual(unresolved);
+});
+
+it('keeps submission locked if recovery navigation throws and permits another recovery attempt', async () => {
+  replace.mockImplementationOnce(() => {
+    throw new Error('Navigation unavailable');
+  });
+  render(<PurchaseInputForm />);
+  fill();
+  submit();
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(screen.getByRole('alert')).toBeVisible();
+  expect(screen.getByLabelText('Retailer')).toBeDisabled();
+  submit();
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
+  expect(screen.getByLabelText('Retailer')).toBeEnabled();
+  expect(replace).toHaveBeenCalledTimes(2);
 });
 
 it('blocks click and Enter submissions after API success while navigation is delayed', async () => {

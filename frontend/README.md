@@ -283,5 +283,8 @@ in this tab** and a start link. There is no saved history, shareable result URL 
 browser storage. The existing server-only backend origin is required for real
 checks, but the empty results page renders without it.
 
-The optional rule matrix, dedicated promotion detail pages and prepared claim
-checklists are deferred. Official source and claim links open external sites.
+Cards are the default results presentation. Rule Matrix is an alternative view of
+existing backend-provided `rule_evaluations`; missing evaluations display **Not supplied**.
+Filters work consistently in both views, and switching views makes no additional
+API requests. Dedicated promotion detail pages, claim preparation workflows and saved
+result history remain future functionality. Official source and claim links open external sites.

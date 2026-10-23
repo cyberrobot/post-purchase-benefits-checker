@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePurchaseCheckSession } from '../session/PurchaseCheckSession';
 import { Button } from '@/components/ui/Button';
@@ -23,8 +23,13 @@ export function PurchaseInputForm() {
   const [attempted, setAttempted] = useState(false);
   const [focusRequest, setFocusRequest] = useState<{ field: Field }>();
   const [feedback, setFeedback] = useState<{ lines: string[]; failed: boolean }>();
-  const [pending, setPending] = useState(false);
-  const [navigationPending, setNavigationPending] = useState(false);
+  const [submissionPending, setPending] = useState(false);
+  const [navigationStarted, setNavigationPending] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryPending, startRecovery] = useTransition();
+  const recovered = recovering && !recoveryPending;
+  const pending = submissionPending && !recovered;
+  const navigationPending = navigationStarted && !recovered;
   const [priceOpen, setPriceOpen] = useState(Boolean(session.draft.purchase_price));
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -42,6 +47,12 @@ export function PurchaseInputForm() {
   useEffect(() => {
     if (focusRequest) inputs.current[focusRequest.field]?.focus();
   }, [focusRequest]);
+  useEffect(() => {
+    if (recovering && !recoveryPending) {
+      inFlight.current = false;
+      inputs.current.brand?.focus();
+    }
+  }, [recovering, recoveryPending]);
   function edit(field: Field, value: string) {
     revision.current++;
     const next = { ...draft, [field]: value };
@@ -70,6 +81,8 @@ export function PurchaseInputForm() {
     session.edit(draft);
     const submittedRevision = revision.current;
     inFlight.current = true;
+    setRecovering(false);
+    setNavigationPending(false);
     setPending(true);
     let navigating = false;
     try {
@@ -214,14 +227,21 @@ export function PurchaseInputForm() {
           <button
             type="button"
             className="mt-2 min-h-12 rounded-control border border-brand px-4 py-2 font-semibold text-brand"
+            disabled={recoveryPending || recovering}
             onClick={() => {
               revision.current++;
               session.edit(draft);
-              inFlight.current = false;
-              setNavigationPending(false);
-              setPending(false);
               setFeedback(undefined);
-              setFocusRequest({ field: 'brand' });
+              // A newer App Router navigation discards the pending results action.
+              // Keep the submission guard until that replacement transition commits.
+              startRecovery(() => {
+                try {
+                  router.replace('/check');
+                  setRecovering(true);
+                } catch (error) {
+                  setFeedback({ lines: [failure(error)], failed: true });
+                }
+              });
             }}
           >
             Return to purchase form
