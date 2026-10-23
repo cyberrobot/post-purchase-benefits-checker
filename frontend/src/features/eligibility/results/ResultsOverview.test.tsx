@@ -180,7 +180,30 @@ it('wraps escaped long content and preserves non-cash benefits and unavailable r
   expect(screen.getByRole('heading', { name: longName })).toBeVisible();
   expect(screen.getByRole('heading', { name: 'Recorded extended cover' })).toBeVisible();
   expect(screen.getByRole('heading', { name: 'Recorded gift' })).toBeVisible();
-  expect(screen.getByText('reward not configured')).toBeVisible();
+  expect(screen.queryByText('reward not configured')).not.toBeInTheDocument();
+  expect(screen.queryByText('No monetary reward amount supplied.')).not.toBeInTheDocument();
   expect(document.querySelector('img')).toBeNull();
   expect(screen.queryByText(/£150|5-Year|Claim period open/)).not.toBeInTheDocument();
+});
+
+it('shows unavailable monetary reward wording for cashback without supplied details', () => {
+  if (populatedClaim.outcome !== 'resolved' || !promotion) throw new Error('fixture');
+  show({
+    ...populatedClaim,
+    promotions: [
+      {
+        ...promotion,
+        benefits: [
+          {
+            ...promotion.benefits[0],
+            cashback_reward_gbp: null,
+            reward_unavailable_reason: null,
+            reward_unavailable_explanation: null,
+          },
+        ],
+      },
+    ],
+  });
+  expect(screen.getByText('No monetary reward amount supplied.')).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '£10.00 cashback' })).not.toBeInTheDocument();
 });

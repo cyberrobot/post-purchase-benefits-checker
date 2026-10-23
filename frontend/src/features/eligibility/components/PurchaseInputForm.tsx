@@ -24,6 +24,7 @@ export function PurchaseInputForm() {
   const [focusRequest, setFocusRequest] = useState<{ field: Field }>();
   const [feedback, setFeedback] = useState<{ lines: string[]; failed: boolean }>();
   const [pending, setPending] = useState(false);
+  const [navigationPending, setNavigationPending] = useState(false);
   const [priceOpen, setPriceOpen] = useState(Boolean(session.draft.purchase_price));
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -35,6 +36,7 @@ export function PurchaseInputForm() {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      inFlight.current = false;
     };
   }, []);
   useEffect(() => {
@@ -64,22 +66,29 @@ export function PurchaseInputForm() {
     }
     const result = purchaseRequestSchema.safeParse(requestFromDraft(draft));
     if (!result.success) return;
+    // A new validated check invalidates earlier results, even with unchanged inputs.
+    session.edit(draft);
     const submittedRevision = revision.current;
     inFlight.current = true;
     setPending(true);
+    let navigating = false;
     try {
       const data = await mutation.mutateAsync(result.data);
       if (mounted.current && submittedRevision === revision.current) {
         session.publish(result.data, data);
         setFeedback({ lines: completion(data), failed: false });
         router.push('/results');
+        navigating = true;
+        setNavigationPending(true);
       }
     } catch (error) {
       if (mounted.current && submittedRevision === revision.current)
         setFeedback({ lines: [failure(error)], failed: true });
     } finally {
-      inFlight.current = false;
-      if (mounted.current) setPending(false);
+      if (!navigating) {
+        inFlight.current = false;
+        if (mounted.current) setPending(false);
+      }
     }
   }
   const inputClass = (field: Field) =>
@@ -188,7 +197,9 @@ export function PurchaseInputForm() {
       )}
       <div role="status" aria-live="polite" aria-atomic="true" className="mt-4 min-h-6 text-small">
         {pending
-          ? 'Checking your purchase…'
+          ? navigationPending
+            ? `Opening your results… ${feedback?.lines.join(' ') ?? ''}`
+            : 'Checking your purchase…'
           : feedback && !feedback.failed
             ? feedback.lines.map((line) => (
                 <span key={line} className="mt-2 block">
@@ -197,6 +208,26 @@ export function PurchaseInputForm() {
               ))
             : null}
       </div>
+      {navigationPending && (
+        <div className="mt-4 text-small">
+          <p>If your results do not open, return to the form to try again.</p>
+          <button
+            type="button"
+            className="mt-2 min-h-12 rounded-control border border-brand px-4 py-2 font-semibold text-brand"
+            onClick={() => {
+              revision.current++;
+              session.edit(draft);
+              inFlight.current = false;
+              setNavigationPending(false);
+              setPending(false);
+              setFeedback(undefined);
+              setFocusRequest({ field: 'brand' });
+            }}
+          >
+            Return to purchase form
+          </button>
+        </div>
+      )}
       {feedback?.failed && (
         <p role="alert" className="mt-4 text-small">
           {feedback.lines[0]}

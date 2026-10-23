@@ -59,7 +59,7 @@ function PromotionCard({ promotion }: { promotion: Promotion }) {
                     {benefit.name} · {words(benefit.benefit_type)}
                   </p>
                   {benefit.description && <p className="mt-1">{benefit.description}</p>}
-                  {benefit.cashback_reward_gbp === null && (
+                  {benefit.benefit_type === 'cashback' && benefit.cashback_reward_gbp === null && (
                     <p className="mt-1 text-small">
                       {benefit.reward_unavailable_explanation ||
                         (benefit.reward_unavailable_reason

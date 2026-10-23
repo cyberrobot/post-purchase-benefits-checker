@@ -207,3 +207,51 @@ for (const width of [320, 640]) {
     await expectReflow(page, width);
   });
 }
+
+test('an unchanged recheck failure invalidates results across history and preserves manual retry', async ({
+  page,
+}) => {
+  let requests = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/api/eligibility/check')) requests++;
+  });
+  await check(page);
+  await page.getByRole('link', { name: 'Edit purchase details' }).click();
+  await page.route(
+    '**/api/eligibility/check',
+    (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }),
+    { times: 1 },
+  );
+  await page.getByRole('button', { name: 'Find My Benefits' }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page).toHaveURL('/check');
+  await expect(page.getByLabel('Product model or SKU', { exact: true })).toHaveValue('POPULATED');
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'No results in this tab' })).toBeVisible();
+  await expect(page.getByRole('article')).toHaveCount(0);
+  await page.goForward();
+  for (const [label, value] of [
+    ['Manufacturer / Brand', 'Submitted brand'],
+    ['Product model or SKU', 'POPULATED'],
+    ['Retailer', 'Submitted shop'],
+    ['Purchase date', '2024-02-29'],
+  ]) {
+    await expect(page.getByLabel(label, { exact: true })).toHaveValue(value);
+  }
+  expect(requests).toBe(2);
+  await page.route(
+    '**/api/eligibility/check',
+    async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.promotions[0].promotion_name = 'Fresh retry response';
+      await route.fulfill({ response, json: body });
+    },
+    { times: 1 },
+  );
+  await page.getByRole('button', { name: 'Find My Benefits' }).click();
+  await expect(page).toHaveURL('/results');
+  await expect(page.getByRole('heading', { name: 'Fresh retry response' })).toBeVisible();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  expect(requests).toBe(3);
+});
