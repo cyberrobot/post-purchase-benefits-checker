@@ -118,13 +118,13 @@ function PromotionCard({
               </time>
             </p>
           </div>
-          <h2 id={id} className="mt-3 text-2xl leading-tight font-bold text-ink md:text-[1.875rem]">
+          <h2 id={id} className="mt-3 text-xl leading-tight font-bold text-ink">
             {promotion.promotion_name || 'Promotion name not supplied'}
           </h2>
           {promotion.variant_name && promotion.variant_name !== promotion.promotion_name && (
             <p className="mt-1 font-semibold text-ink-muted">{promotion.variant_name}</p>
           )}
-          <div className="mt-5 space-y-3">
+          <div className="mt-3 space-y-3">
             {promotion.benefits.length ? (
               promotion.benefits.map((benefit, index) => (
                 <div key={benefit.benefit_id}>
@@ -132,7 +132,7 @@ function PromotionCard({
                     <h3
                       className={
                         index === 0
-                          ? 'text-3xl leading-tight font-bold text-ink md:text-[2.5rem]'
+                          ? 'text-2xl leading-tight font-bold text-ink md:text-[2.5rem]'
                           : 'text-xl leading-snug font-bold text-ink'
                       }
                     >
@@ -159,15 +159,15 @@ function PromotionCard({
               <p>No benefit details supplied.</p>
             )}
           </div>
-          <div className="mt-5 rounded-control border border-border/60 bg-surface-muted p-4 text-small leading-relaxed md:p-5">
-            <p>
+          <div className="mt-5 rounded-control border border-border/60 bg-surface-muted p-4 text-small leading-relaxed">
+            <span>
               <strong className="text-ink">Rule explanation: </strong>
               {promotion.explanation[0] || 'No explanation supplied.'}
-            </p>
+            </span>{' '}
             {promotion.explanation.slice(1).map((line, i) => (
-              <p key={i} className="mt-1">
+              <span key={i} className="mt-1">
                 {line}
-              </p>
+              </span>
             ))}
           </div>
           <section

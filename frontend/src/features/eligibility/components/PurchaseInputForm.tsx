@@ -203,24 +203,26 @@ export function PurchaseInputForm() {
           {pending ? 'Checking…' : 'Find My Benefits'}
         </Button>
       </div>
-      {attempted && Object.keys(errors).length > 0 && (
-        <p role="alert" className="mt-4 text-small font-semibold text-red-800">
-          Check the highlighted fields and try again.
-        </p>
+      {pending && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="mt-4 min-h-6 text-small"
+        >
+          {pending
+            ? navigationPending
+              ? `Opening your results… ${feedback?.lines.join(' ') ?? ''}`
+              : 'Checking your purchase…'
+            : feedback && !feedback.failed
+              ? feedback.lines.map((line) => (
+                  <span key={line} className="mt-2 block">
+                    {line}
+                  </span>
+                ))
+              : null}
+        </div>
       )}
-      <div role="status" aria-live="polite" aria-atomic="true" className="mt-4 min-h-6 text-small">
-        {pending
-          ? navigationPending
-            ? `Opening your results… ${feedback?.lines.join(' ') ?? ''}`
-            : 'Checking your purchase…'
-          : feedback && !feedback.failed
-            ? feedback.lines.map((line) => (
-                <span key={line} className="mt-2 block">
-                  {line}
-                </span>
-              ))
-            : null}
-      </div>
       {navigationPending && (
         <div className="mt-4 text-small">
           <p>If your results do not open, return to the form to try again.</p>
