@@ -190,7 +190,7 @@ it('submits exact raw keys once, locks fields while pending, clears stale result
   fireEvent.change(screen.getByLabelText('Product model or SKU'), {
     target: { value: 'corrected' },
   });
-  expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(reset).toHaveBeenCalled();
   expect(mutateAsync).toHaveBeenCalledTimes(1);
   submit();
@@ -271,7 +271,7 @@ it.each<[ApiErrorKind, string]>([
   fill();
   submit();
   expect(await screen.findByRole('alert')).toHaveTextContent(message);
-  expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(screen.getByLabelText('Product model or SKU')).toHaveValue(draft.model);
   expect(mutateAsync).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByLabelText('Product model or SKU'), {
@@ -317,7 +317,7 @@ it('discloses optional price, validates it and sends the exact fifth string key 
   fireEvent.click(screen.getByRole('button', { name: 'Return to purchase form' }));
   expect(replace).toHaveBeenCalledWith('/check');
   fireEvent.change(price, { target: { value: '' } });
-  expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
   submit();
   await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
   expect(mutateAsync).toHaveBeenLastCalledWith(draft);
@@ -337,7 +337,7 @@ it('does not present a late result after a draft revision or unmount', async () 
     target: { value: 'corrected' },
   });
   await act(async () => complete(resolved));
-  expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(push).not.toHaveBeenCalled();
   mutateAsync.mockReturnValueOnce(
     new Promise((resolve) => {
