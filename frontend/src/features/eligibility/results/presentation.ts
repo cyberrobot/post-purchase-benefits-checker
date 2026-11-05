@@ -15,35 +15,37 @@ export const statuses: {
     value: 'ELIGIBLE',
     label: 'Eligible',
     icon: '✓',
-    meaning: 'Meets recorded eligibility rules. This is not an approved or paid claim.',
+    meaning:
+      'This purchase meets the recorded eligibility rules. This is not an approved or paid claim.',
     accent: 'border-success text-success bg-success-subtle',
   },
   {
     value: 'POTENTIALLY_ELIGIBLE',
     label: 'Potentially eligible',
     icon: '?',
-    meaning: 'More evidence or information could be required.',
+    meaning: 'The recorded information does not establish eligibility with certainty.',
     accent: 'border-amber-700 text-amber-900 bg-amber-50',
   },
   {
     value: 'CLAIM_NOT_YET_OPEN',
-    label: 'Upcoming claim period',
+    label: 'Claim not yet open',
     icon: '◷',
-    meaning: 'The claim period has not opened at the recorded evaluation date.',
+    meaning:
+      'The recorded eligibility rules are met, but the claim period has not opened at the evaluation date.',
     accent: 'border-blue-700 text-blue-900 bg-blue-50',
   },
   {
     value: 'EXPIRED',
     label: 'Claim period expired',
     icon: '–',
-    meaning: 'The claim period has ended.',
+    meaning: 'The recorded claim deadline has passed at the evaluation date.',
     accent: 'border-ink-muted text-ink-muted bg-surface-muted',
   },
   {
     value: 'NOT_ELIGIBLE',
     label: 'Not eligible',
     icon: '×',
-    meaning: 'At least one recorded rule is not met.',
+    meaning: 'Does not meet one or more recorded eligibility conditions.',
     accent: 'border-red-700 text-red-900 bg-red-50',
   },
 ];

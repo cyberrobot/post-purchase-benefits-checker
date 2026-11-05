@@ -199,7 +199,10 @@ test('six coherent variant matches across five promotions retain every classific
     expect(match.eligibility.claim_window_status).toBe(claimStatus);
     expect(match.eligibility.reasons).toEqual(
       classification === 'NOT_ELIGIBLE'
-        ? [{ code: 'purchase_date_before_start', rule_kind: 'purchase_date' }]
+        ? [
+            { code: 'purchase_date_before_start', rule_kind: 'purchase_date' },
+            { code: 'retailer_mismatch', rule_kind: 'retailer' },
+          ]
         : [
             { code: 'all_configured_rules_satisfied', rule_kind: null },
             { code: `claim_window_${claimStatus ?? 'unspecified'}`, rule_kind: null },
@@ -213,6 +216,8 @@ test('six coherent variant matches across five promotions retain every classific
               status: 'not_satisfied',
               reason_code: 'purchase_date_before_start',
             },
+            { kind: 'retailer', status: 'not_satisfied', reason_code: 'retailer_mismatch' },
+            { kind: 'purchase_price', status: 'unknown', reason_code: 'purchase_price_unknown' },
           ]
         : [{ kind: 'product', status: 'satisfied', reason_code: 'product_match' }],
     );
@@ -241,7 +246,7 @@ test('six coherent variant matches across five promotions retain every classific
     'Eligible (1)',
     'Potentially eligible (1)',
     'Not eligible (2)',
-    'Upcoming claim period (1)',
+    'Claim not yet open (1)',
     'Claim period expired (1)',
   ])
     await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
