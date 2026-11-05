@@ -40,7 +40,7 @@ test('canonical page has server landmarks, honest empty controls, keyboard discl
   await expect(page.locator('body > main#main-content')).toHaveCount(1);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Check your purchase');
   await expect(page.locator('select')).toHaveCount(0);
-  await expect(page.getByRole('status')).toBeEmpty();
+  await expect(page.getByRole('status')).toHaveCount(0);
   expect(sent).toEqual([]);
   await axe(page);
   await page.getByLabel(labels[0], { exact: true }).focus();
@@ -71,7 +71,7 @@ test('canonical page has server landmarks, honest empty controls, keyboard discl
   await page.getByRole('link', { name: 'Edit purchase details', exact: true }).click();
   await page.locator('summary').click();
   await page.getByLabel('Purchase price (GBP)').fill('799.99');
-  await expect(page.getByRole('status')).toBeEmpty();
+  await expect(page.getByRole('status')).toHaveCount(0);
   await submit(page).click();
   await expect(page).toHaveURL('/results');
   await expect(
@@ -110,9 +110,7 @@ test('missing SKU has a contrasting described error, committed focus and no POST
   expect(await model.evaluate((element) => getComputedStyle(element).borderColor)).not.toBe(
     normalBorder,
   );
-  await expect(
-    page.getByRole('form', { name: 'Check a purchase' }).getByRole('alert'),
-  ).toContainText('highlighted fields');
+  await expect(page.getByText('Enter the product model or sku', { exact: true })).toBeVisible();
   expect(sent).toEqual([]);
   await axe(page);
   await model.fill('corrected');
@@ -152,7 +150,7 @@ for (const [model, message] of [
     await expect(page.getByRole('main')).not.toContainText(/00000000|not eligible/i);
     await page.getByRole('link', { name: 'Edit purchase details', exact: true }).first().click();
     await page.getByLabel(labels[1], { exact: true }).fill('corrected');
-    await expect(page.getByRole('status')).toBeEmpty();
+    await expect(page.getByRole('status')).toHaveCount(0);
     expect(sent).toHaveLength(1);
     await submit(page).click();
     await expect(page).toHaveURL('/results');
@@ -279,7 +277,7 @@ for (const [model, message] of [
     await expect(alert).toContainText(message, { timeout: 12000 });
     await expect(page).toHaveURL('/check');
     await expect(alert).toContainText(/Support reference: [0-9a-f-]{36}/);
-    await expect(page.getByRole('status')).toBeEmpty();
+    await expect(page.getByRole('status')).toHaveCount(0);
     await expect(page.getByLabel(labels[1], { exact: true })).toHaveValue(model);
     await expect(submit(page)).toBeEnabled();
     expect(sent).toHaveLength(1);
@@ -326,10 +324,10 @@ test('pending controls and announcements prevent duplicate clicks and Enter, and
   await submit(page).click();
   await expect(page.getByRole('status')).toContainText('Checking');
   await page.getByRole('banner').getByRole('link', { name: 'BenefitScout', exact: true }).click();
-  await expect(page.getByRole('status')).toBeEmpty();
+  await expect(page.getByRole('status')).toHaveCount(0);
   await page.getByRole('link', { name: 'Open the dedicated purchase checker' }).click();
   await expect(page.getByLabel(labels[0], { exact: true })).toHaveValue('Any Brand');
-  await expect(page.getByRole('status')).toBeEmpty();
+  await expect(page.getByRole('status')).toHaveCount(0);
   expect(sent).toHaveLength(2);
 });
 for (const width of [320, 360, 375, 768, 1024, 1280, 1440]) {

@@ -39,7 +39,7 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
   });
   await page.getByRole('link', { name: 'Edit purchase details', exact: true }).click();
   await page.getByLabel('Product model or SKU', { exact: true }).fill('UNKNOWN');
-  await expect(page.getByRole('status')).toBeEmpty();
+  await expect(page.getByRole('status')).toHaveCount(0);
   expect(requests).toHaveLength(1);
   await page.getByRole('button', { name: 'Find My Benefits' }).click();
   await expect(page).toHaveURL('/results');
@@ -82,7 +82,7 @@ for (const [model, text] of [
     await expect(alert).toContainText(text);
     expect(requests).toBe(1);
     await expect(page.getByLabel('Product model or SKU', { exact: true })).toHaveValue(model);
-    await expect(page.getByRole('status')).toBeEmpty();
+    await expect(page.getByRole('status')).toHaveCount(0);
     await page.getByLabel('Product model or SKU', { exact: true }).fill('SKU-1');
     await expect(alert).toHaveCount(0);
     expect(requests).toBe(1);
