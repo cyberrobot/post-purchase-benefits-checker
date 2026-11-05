@@ -417,7 +417,7 @@ test('decisive failures stay separate from unknowns and missing timing is explic
   await expect(page.getByRole('heading', { name: 'Why this result?', exact: true })).toHaveCount(6);
   await page.getByRole('button', { name: 'Not eligible (2)', exact: true }).click();
   for (const card of await page.getByRole('article').all()) {
-    const explanation = card.getByRole('region', { name: 'Eligibility explanation' });
+    const explanation = card.getByRole('region', { name: /Why this result\?/ });
     await expect(
       explanation.getByRole('heading', { name: 'Conditions not met', exact: true }),
     ).toBeVisible();
@@ -441,14 +441,14 @@ test('decisive failures stay separate from unknowns and missing timing is explic
 
 test('unknown rule facts offer only supported correction guidance', async ({ page }) => {
   await check(page, 'UNKNOWN_RULE');
-  const explanation = page.getByRole('region', { name: 'Eligibility explanation' });
+  const explanation = page.getByRole('region', { name: /Why this result\?/ });
   await expect(
     explanation.getByRole('heading', { name: "Information we couldn't assess" }),
   ).toBeVisible();
   await expect(explanation).toContainText('You can add the optional purchase price');
   await expect(explanation).toContainText('The purchase country could not be assessed');
   await expect(explanation).toContainText(
-    'The checker has no fields for purchase channel, product condition or country.',
+    'The checker currently has no field for purchase country.',
   );
   await axe(page);
 });

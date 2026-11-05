@@ -68,11 +68,13 @@ function PromotionCard({
   manufacturer,
   evaluationDate,
   submittedPurchase,
+  promotionDisambiguator,
 }: {
   promotion: Promotion;
   manufacturer: string;
   evaluationDate: string;
   submittedPurchase: PurchaseRequest;
+  promotionDisambiguator?: string;
 }) {
   const status = statuses.find((s) => s.value === promotion.eligibility.classification)!;
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -106,7 +108,9 @@ function PromotionCard({
             {promotion.promotion_name || 'Promotion name not supplied'}
           </h2>
           {promotion.variant_name && promotion.variant_name !== promotion.promotion_name && (
-            <p className="mt-1 font-semibold text-ink-muted">{promotion.variant_name}</p>
+            <p id={`${id}-variant`} className="mt-1 font-semibold text-ink-muted">
+              {promotion.variant_name}
+            </p>
           )}
           <div className="mt-3 space-y-3">
             {promotion.benefits.length ? (
@@ -147,6 +151,8 @@ function PromotionCard({
             promotion={promotion}
             evaluationDate={evaluationDate}
             submittedPurchase={submittedPurchase}
+            promotionDisambiguator={promotionDisambiguator}
+            promotionLabelledBy={`${id}${promotion.variant_name && promotion.variant_name !== promotion.promotion_name ? ` ${id}-variant` : ''}`}
           />
         </div>
         <div className="min-w-0 space-y-3 lg:pt-2">
@@ -286,6 +292,19 @@ function PromotionCard({
     </article>
   );
 }
+function promotionAccessibleLabel(promotion: Promotion) {
+  const name = promotion.promotion_name || 'Promotion name not supplied';
+  return promotion.variant_name && promotion.variant_name !== promotion.promotion_name
+    ? `${name} ${promotion.variant_name}`
+    : name;
+}
+function promotionDisambiguator(promotions: Promotion[], promotion: Promotion, index: number) {
+  const label = promotionAccessibleLabel(promotion);
+  const collisionCount = promotions.filter(
+    (candidate) => promotionAccessibleLabel(candidate) === label,
+  ).length;
+  return collisionCount > 1 ? `Promotion result ${index + 1}` : undefined;
+}
 function RuleMatrix({
   promotions,
   evaluationDate,
@@ -315,7 +334,8 @@ function RuleMatrix({
           </tr>
         </thead>
         <tbody>
-          {promotions.map((promotion) => {
+          {promotions.map((promotion, index) => {
+            const id = `matrix-promotion-${promotion.promotion_variant_id}`;
             const status = statuses.find(
               (item) => item.value === promotion.eligibility.classification,
             )!;
@@ -325,9 +345,9 @@ function RuleMatrix({
                 className="border-b border-border last:border-0"
               >
                 <th scope="row" className="px-4 py-5 align-top font-semibold wrap-anywhere sm:px-6">
-                  {promotion.promotion_name || 'Promotion name not supplied'}
+                  <h2 id={id}>{promotion.promotion_name || 'Promotion name not supplied'}</h2>
                   {promotion.variant_name && (
-                    <span className="mt-1 block font-normal text-ink-muted">
+                    <span id={`${id}-variant`} className="mt-1 block font-normal text-ink-muted">
                       {promotion.variant_name}
                     </span>
                   )}
@@ -343,6 +363,8 @@ function RuleMatrix({
                     promotion={promotion}
                     evaluationDate={evaluationDate}
                     submittedPurchase={submittedPurchase}
+                    promotionLabelledBy={`${id}${promotion.variant_name ? ` ${id}-variant` : ''}`}
+                    promotionDisambiguator={promotionDisambiguator(promotions, promotion, index)}
                   />
                 </td>
                 <td className="px-4 py-5 align-top wrap-anywhere sm:px-6">
@@ -544,13 +566,14 @@ export function ResultsOverview() {
                 submittedPurchase={purchase}
               />
             ) : (
-              selected.map((promotion) => (
+              selected.map((promotion, index) => (
                 <PromotionCard
                   key={promotion.promotion_variant_id}
                   promotion={promotion}
                   manufacturer={purchase.brand}
                   evaluationDate={response.evaluation_date}
                   submittedPurchase={purchase}
+                  promotionDisambiguator={promotionDisambiguator(selected, promotion, index)}
                 />
               ))
             )

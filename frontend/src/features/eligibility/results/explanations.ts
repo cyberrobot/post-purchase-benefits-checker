@@ -43,6 +43,35 @@ export const ruleStatusLabels = {
   not_satisfied: 'Condition not met',
   unknown: 'Could not be assessed',
 } satisfies Record<Rule['status'], string>;
+const reasonStatuses = {
+  manufacturer_match: 'satisfied',
+  manufacturer_mismatch: 'not_satisfied',
+  product_match: 'satisfied',
+  product_mismatch: 'not_satisfied',
+  retailer_match: 'satisfied',
+  retailer_mismatch: 'not_satisfied',
+  purchase_channel_match: 'satisfied',
+  purchase_channel_mismatch: 'not_satisfied',
+  purchase_channel_unknown: 'unknown',
+  purchase_date_match: 'satisfied',
+  purchase_date_before_start: 'not_satisfied',
+  purchase_date_after_end: 'not_satisfied',
+  purchase_price_match: 'satisfied',
+  purchase_price_below_minimum: 'not_satisfied',
+  purchase_price_above_maximum: 'not_satisfied',
+  purchase_price_unknown: 'unknown',
+  condition_match: 'satisfied',
+  condition_mismatch: 'not_satisfied',
+  condition_unknown: 'unknown',
+  country_match: 'satisfied',
+  country_mismatch: 'not_satisfied',
+  country_unknown: 'unknown',
+} satisfies Record<Rule['reason_code'], Rule['status']>;
+function reasonStatus(code: ReasonCode): Rule['status'] | undefined {
+  return Object.hasOwn(reasonStatuses, code)
+    ? reasonStatuses[code as Rule['reason_code']]
+    : undefined;
+}
 export function explainPromotion(
   promotion: Promotion,
   context: { evaluationDate: string; submittedPurchase: PurchaseRequest },
@@ -53,17 +82,43 @@ export function explainPromotion(
     rule_evaluations: rules,
     claim_window_status: timing,
   } = promotion.eligibility;
-  const groups = [
+  // Match occurrences one for one: a decision reason and its evaluation describe
+  // one outcome, while repeated reasons/evaluations remain separate evidence.
+  const matchedReasons = new Set<number>();
+  const supplementaryRules = rules.flatMap((rule, index) => {
+    const match = reasons.findIndex(
+      (reason, reasonIndex) =>
+        !matchedReasons.has(reasonIndex) &&
+        reason.code === rule.reason_code &&
+        reason.rule_kind === rule.kind &&
+        reasonStatus(reason.code) === rule.status,
+    );
+    if (match !== -1) {
+      matchedReasons.add(match);
+      return [];
+    }
+    return [{ ...rule, index }];
+  });
+  const groupDefinitions: { heading: string; status: Rule['status'] }[] = [
     { heading: 'Conditions not met', status: 'not_satisfied' },
     { heading: "Information we couldn't assess", status: 'unknown' },
     { heading: 'Recorded checks passed', status: 'satisfied' },
-  ].map((group) => ({
+  ];
+  const groups = groupDefinitions.map((group) => ({
     ...group,
-    items: rules.flatMap((rule, index) =>
-      rule.status === group.status
-        ? [{ key: String(index), text: reasonLabels[rule.reason_code] }]
-        : [],
-    ),
+    decisive: reasons.some((reason) => reasonStatus(reason.code) === group.status),
+    items: [
+      ...reasons.flatMap((reason, index) =>
+        reasonStatus(reason.code) === group.status
+          ? [{ key: `reason-${index}`, text: reasonLabels[reason.code], decisive: true }]
+          : [],
+      ),
+      ...supplementaryRules.flatMap((rule) =>
+        rule.status === group.status
+          ? [{ key: `rule-${rule.index}`, text: reasonLabels[rule.reason_code], decisive: false }]
+          : [],
+      ),
+    ],
   }));
   const claimTiming =
     timing === null
@@ -80,22 +135,30 @@ export function explainPromotion(
     guidance.push(
       'Review the official terms and the recorded conditions not met. Completing unknown information alone does not resolve a recorded failed condition.',
     );
-  } else {
-    if (
-      reasons.some((reason) => reason.code === 'purchase_price_unknown') &&
-      context.submittedPurchase.purchase_price == null
-    )
+  }
+  if (
+    classification === 'POTENTIALLY_ELIGIBLE' &&
+    !groups[0].items.length &&
+    reasons.some((reason) => reason.code === 'purchase_price_unknown') &&
+    context.submittedPurchase.purchase_price == null
+  )
+    guidance.push(
+      'You can add the optional purchase price using Edit purchase details, then submit a new check.',
+    );
+  const unsupportedFacts = {
+    purchase_channel_unknown: 'purchase channel',
+    condition_unknown: 'product condition',
+    country_unknown: 'purchase country',
+  };
+  for (const code of new Set(reasons.map((reason) => reason.code))) {
+    if (Object.hasOwn(unsupportedFacts, code)) {
+      const fact = unsupportedFacts[code as keyof typeof unsupportedFacts];
       guidance.push(
-        'You can add the optional purchase price using Edit purchase details, then submit a new check.',
+        `The checker currently has no field for ${fact}. Review the official terms for this unassessed fact.`,
       );
-    if (
-      reasons.some((reason) =>
-        ['purchase_channel_unknown', 'condition_unknown', 'country_unknown'].includes(reason.code),
-      )
-    )
-      guidance.push(
-        'The checker has no fields for purchase channel, product condition or country. Review the official terms for these unassessed facts.',
-      );
+    }
+  }
+  if (classification !== 'NOT_ELIGIBLE') {
     if (classification === 'ELIGIBLE')
       guidance.push(
         'Check the official terms, claim requirements and official claim site before making a claim.',
@@ -113,6 +176,7 @@ export function explainPromotion(
     decisions: reasons.map((reason, index) => ({
       key: String(index),
       text: reasonLabels[reason.code],
+      grouped: reasonStatus(reason.code) !== undefined,
     })),
     groups,
     claimTiming,

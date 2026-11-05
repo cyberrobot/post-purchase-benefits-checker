@@ -5,38 +5,46 @@ export function EligibilityExplanation({
   promotion,
   evaluationDate,
   submittedPurchase,
+  promotionLabelledBy,
+  promotionDisambiguator,
 }: {
   promotion: Promotion;
   evaluationDate: string;
   submittedPurchase: PurchaseRequest;
+  promotionLabelledBy: string;
+  promotionDisambiguator?: string;
 }) {
   const view = explainPromotion(promotion, { evaluationDate, submittedPurchase });
+  const headingId = `eligibility-explanation-${promotion.promotion_variant_id}`;
+  const disambiguatorId = `${headingId}-disambiguator`;
+  const summaryReasons = view.decisions.filter((item) => !item.grouped);
   return (
     <section
-      aria-label="Eligibility explanation"
+      aria-labelledby={`${promotionLabelledBy}${promotionDisambiguator ? ` ${disambiguatorId}` : ''} ${headingId}`}
       className="mt-5 space-y-4 rounded-control border border-border/60 bg-surface-muted p-4 text-small leading-relaxed"
     >
-      <h3 className="font-bold text-ink">Why this result?</h3>
-      <p>{view.summary}</p>
-      {view.decisions.length ? (
-        <div>
-          <h4 className="font-semibold">Decision reasons</h4>
-          <ul className="mt-2 list-disc space-y-2 pl-5">
-            {view.decisions.map((item) => (
-              <li key={item.key}>{item.text}</li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <p>Detailed reasons were not supplied.</p>
+      {promotionDisambiguator && (
+        <span id={disambiguatorId} className="sr-only">
+          {promotionDisambiguator}
+        </span>
       )}
+      <h3 id={headingId} className="font-bold text-ink">
+        Why this result?
+      </h3>
+      <p>{view.summary}</p>
+      {!view.decisions.length && <p>Detailed reasons were not supplied.</p>}
       {view.groups
         .filter((group) => group.items.length > 0)
         .map((group) => {
           const content = (
             <ul className="mt-2 list-disc space-y-2 pl-5">
               {group.items.map((item) => (
-                <li key={item.key}>{item.text}</li>
+                <li key={item.key}>
+                  {item.decisive && (
+                    <span className="block text-xs font-semibold">Decision reason</span>
+                  )}
+                  {item.text}
+                </li>
               ))}
             </ul>
           );
@@ -51,6 +59,7 @@ export function EligibilityExplanation({
             <div key={group.status}>
               <h4 className="font-semibold">{group.heading}</h4>
               {group.status === 'unknown' &&
+                !group.decisive &&
                 promotion.eligibility.classification === 'NOT_ELIGIBLE' && (
                   <p>These unknown facts are not the reason for this decision.</p>
                 )}
@@ -58,6 +67,16 @@ export function EligibilityExplanation({
             </div>
           );
         })}
+      {summaryReasons.length > 0 && (
+        <div>
+          <h4 className="font-semibold">Decision reasons</h4>
+          <ul className="mt-2 list-disc space-y-2 pl-5">
+            {summaryReasons.map((item) => (
+              <li key={item.key}>{item.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {!promotion.eligibility.rule_evaluations.length && (
         <p>No individual rule checks were supplied.</p>
       )}
