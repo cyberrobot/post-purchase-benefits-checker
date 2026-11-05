@@ -266,3 +266,25 @@ server-only `BENEFITSCOUT_API_ORIGIN`; lack of a backend produces a recoverable 
 Native Safari date input behaviour, native 200% browser zoom and VoiceOver/NVDA announcements
 remain manual follow-up. Trusted lookup dropdowns, backend-supported channel/condition, full result
 cards/claim workflows/source panels, saved history and accounts are outside FE-05.
+
+### Eligibility results
+
+A successful explicit check from `/` or `/check` opens `/results`. Results show every
+returned promotion variant in backend order. Filters and the requirements and
+recorded-rule disclosures are local views of the validated response; they make no
+additional check requests. Eligibility, claim timing, reward values and source
+verification remain backend-provided data. An eligible result does not approve a claim.
+
+The submitted purchase and its response stay only in React memory in this tab.
+Use **Edit purchase details** to return to the prefilled checker; changing any field
+immediately clears the old result. A new check requires explicit submission.
+Reloading, opening another tab or directly visiting `/results` shows **No results
+in this tab** and a start link. There is no saved history, shareable result URL or
+browser storage. The existing server-only backend origin is required for real
+checks, but the empty results page renders without it.
+
+Cards are the default results presentation. Rule Matrix is an alternative view of
+existing backend-provided `rule_evaluations`; missing evaluations display **Not supplied**.
+Filters work consistently in both views, and switching views makes no additional
+API requests. Dedicated promotion detail pages, claim preparation workflows and saved
+result history remain future functionality. Official source and claim links open external sites.

@@ -53,8 +53,18 @@ try {
   assert.match(checkHtml, /Check your purchase/);
   assert.match(checkHtml, /Manufacturer \/ Brand/);
   assert.match(checkHtml, /Find My Benefits/);
+  const results = await fetch(`http://127.0.0.1:${port}/results`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  assert.equal(results.status, 200);
+  const resultsHtml = await results.text();
+  assert.equal((resultsHtml.match(/<main[\s>]/g) ?? []).length, 1);
+  assert.equal((resultsHtml.match(/<h1[\s>]/g) ?? []).length, 1);
+  assert.match(resultsHtml, /Your eligibility results/);
+  assert.match(resultsHtml, /No results in this tab/);
+  assert.match(resultsHtml, /Start a purchase check/);
   console.log(
-    'Production smoke passed: GET / and /check returned 200 with server-rendered content.',
+    'Production smoke passed: GET /, /check and /results returned 200 with server-rendered content.',
   );
 } catch (error) {
   console.error(logs);

@@ -1,3 +1,4 @@
+import { PurchaseCheckSessionProvider } from '@/features/eligibility/session/PurchaseCheckSession';
 import { render, screen, within } from '@testing-library/react';
 import Home from '@/app/page';
 import { QueryProvider } from '@/components/providers/QueryProvider';
@@ -5,7 +6,9 @@ import { QueryProvider } from '@/components/providers/QueryProvider';
 it('introduces purchase checking with the actual four-field entry form', () => {
   render(
     <QueryProvider>
-      <Home />
+      <PurchaseCheckSessionProvider>
+        <Home />
+      </PurchaseCheckSessionProvider>
     </QueryProvider>,
   );
   const main = screen.getByRole('main');

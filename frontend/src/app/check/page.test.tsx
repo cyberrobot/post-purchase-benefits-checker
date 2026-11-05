@@ -1,10 +1,13 @@
+import { PurchaseCheckSessionProvider } from '@/features/eligibility/session/PurchaseCheckSession';
 import { render, screen } from '@testing-library/react';
 import CheckPurchasePage from './page';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 it('renders the server page with one main, one heading and the shared form without API configuration', () => {
   render(
     <QueryProvider>
-      <CheckPurchasePage />
+      <PurchaseCheckSessionProvider>
+        <CheckPurchasePage />
+      </PurchaseCheckSessionProvider>
     </QueryProvider>,
   );
   expect(screen.getAllByRole('main')).toHaveLength(1);

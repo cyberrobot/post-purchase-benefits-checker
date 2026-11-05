@@ -2,10 +2,10 @@
   "name": "benefitscout-frontend",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.34.7",
+  "packageManager": "pnpm@12.16.1",
   "engines": {
     "node": "24.x",
-    "pnpm": "10.34.7"
+    "pnpm": "12.16.1"
   },
   "scripts": {
     "dev": "next dev",
