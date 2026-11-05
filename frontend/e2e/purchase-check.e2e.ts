@@ -163,13 +163,28 @@ for (const [model, message] of [
 test('six coherent variant matches across five promotions retain every classification', async ({
   page,
 }) => {
+  const sent = requests(page);
   await page.goto('/check');
   await fill(page, 'MIXED');
-  const responsePromise = page.waitForResponse((response) =>
-    response.url().endsWith('/api/eligibility/check'),
+  let responseBody: unknown;
+  await page.route(
+    '**/api/eligibility/check',
+    async (route) => {
+      try {
+        const response = await route.fetch();
+        // Retain the real body before fulfillment lets the app navigate to /results.
+        responseBody = await response.json();
+        await route.fulfill({ response });
+      } catch (error) {
+        await route.abort();
+        throw error;
+      }
+    },
+    { times: 1 },
   );
   await submit(page).click();
-  const data = checkPurchaseResponseSchema.parse(await (await responsePromise).json());
+  await expect(page).toHaveURL('/results');
+  const data = checkPurchaseResponseSchema.parse(responseBody);
   expect(data.outcome).toBe('resolved');
   if (data.outcome !== 'resolved') throw new Error('Expected resolved mixed fixture');
   expect(data.evaluation_date).toBe('2026-10-08');
@@ -252,6 +267,9 @@ test('six coherent variant matches across five promotions retain every classific
     await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
   await expect(page.getByRole('main')).toContainText('not an approved or paid claim');
   await axe(page);
+  expect(sent).toEqual([
+    { brand: 'Any Brand', model: 'MIXED', retailer: 'Any Shop', purchase_date: '2024-02-29' },
+  ]);
 });
 for (const [model, message] of [
   ['RATE', 'wait 15 seconds'],
