@@ -51,7 +51,9 @@ test('valid explicit UI submissions traverse the bridge once and clear stale com
   await expect(page).toHaveURL('/results');
   await expect(page.getByRole('button', { name: 'Not eligible (1)', exact: true })).toBeVisible();
   expect(requests).toHaveLength(3);
-  await expect(page.getByRole('article')).toContainText('At least one recorded rule is not met.');
+  await expect(page.getByRole('article')).toContainText(
+    'Does not meet one or more recorded eligibility conditions.',
+  );
   expect(errors).toEqual([]);
 });
 for (const [model, text] of [

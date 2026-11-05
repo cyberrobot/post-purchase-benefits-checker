@@ -11,6 +11,7 @@ import {
 } from '../session/PurchaseCheckSession';
 import { ResultsOverview } from './ResultsOverview';
 import { statuses } from './presentation';
+import { reasonLabels } from './explanations';
 const resolved = checkPurchaseResponseSchema.parse(rawResolved);
 const unresolved = checkPurchaseResponseSchema.parse(rawUnresolved);
 const promotion = populatedClaim.outcome === 'resolved' ? populatedClaim.promotions[0] : null;
@@ -63,7 +64,9 @@ it('shows the exact purchase, all benefits, source verification and functional s
   expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
   fireEvent.click(detailsButton);
   expect(within(card).getByText(/not an approved or paid claim/)).toBeVisible();
-  expect(within(card).getByText(/Claim window opens/)).toHaveTextContent('01 Oct 2026');
+  expect(within(card).getByText(/Claim window opens/).parentElement).toHaveTextContent(
+    '01 Oct 2026',
+  );
   expect(within(card).getByText('Recorded rules').closest('details')).not.toHaveAttribute('open');
   for (const link of within(card).getAllByRole('link')) {
     expect(link).toHaveAttribute('target', '_blank');
@@ -116,7 +119,8 @@ it('renders null and empty details honestly and zero filtered state can reset', 
     ],
   });
   expect(screen.getByText('No benefit details supplied.')).toBeVisible();
-  expect(screen.getByText('No explanation supplied.')).toBeVisible();
+  expect(screen.getByText('Detailed reasons were not supplied.')).toBeVisible();
+  expect(screen.getByText('No individual rule checks were supplied.')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'View Full Promotion Details' }));
   expect(screen.getByText(/The response lists no requirements/)).toBeVisible();
   expect(screen.queryByText(/Claim opens/)).not.toBeInTheDocument();
@@ -241,11 +245,17 @@ it('switches between cards and actual recorded rule rows while preserving filter
   expect(screen.queryByRole('article')).not.toBeInTheDocument();
   const table = screen.getByRole('table', { name: /Recorded rule matrix/ });
   expect(within(table).getAllByRole('row')).toHaveLength(3);
-  expect(within(table).getByText('product: satisfied')).toBeVisible();
-  expect(within(table).getByText('Not supplied')).toBeVisible();
+  expect(within(table).getByText('product: Recorded check passed')).toBeVisible();
+  expect(
+    within(table).getAllByText('No individual rule checks were supplied.').length,
+  ).toBeGreaterThan(0);
   expect(within(table).getByText('Variant without evaluations')).toBeVisible();
   for (const rule of promotion.eligibility.rule_evaluations) {
-    expect(within(table).getByText(rule.reason_code.replaceAll('_', ' '))).toBeVisible();
+    expect(
+      within(table)
+        .getAllByText(reasonLabels[rule.reason_code])
+        .some((element) => !element.closest('details')),
+    ).toBe(true);
   }
   fireEvent.click(screen.getByRole('button', { name: 'Not eligible (1)' }));
   expect(within(table).getAllByRole('row')).toHaveLength(2);
@@ -284,11 +294,10 @@ it('keeps long supplementary descriptions collapsed and exposes truthful upcomin
   });
   const card = screen.getByRole('article');
   expect(within(card).getByText('Claim not yet open')).toBeVisible();
-  expect(within(card).getByText('Retailer matches recorded promotion rules')).toBeVisible();
-  expect(within(card).getByText('Purchase price could not be evaluated')).toBeVisible();
-  expect(
-    within(card).getByText('Purchase date is before the recorded promotion starts'),
-  ).toBeVisible();
+  fireEvent.click(within(card).getByText('Recorded checks passed'));
+  expect(within(card).getAllByText(reasonLabels.retailer_match)[0]).toBeVisible();
+  expect(within(card).getAllByText(reasonLabels.purchase_price_unknown)[0]).toBeVisible();
+  expect(within(card).getAllByText(reasonLabels.purchase_date_before_start)[0]).toBeVisible();
   expect(within(card).getByText('A long supplementary benefit description.')).not.toBeVisible();
   const guide = within(card).getByRole('button', { name: 'Claim Window Guide' });
   fireEvent.click(guide);
@@ -305,4 +314,71 @@ it('keeps long supplementary descriptions collapsed and exposes truthful upcomin
     'href',
     promotion.provenance.official_source_url,
   );
+});
+
+it.each(statuses)('shows visible reasons for $value without opening details', (status) => {
+  if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
+  show({
+    ...populatedClaim,
+    promotions: [
+      {
+        ...promotion!,
+        claim_window: null,
+        eligibility: {
+          ...promotion!.eligibility,
+          classification: status.value,
+          reasons: [{ code: 'claim_window_unspecified', rule_kind: null }],
+          claim_window_status: null,
+        },
+      },
+    ],
+  });
+  const explanation = screen.getByRole('region', { name: 'Eligibility explanation' });
+  expect(within(explanation).getByRole('heading', { name: 'Why this result?' })).toBeVisible();
+  expect(within(explanation).getByText(status.meaning)).toBeVisible();
+  expect(within(explanation).getByText(reasonLabels.claim_window_unspecified)).toBeVisible();
+  expect(
+    within(explanation).getByText('Opening and deadline dates were not supplied.'),
+  ).toBeVisible();
+});
+it('keeps failed and unknown evidence separate and supplementary HTML escaped', () => {
+  if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
+  show({
+    ...populatedClaim,
+    promotions: [
+      {
+        ...promotion!,
+        explanation: ['<img src=x onerror=alert(1)>'],
+        eligibility: {
+          ...promotion!.eligibility,
+          classification: 'NOT_ELIGIBLE',
+          reasons: [
+            { code: 'retailer_mismatch', rule_kind: 'retailer' },
+            { code: 'purchase_price_below_minimum', rule_kind: 'purchase_price' },
+          ],
+          rule_evaluations: [
+            { kind: 'retailer', status: 'not_satisfied', reason_code: 'retailer_mismatch' },
+            { kind: 'country', status: 'unknown', reason_code: 'country_unknown' },
+            {
+              kind: 'purchase_price',
+              status: 'not_satisfied',
+              reason_code: 'purchase_price_below_minimum',
+            },
+          ],
+        },
+      },
+    ],
+  });
+  const explanation = screen.getByRole('region', { name: 'Eligibility explanation' });
+  expect(within(explanation).getByRole('heading', { name: 'Conditions not met' })).toBeVisible();
+  expect(
+    within(explanation).getByRole('heading', { name: "Information we couldn't assess" }),
+  ).toBeVisible();
+  expect(
+    within(explanation).getByText('These unknown facts are not the reason for this decision.'),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'View Full Promotion Details' }));
+  expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Claim requirements' })).toBeVisible();
+  expect(document.querySelector('img')).toBeNull();
 });

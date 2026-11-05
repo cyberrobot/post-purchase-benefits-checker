@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { ButtonLink } from '@/components/ui/ButtonLink';
 import { usePurchaseCheckSession } from '../session/PurchaseCheckSession';
+import type { PurchaseRequest } from '@/lib/api/eligibility.contract';
+import { EligibilityExplanation } from './EligibilityExplanation';
+import { reasonLabels, ruleStatusLabels } from './explanations';
 import { completion } from '../components/purchaseForm';
 import {
   calendarDate,
@@ -24,8 +27,8 @@ function RuleDetails({ promotion }: { promotion: Promotion }) {
         <ul className="mt-2 space-y-3">
           {promotion.eligibility.rule_evaluations.map((rule, i) => (
             <li key={i}>
-              {words(rule.kind)}: <strong>{words(rule.status)}</strong>
-              <span className="block text-small">{words(rule.reason_code)}</span>
+              {words(rule.kind)}: <strong>{ruleStatusLabels[rule.status]}</strong>
+              <span className="block text-small">{reasonLabels[rule.reason_code]}</span>
             </li>
           ))}
         </ul>
@@ -36,7 +39,7 @@ function RuleDetails({ promotion }: { promotion: Promotion }) {
       {promotion.eligibility.reasons.length ? (
         <ul className="mt-2 space-y-2">
           {promotion.eligibility.reasons.map((reason, i) => (
-            <li key={i}>{words(reason.code)}</li>
+            <li key={i}>{reasonLabels[reason.code]}</li>
           ))}
         </ul>
       ) : (
@@ -44,29 +47,6 @@ function RuleDetails({ promotion }: { promotion: Promotion }) {
       )}
     </details>
   );
-}
-function criterionLabel(reason: string) {
-  const labels: Record<string, string> = {
-    retailer_match: 'Retailer matches recorded promotion rules',
-    purchase_date_match: 'Purchase date meets the recorded date rule',
-    purchase_price_unknown: 'Purchase price could not be evaluated',
-    product_match: 'Product matches recorded promotion rules',
-    manufacturer_match: 'Manufacturer matches recorded promotion rules',
-    purchase_channel_match: 'Purchase channel matches recorded promotion rules',
-    country_match: 'Country matches recorded promotion rules',
-    condition_match: 'Product condition matches recorded promotion rules',
-    purchase_price_match: 'Purchase price meets the recorded price rule',
-    purchase_date_before_start: 'Purchase date is before the recorded promotion starts',
-    purchase_date_after_end: 'Purchase date is after the recorded promotion ends',
-    purchase_price_below_minimum: 'Purchase price is below the recorded minimum',
-    purchase_price_above_maximum: 'Purchase price is above the recorded maximum',
-  };
-  if (labels[reason]) return labels[reason];
-  if (reason.endsWith('_unknown'))
-    return `${words(reason.replace('_unknown', ''))} could not be evaluated`;
-  if (reason.endsWith('_mismatch'))
-    return `${words(reason.replace('_mismatch', ''))} does not match recorded promotion rules`;
-  return words(reason);
 }
 function ClockIcon() {
   return (
@@ -86,9 +66,13 @@ function ClockIcon() {
 function PromotionCard({
   promotion,
   manufacturer,
+  evaluationDate,
+  submittedPurchase,
 }: {
   promotion: Promotion;
   manufacturer: string;
+  evaluationDate: string;
+  submittedPurchase: PurchaseRequest;
 }) {
   const status = statuses.find((s) => s.value === promotion.eligibility.classification)!;
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -159,76 +143,11 @@ function PromotionCard({
               <p>No benefit details supplied.</p>
             )}
           </div>
-          <div className="mt-5 rounded-control border border-border/60 bg-surface-muted p-4 text-small leading-relaxed">
-            <span>
-              <strong className="text-ink">Rule explanation: </strong>
-              {promotion.explanation[0] || 'No explanation supplied.'}
-            </span>{' '}
-            {promotion.explanation.slice(1).map((line, i) => (
-              <span key={i} className="mt-1">
-                {line}
-              </span>
-            ))}
-          </div>
-          <section
-            aria-label="Evaluated criteria points"
-            className="mt-5 border-t border-border pt-4"
-          >
-            <h3 className="text-xs font-bold tracking-wider text-ink-muted uppercase">
-              Evaluated criteria points:
-            </h3>
-            <ul className="mt-3 grid gap-x-6 gap-y-2 text-small text-ink-muted sm:grid-cols-2">
-              {promotion.eligibility.rule_evaluations.map((rule, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span
-                    aria-hidden="true"
-                    className={`shrink-0 font-semibold ${rule.status === 'satisfied' ? 'text-success' : rule.status === 'unknown' ? 'text-amber-700' : 'text-red-700'}`}
-                  >
-                    {rule.status === 'satisfied' ? '✓' : rule.status === 'unknown' ? '?' : '×'}
-                  </span>
-                  <span>
-                    <span className="sr-only">{words(rule.status)}: </span>
-                    {criterionLabel(rule.reason_code)}
-                  </span>
-                </li>
-              ))}
-              {!promotion.eligibility.rule_evaluations.length && (
-                <li>Rule evaluations: Not supplied</li>
-              )}
-              {promotion.claim_window ? (
-                <>
-                  <li className="flex items-start gap-2">
-                    <ClockIcon />
-                    <span>
-                      Claim window opens{' '}
-                      <time dateTime={promotion.claim_window.opens_on}>
-                        {calendarDate(promotion.claim_window.opens_on)}
-                      </time>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <ClockIcon />
-                    <span>
-                      Claim deadline{' '}
-                      <time dateTime={promotion.claim_window.deadline_on}>
-                        {calendarDate(promotion.claim_window.deadline_on)}
-                      </time>
-                    </span>
-                  </li>
-                </>
-              ) : (
-                <li className="flex items-start gap-2">
-                  <ClockIcon />
-                  <span>
-                    Claim timing:{' '}
-                    {promotion.eligibility.claim_window_status
-                      ? words(promotion.eligibility.claim_window_status)
-                      : 'Not supplied'}
-                  </span>
-                </li>
-              )}
-            </ul>
-          </section>
+          <EligibilityExplanation
+            promotion={promotion}
+            evaluationDate={evaluationDate}
+            submittedPurchase={submittedPurchase}
+          />
         </div>
         <div className="min-w-0 space-y-3 lg:pt-2">
           {upcoming && (
@@ -289,7 +208,16 @@ function PromotionCard({
         className="mt-6 border-t border-border pt-5 text-small"
       >
         <h3 className="font-bold">Full promotion details</h3>
-        <p className="mt-2">{status.meaning}</p>
+        <h4 className="mt-3 font-semibold">Supplemental recorded explanation</h4>
+        {promotion.explanation.length ? (
+          promotion.explanation.map((line, index) => (
+            <p key={index} className="mt-2">
+              {line}
+            </p>
+          ))
+        ) : (
+          <p>No explanation supplied.</p>
+        )}
         <p className="mt-2">Publication status: {words(promotion.promotion_status)}</p>
         {promotion.benefits.map((benefit) => (
           <div key={benefit.benefit_id} className="mt-4">
@@ -358,7 +286,15 @@ function PromotionCard({
     </article>
   );
 }
-function RuleMatrix({ promotions }: { promotions: Promotion[] }) {
+function RuleMatrix({
+  promotions,
+  evaluationDate,
+  submittedPurchase,
+}: {
+  promotions: Promotion[];
+  evaluationDate: string;
+  submittedPurchase: PurchaseRequest;
+}) {
   return (
     <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-card">
       <table className="w-full table-fixed text-left text-small">
@@ -403,6 +339,11 @@ function RuleMatrix({ promotions }: { promotions: Promotion[] }) {
                     <span aria-hidden="true">{status.icon} </span>
                     {status.label}
                   </span>
+                  <EligibilityExplanation
+                    promotion={promotion}
+                    evaluationDate={evaluationDate}
+                    submittedPurchase={submittedPurchase}
+                  />
                 </td>
                 <td className="px-4 py-5 align-top wrap-anywhere sm:px-6">
                   {promotion.eligibility.rule_evaluations.length ? (
@@ -410,16 +351,16 @@ function RuleMatrix({ promotions }: { promotions: Promotion[] }) {
                       {promotion.eligibility.rule_evaluations.map((rule, index) => (
                         <li key={index}>
                           <span className="font-semibold">
-                            {words(rule.kind)}: {words(rule.status)}
+                            {words(rule.kind)}: {ruleStatusLabels[rule.status]}
                           </span>
                           <span className="mt-1 block text-ink-muted">
-                            {words(rule.reason_code)}
+                            {reasonLabels[rule.reason_code]}
                           </span>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    'Not supplied'
+                    'No individual rule checks were supplied.'
                   )}
                 </td>
               </tr>
@@ -597,13 +538,19 @@ export function ResultsOverview() {
           </p>
           {selected.length ? (
             viewMode === 'matrix' ? (
-              <RuleMatrix promotions={selected} />
+              <RuleMatrix
+                promotions={selected}
+                evaluationDate={response.evaluation_date}
+                submittedPurchase={purchase}
+              />
             ) : (
               selected.map((promotion) => (
                 <PromotionCard
                   key={promotion.promotion_variant_id}
                   promotion={promotion}
                   manufacturer={purchase.brand}
+                  evaluationDate={response.evaluation_date}
+                  submittedPurchase={purchase}
                 />
               ))
             )

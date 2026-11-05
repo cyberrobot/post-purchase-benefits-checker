@@ -288,3 +288,9 @@ existing backend-provided `rule_evaluations`; missing evaluations display **Not 
 Filters work consistently in both views, and switching views makes no additional
 API requests. Dedicated promotion detail pages, claim preparation workflows and saved
 result history remain future functionality. Official source and claim links open external sites.
+
+Results explain each promotion variant using the backend's recorded decision reasons. Failed
+conditions, facts that could not be assessed and passed checks are labelled separately. Claim
+periods refer to the response's evaluation date; missing timing or dates are never inferred.
+Claim requirements describe evidence that may be needed when claiming, without asserting that
+it is missing or complete. Eligibility does not mean a claim has been approved or paid.

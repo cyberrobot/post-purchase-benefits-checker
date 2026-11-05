@@ -123,7 +123,8 @@ const server = createServer(
       purchase.model === 'POPULATED' ||
       purchase.model === 'NOT_ELIGIBLE' ||
       purchase.model === 'UNSAFE' ||
-      purchase.model === 'MIXED'
+      purchase.model === 'MIXED' ||
+      purchase.model === 'UNKNOWN_RULE'
     ) {
       const populated = populatedResponse(purchase.model === 'UNSAFE');
       const original = populated.promotions[0];
@@ -133,18 +134,46 @@ const server = createServer(
         ...original,
         eligibility: {
           classification: 'NOT_ELIGIBLE',
-          reasons: [{ code: 'purchase_date_before_start', rule_kind: 'purchase_date' }],
+          reasons: [
+            { code: 'purchase_date_before_start', rule_kind: 'purchase_date' },
+            { code: 'retailer_mismatch', rule_kind: 'retailer' },
+          ],
           rule_evaluations: [
             {
               kind: 'purchase_date',
               status: 'not_satisfied',
               reason_code: 'purchase_date_before_start',
             },
+            { kind: 'retailer', status: 'not_satisfied', reason_code: 'retailer_mismatch' },
+            { kind: 'purchase_price', status: 'unknown', reason_code: 'purchase_price_unknown' },
           ],
           claim_window_status: 'open',
         },
         explanation: ['The purchase date is before the recorded purchase period.'],
       };
+      if (purchase.model === 'UNKNOWN_RULE')
+        populated.promotions = [
+          {
+            ...original,
+            eligibility: {
+              classification: 'POTENTIALLY_ELIGIBLE',
+              reasons: [
+                { code: 'purchase_price_unknown', rule_kind: 'purchase_price' },
+                { code: 'country_unknown', rule_kind: 'country' },
+              ],
+              rule_evaluations: [
+                {
+                  kind: 'purchase_price',
+                  status: 'unknown',
+                  reason_code: 'purchase_price_unknown',
+                },
+                { kind: 'country', status: 'unknown', reason_code: 'country_unknown' },
+                ...original.eligibility.rule_evaluations,
+              ],
+              claim_window_status: 'open',
+            },
+          },
+        ];
       if (purchase.model === 'NOT_ELIGIBLE') populated.promotions = [notEligible];
       if (purchase.model === 'MIXED') {
         // Evaluation is 2026-10-08: open includes that date, future starts the

@@ -59,7 +59,7 @@ for (const path of ['/', '/check']) {
     const rules = card.locator('summary', { hasText: 'Recorded rules' });
     await rules.focus();
     await page.keyboard.press('Enter');
-    await expect(card.getByText('product: satisfied')).toBeVisible();
+    await expect(card.getByText('product: Recorded check passed')).toBeVisible();
     for (const [label, href] of [
       ['Official Portal Terms', 'https://example.com/offer'],
       ['Open official claim site', 'https://example.com/claim'],
@@ -99,7 +99,7 @@ test('all six variants survive status filtering with stable totals and zero addi
   for (const [label, count] of [
     ['Eligible', 1],
     ['Potentially eligible', 1],
-    ['Upcoming claim period', 1],
+    ['Claim not yet open', 1],
     ['Claim period expired', 1],
     ['Not eligible', 2],
   ] as const) {
@@ -279,9 +279,11 @@ test('keyboard view controls show recorded matrix outcomes without another reque
   const table = page.getByRole('table', { name: /Recorded rule matrix/ });
   await expect(table.getByRole('row')).toHaveCount(7);
   await expect(page.getByRole('article')).toHaveCount(0);
-  await expect(table).toContainText('product: satisfied');
-  await expect(table).toContainText('purchase date: not satisfied');
-  await expect(table).toContainText('purchase date before start');
+  await expect(table).toContainText('product: Recorded check passed');
+  await expect(table).toContainText('purchase date: Condition not met');
+  await expect(table).toContainText(
+    'The purchase date is before the recorded qualifying purchase period.',
+  );
   await page.getByRole('button', { name: 'Not eligible (2)', exact: true }).click();
   await expect(table.getByRole('row')).toHaveCount(3);
   await axe(page);
@@ -367,7 +369,7 @@ test('upcoming card has functional guide, navy action hierarchy and responsive v
   page,
 }, testInfo) => {
   await check(page, 'MIXED');
-  await page.getByRole('button', { name: 'Upcoming claim period (1)', exact: true }).click();
+  await page.getByRole('button', { name: 'Claim not yet open (1)', exact: true }).click();
   const card = page.getByRole('article');
   await expect(card.getByText(/Claim not yet open/)).toBeVisible();
   const guide = card.getByRole('button', { name: 'Claim Window Guide' });
@@ -405,5 +407,48 @@ test('upcoming card has functional guide, navy action hierarchy and responsive v
       fullPage: true,
     });
   }
+  await axe(page);
+});
+
+test('decisive failures stay separate from unknowns and missing timing is explicit', async ({
+  page,
+}) => {
+  await check(page, 'MIXED');
+  await expect(page.getByRole('heading', { name: 'Why this result?', exact: true })).toHaveCount(6);
+  await page.getByRole('button', { name: 'Not eligible (2)', exact: true }).click();
+  for (const card of await page.getByRole('article').all()) {
+    const explanation = card.getByRole('region', { name: 'Eligibility explanation' });
+    await expect(
+      explanation.getByRole('heading', { name: 'Conditions not met', exact: true }),
+    ).toBeVisible();
+    await expect(explanation).toContainText('The retailer does not match');
+    await expect(explanation).toContainText(
+      'These unknown facts are not the reason for this decision.',
+    );
+    await expect(explanation).not.toContainText('add the optional purchase price');
+  }
+  await page.getByRole('button', { name: 'Potentially eligible (1)', exact: true }).click();
+  const potential = page.getByRole('article');
+  await expect(potential).toContainText(
+    'The claim period could not be determined from the recorded information.',
+  );
+  await expect(potential).not.toContainText('add the optional purchase price');
+  await page.getByRole('button', { name: 'Claim period expired (1)', exact: true }).click();
+  await expect(page.getByRole('article')).toContainText('07 Oct 2026');
+  await expect(page.getByRole('article')).toContainText('As evaluated on 08 Oct 2026.');
+  await axe(page);
+});
+
+test('unknown rule facts offer only supported correction guidance', async ({ page }) => {
+  await check(page, 'UNKNOWN_RULE');
+  const explanation = page.getByRole('region', { name: 'Eligibility explanation' });
+  await expect(
+    explanation.getByRole('heading', { name: "Information we couldn't assess" }),
+  ).toBeVisible();
+  await expect(explanation).toContainText('You can add the optional purchase price');
+  await expect(explanation).toContainText('The purchase country could not be assessed');
+  await expect(explanation).toContainText(
+    'The checker has no fields for purchase channel, product condition or country.',
+  );
   await axe(page);
 });
