@@ -117,16 +117,22 @@ it.each([
   ['fixed window opening boundary', 'open', '2026-10-08', '2026-11-30'],
   ['relative window deadline boundary', 'open', '2026-09-08', '2026-10-08'],
   ['minimum-wait opening boundary', 'not_yet_open', '2026-10-09', '2026-11-30'],
-] as const)('preserves backend %s projection at inclusive dates', (_case, status, opensOn, deadlineOn) => {
-  expect(
-    presentClaimPeriod({
-      ...promotion,
-      eligibility: { ...promotion.eligibility, claim_window_status: status },
-      claim_window: { status, opens_on: opensOn, deadline_on: deadlineOn },
-    }),
-  ).toEqual({
-    timingLabel: status === 'open' ? 'Claim period was open when checked' : 'Claim period had not opened when checked',
-    opensOn,
-    deadlineOn,
-  });
-});
+] as const)(
+  'preserves backend %s projection at inclusive dates',
+  (_case, status, opensOn, deadlineOn) => {
+    expect(
+      presentClaimPeriod({
+        ...promotion,
+        eligibility: { ...promotion.eligibility, claim_window_status: status },
+        claim_window: { status, opens_on: opensOn, deadline_on: deadlineOn },
+      }),
+    ).toEqual({
+      timingLabel:
+        status === 'open'
+          ? 'Claim period was open when checked'
+          : 'Claim period had not opened when checked',
+      opensOn,
+      deadlineOn,
+    });
+  },
+);
