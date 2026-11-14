@@ -181,8 +181,10 @@ def journey(catalogue, postgres_engine, monkeypatch):
                 assert not result.is_error, f"{case.brand}/MCP: unexpected tool error"
                 validate(args, tool.input_schema)
                 validate(result.structured_content, tool.output_schema)
-                assert result.structured_content == response.json(), f"{case.brand}/REST-MCP parity"
                 data = response.json()
+                shared_data = dict(data)
+                shared_data.pop("public_slug", None)
+                assert result.structured_content == shared_data, f"{case.brand}/REST-MCP parity"
                 assert data["evaluation_date"] == clock[0].isoformat()
                 await inspect(data, client, tools, http)
                 assert postgres_engine.pool.checkedout() == 0
@@ -666,7 +668,9 @@ def test_mvp_unpublished_and_invalid_publication_never_surface(
                         rest = await http.post(PATH, json=case.arguments())
                         result = await client.call_tool("check_purchase", case.arguments())
                         assert rest.status_code == 200 and not result.is_error
-                        assert result.structured_content == rest.json()
+                        rest_payload = rest.json()
+                        rest_payload.pop("public_slug", None)
+                        assert result.structured_content == rest_payload
                         await no_match(rest.json())
 
         asyncio.run(check_all())

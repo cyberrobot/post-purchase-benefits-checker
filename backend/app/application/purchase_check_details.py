@@ -98,6 +98,7 @@ class PublishedPromotionDetails:
     requirements: tuple[PublishedRequirement, ...] = ()
     sources: tuple[PromotionSourceRecord, ...] = ()
     claim_min_wait_days: int | None = None
+    public_slug: str | None = None
 
     def __post_init__(self):
         for value in (self.promotion_id, self.promotion_variant_id, self.manufacturer_id):
@@ -171,6 +172,7 @@ class CheckPurchasePromotionResult:
     provenance: PublishedProvenance
     sources: tuple[PromotionSourceRecord, ...]
     explanation: tuple[str, ...]
+    public_slug: str | None = None
 
     @property
     def last_verified_at(self) -> datetime:

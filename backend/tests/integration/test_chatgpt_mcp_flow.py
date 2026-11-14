@@ -190,7 +190,9 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
                 assert first.calls == [("check_purchase", case.expected_arguments)]
                 rest = await http.post(PATH, json=case.expected_arguments)
                 assert rest.status_code == 200
-                assert first.structured_content == rest.json()
+                rest_payload = rest.json()
+                rest_payload.pop("public_slug", None)
+                assert first.structured_content == rest_payload
                 data = first.structured_content
                 assert len(data["promotions"]) == 3
                 primary = [p for p in data["promotions"] if p["promotion_id"] == str(promotions[0])]
@@ -205,7 +207,9 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
                 no_price = scenario(no_price_request)
                 trace = await flow.run(no_price)
                 rest = await http.post(PATH, json=no_price.expected_arguments)
-                assert trace.structured_content == rest.json()
+                rest_payload = rest.json()
+                rest_payload.pop("public_slug", None)
+                assert trace.structured_content == rest_payload
                 assert trace.submitted_arguments.get("purchase_price") is None
                 assert any(
                     b["reward_unavailable_reason"] == "purchase_price_required_for_reward"
@@ -239,7 +243,9 @@ def test_no_match_unresolved_distinct(mcp_app, published_graph, postgres_engine)
                     case = scenario(request, **changes)
                     trace = await flow.run(case)
                     rest = await http.post(PATH, json=case.expected_arguments)
-                    assert trace.structured_content == rest.json()
+                    rest_payload = rest.json()
+                    rest_payload.pop("public_slug", None)
+                    assert trace.structured_content == rest_payload
                     assert trace.structured_content["outcome"] == outcome
                     if outcome == "resolved":
                         assert trace.structured_content["promotions"] == []

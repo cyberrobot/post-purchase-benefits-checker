@@ -89,7 +89,10 @@ def test_protocol_rest_full_parity_snapshot_and_cleanup(
                     assert rest.status_code == 200
                     result = await client.call_tool("check_purchase", arguments)
                     assert not result.is_error
-                    assert result.structured_content == rest.json()
+                    rest_data = rest.json()
+                    for offer in rest_data.get("promotions", []):
+                        assert "--" in offer.pop("public_slug")
+                    assert result.structured_content == rest_data
                     validate(result.structured_content, tools.tools[0].output_schema)
                     assert postgres_engine.pool.checkedout() == 0
                     if not changes:

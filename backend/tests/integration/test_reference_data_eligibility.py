@@ -61,7 +61,9 @@ def test_seeded_rest_mcp_publication_journey(postgres_engine, migrated_test_data
                     assert response.status_code == 200
                     mcp = await client.call_tool("check_purchase", arguments)
                     assert not mcp.is_error
-                    assert mcp.structured_content == response.json()
+                    rest_payload = response.json()
+                    rest_payload.pop("public_slug", None)
+                    assert mcp.structured_content == rest_payload
                     return response.json()
 
                 empty = await check(body)

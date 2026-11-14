@@ -16,6 +16,7 @@ from app.domain.eligibility_result import (
 )
 from app.domain.eligibility_rules import RuleKind, RuleReasonCode, RuleStatus
 from app.domain.identity_normalisation import normalise_identifier, normalise_text
+from app.domain.promotion_identity import PUBLIC_SLUG_PATTERN
 from app.domain.promotion_lifecycle import PromotionStatus
 from app.domain.promotion_provenance import SourceRole, SourceType
 from app.domain.requirements import RequirementType
@@ -249,6 +250,29 @@ class UnresolvedResponse(BaseModel):
 
 
 CheckResponse = Annotated[ResolvedResponse | UnresolvedResponse, Field(discriminator="outcome")]
+
+
+class RestPromotion(Promotion):
+    public_slug: str | None = Field(default=None, pattern=PUBLIC_SLUG_PATTERN, max_length=512)
+
+
+class RestResolvedResponse(ResolvedResponse):
+    promotions: list[RestPromotion]
+
+
+RestCheckResponse = Annotated[
+    RestResolvedResponse | UnresolvedResponse, Field(discriminator="outcome")
+]
+
+
+def map_rest_result(result, evaluation_date):
+    mapped = map_result(result, evaluation_date)
+    if not isinstance(mapped, ResolvedResponse):
+        return mapped
+    data = mapped.model_dump()
+    for promotion, match in zip(data["promotions"], result.promotions, strict=True):
+        promotion["public_slug"] = match.public_slug
+    return RestResolvedResponse.model_validate(data)
 
 
 class Problem(BaseModel):
