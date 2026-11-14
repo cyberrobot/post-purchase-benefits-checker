@@ -9,7 +9,7 @@ const submittedPurchase: PurchaseRequest = {
   retailer: 'Shop',
   purchase_date: '2024-02-29',
 };
-const context = { evaluationDate: '2026-10-08', submittedPurchase };
+const context = { submittedPurchase };
 const explain = (eligibility: Partial<Promotion['eligibility']>, extra: Partial<Promotion> = {}) =>
   explainPromotion(
     { ...promotion, ...extra, eligibility: { ...promotion.eligibility, ...eligibility } },
@@ -38,7 +38,6 @@ it.each(statuses)(
     expect(view.summary).toBe(status.meaning);
     expect(view.decisions).toEqual([]);
     expect(view.groups.every((group) => group.items.length === 0)).toBe(true);
-    expect(view.evaluatedOn).toBe('As evaluated on 08 Oct 2026.');
   },
 );
 it('retains repeated failed kinds and independent unknown evidence in backend order', () => {
@@ -77,7 +76,6 @@ it('distinguishes unspecified timing from missing purchase facts', () => {
     { claim_window: null },
   );
   expect(view.decisions.map((item) => item.text)).toContain(reasonLabels.claim_window_unspecified);
-  expect(view.claimTiming).toBe('Claim period not supplied.');
   expect(view.guidance.join(' ')).not.toMatch(/price|receipt|missing/);
 });
 it('only suggests optional price when absent and refers unsupported facts to terms', () => {
@@ -214,13 +212,3 @@ it('does not suggest adding price to reverse a known failure, including contradi
     expect(view.summary).toBe(statuses.find((status) => status.value === classification)!.meaning);
   }
 });
-it.each(['open', 'not_yet_open', 'expired', null] as const)(
-  'uses supplied claim status %s even without dates',
-  (timing) => {
-    const view = explain({ claim_window_status: timing }, { claim_window: null });
-    expect(view.claimTiming).toBe(
-      timing === null ? 'Claim period not supplied.' : reasonLabels[`claim_window_${timing}`],
-    );
-    expect(JSON.stringify(view)).not.toContain('2026-11-30');
-  },
-);

@@ -1,10 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { ButtonLink } from '@/components/ui/ButtonLink';
 import { usePurchaseCheckSession } from '../session/PurchaseCheckSession';
 import type { PurchaseRequest } from '@/lib/api/eligibility.contract';
 import { EligibilityExplanation } from './EligibilityExplanation';
+import { RewardDetails } from './RewardDetails';
+import { ClaimWindowSummary } from './ClaimWindowSummary';
 import { reasonLabels, ruleStatusLabels } from './explanations';
 import { completion } from '../components/purchaseForm';
 import {
@@ -48,21 +50,6 @@ function RuleDetails({ promotion }: { promotion: Promotion }) {
     </details>
   );
 }
-function ClockIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5 shrink-0"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 6v6l4 2" />
-    </svg>
-  );
-}
 function PromotionCard({
   promotion,
   manufacturer,
@@ -78,14 +65,21 @@ function PromotionCard({
 }) {
   const status = statuses.find((s) => s.value === promotion.eligibility.classification)!;
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
   const id = `promotion-${promotion.promotion_variant_id}`;
-  const upcoming = promotion.eligibility.classification === 'CLAIM_NOT_YET_OPEN';
+  const failed = promotion.eligibility.classification === 'NOT_ELIGIBLE';
   const actionClass =
     'flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-control px-4 py-3 text-center text-small font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand';
+  const explanation = (
+    <EligibilityExplanation
+      promotion={promotion}
+      submittedPurchase={submittedPurchase}
+      promotionDisambiguator={promotionDisambiguator}
+      promotionLabelledBy={`${id}${promotion.variant_name && promotion.variant_name !== promotion.promotion_name ? ` ${id}-variant` : ''}`}
+    />
+  );
   return (
     <article
-      aria-labelledby={id}
+      aria-labelledby={`${id}${promotion.variant_name && promotion.variant_name !== promotion.promotion_name ? ` ${id}-variant` : ''}`}
       className="min-w-0 rounded-feature border border-border bg-surface p-5 shadow-sm wrap-anywhere md:p-8 lg:p-10"
     >
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] lg:gap-8">
@@ -95,7 +89,7 @@ function PromotionCard({
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold tracking-wide uppercase ${status.accent}`}
             >
               <span aria-hidden="true">{status.icon}</span>
-              {upcoming ? 'Claim not yet open' : status.label}
+              {status.label}
             </span>
             <p className="text-small text-ink-muted">
               {manufacturer && <>{manufacturer} · </>}Verified{' '}
@@ -112,62 +106,15 @@ function PromotionCard({
               {promotion.variant_name}
             </p>
           )}
-          <div className="mt-3 space-y-3">
-            {promotion.benefits.length ? (
-              promotion.benefits.map((benefit, index) => (
-                <div key={benefit.benefit_id}>
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h3
-                      className={
-                        index === 0
-                          ? 'text-2xl leading-tight font-bold text-ink md:text-[2.5rem]'
-                          : 'text-xl leading-snug font-bold text-ink'
-                      }
-                    >
-                      {benefit.benefit_type === 'cashback' && benefit.cashback_reward_gbp !== null
-                        ? `${gbp(benefit.cashback_reward_gbp)} cashback`
-                        : benefit.name || words(benefit.benefit_type)}
-                    </h3>
-                    {benefit.benefit_type === 'cashback' &&
-                      benefit.cashback_reward_gbp !== null && (
-                        <span className="text-small text-ink-muted">recorded cashback benefit</span>
-                      )}
-                  </div>
-                  {benefit.benefit_type === 'cashback' && benefit.cashback_reward_gbp === null && (
-                    <p className="mt-1 text-small text-ink-muted">
-                      {benefit.reward_unavailable_explanation ||
-                        (benefit.reward_unavailable_reason
-                          ? words(benefit.reward_unavailable_reason)
-                          : 'No monetary reward amount supplied.')}
-                    </p>
-                  )}
-                </div>
-              ))
-            ) : (
-              <p>No benefit details supplied.</p>
-            )}
-          </div>
-          <EligibilityExplanation
-            promotion={promotion}
-            evaluationDate={evaluationDate}
-            submittedPurchase={submittedPurchase}
-            promotionDisambiguator={promotionDisambiguator}
-            promotionLabelledBy={`${id}${promotion.variant_name && promotion.variant_name !== promotion.promotion_name ? ` ${id}-variant` : ''}`}
+          {failed && explanation}
+          <RewardDetails
+            benefits={promotion.benefits}
+            hasPurchasePrice={submittedPurchase.purchase_price != null}
           />
+          <ClaimWindowSummary promotion={promotion} evaluationDate={evaluationDate} />
+          {!failed && explanation}
         </div>
         <div className="min-w-0 space-y-3 lg:pt-2">
-          {upcoming && (
-            <button
-              type="button"
-              aria-expanded={guideOpen}
-              aria-controls={`${id}-guide`}
-              onClick={() => setGuideOpen(!guideOpen)}
-              className={`${actionClass} bg-ink text-white hover:bg-ink/90`}
-            >
-              <ClockIcon />
-              Claim Window Guide
-            </button>
-          )}
           <button
             type="button"
             aria-expanded={detailsOpen}
@@ -188,25 +135,6 @@ function PromotionCard({
           </a>
         </div>
       </div>
-      {upcoming && (
-        <section
-          id={`${id}-guide`}
-          hidden={!guideOpen}
-          aria-label="Claim window guide"
-          className="mt-6 rounded-control border border-border bg-surface-muted p-5 text-small"
-        >
-          <h3 className="font-bold">Claim window guide</h3>
-          <p className="mt-2">{status.meaning}</p>
-          {promotion.claim_window ? (
-            <p className="mt-2">
-              Recorded opening date: {calendarDate(promotion.claim_window.opens_on)}. Recorded
-              deadline: {calendarDate(promotion.claim_window.deadline_on)}.
-            </p>
-          ) : (
-            <p className="mt-2">Opening and deadline dates were not supplied.</p>
-          )}
-        </section>
-      )}
       <section
         id={`${id}-details`}
         hidden={!detailsOpen}
@@ -225,14 +153,6 @@ function PromotionCard({
           <p>No explanation supplied.</p>
         )}
         <p className="mt-2">Publication status: {words(promotion.promotion_status)}</p>
-        {promotion.benefits.map((benefit) => (
-          <div key={benefit.benefit_id} className="mt-4">
-            <h4 className="font-semibold">
-              {benefit.name || words(benefit.benefit_type)} · {words(benefit.benefit_type)}
-            </h4>
-            {benefit.description && <p className="mt-1">{benefit.description}</p>}
-          </div>
-        ))}
         <h4 className="mt-5 font-semibold">Claim requirements</h4>
         {promotion.requirements.length ? (
           <ul className="mt-2 list-disc space-y-2 pl-5">
@@ -307,15 +227,24 @@ function promotionDisambiguator(promotions: Promotion[], promotion: Promotion, i
 }
 function RuleMatrix({
   promotions,
-  evaluationDate,
   submittedPurchase,
+  showCards,
 }: {
   promotions: Promotion[];
-  evaluationDate: string;
+  showCards: () => void;
   submittedPurchase: PurchaseRequest;
 }) {
   return (
     <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-card">
+      <p className="px-4 pt-4 text-small sm:px-6">
+        <button
+          type="button"
+          onClick={showCards}
+          className="min-h-11 cursor-pointer font-semibold underline underline-offset-4"
+        >
+          View benefits and claim periods in Cards
+        </button>
+      </p>
       <table className="w-full table-fixed text-left text-small">
         <caption className="px-6 py-5 text-left font-semibold">
           Recorded rule matrix — outcomes supplied by the eligibility check
@@ -361,7 +290,6 @@ function RuleMatrix({
                   </span>
                   <EligibilityExplanation
                     promotion={promotion}
-                    evaluationDate={evaluationDate}
                     submittedPurchase={submittedPurchase}
                     promotionLabelledBy={`${id}${promotion.variant_name ? ` ${id}-variant` : ''}`}
                     promotionDisambiguator={promotionDisambiguator(promotions, promotion, index)}
@@ -397,6 +325,7 @@ export function ResultsOverview() {
   const { snapshot } = usePurchaseCheckSession();
   const [filter, setFilter] = useState<Classification | 'all'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'matrix'>('cards');
+  const cardsViewRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     document.getElementById('main-content')?.focus();
   }, []);
@@ -491,6 +420,7 @@ export function ResultsOverview() {
                     type="button"
                     key={mode}
                     aria-pressed={viewMode === mode}
+                    ref={mode === 'cards' ? cardsViewRef : undefined}
                     onClick={() => setViewMode(mode)}
                     className={`min-h-11 cursor-pointer rounded-control px-3 py-1.5 transition-colors ${viewMode === mode ? 'bg-surface text-ink shadow-xs' : 'text-ink-muted hover:text-ink'}`}
                   >
@@ -562,7 +492,10 @@ export function ResultsOverview() {
             viewMode === 'matrix' ? (
               <RuleMatrix
                 promotions={selected}
-                evaluationDate={response.evaluation_date}
+                showCards={() => {
+                  setViewMode('cards');
+                  cardsViewRef.current?.focus();
+                }}
                 submittedPurchase={purchase}
               />
             ) : (

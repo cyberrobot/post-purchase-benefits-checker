@@ -121,6 +121,7 @@ const server = createServer(
     }
     if (
       purchase.model === 'POPULATED' ||
+      purchase.model === 'REWARDS' ||
       purchase.model === 'NOT_ELIGIBLE' ||
       purchase.model === 'UNSAFE' ||
       purchase.model === 'MIXED' ||
@@ -128,6 +129,35 @@ const server = createServer(
     ) {
       const populated = populatedResponse(purchase.model === 'UNSAFE');
       const original = populated.promotions[0];
+      if (purchase.model === 'REWARDS') {
+        const benefit = original.benefits[0];
+        original.benefits.push(
+          {
+            ...benefit,
+            benefit_id: '00000000-0000-0000-0000-000000000040',
+            name: 'Purchase price cashback',
+            cashback_reward_gbp: purchase.purchase_price == null ? null : '80.00',
+            reward_unavailable_reason:
+              purchase.purchase_price == null ? 'purchase_price_required_for_reward' : null,
+          },
+          {
+            ...benefit,
+            benefit_id: '00000000-0000-0000-0000-000000000041',
+            benefit_type: 'extended_warranty',
+            name: 'Recorded cover',
+            description: 'See the official coverage terms.',
+            cashback_reward_gbp: null,
+          },
+          {
+            ...benefit,
+            benefit_id: '00000000-0000-0000-0000-000000000042',
+            benefit_type: 'free_gift',
+            name: 'Recorded gift',
+            description: 'See the official gift terms.',
+            cashback_reward_gbp: null,
+          },
+        );
+      }
       // Mirrors classify_eligibility: a failed rule precedes claim timing;
       // satisfied rules use the recorded claim state (including unspecified).
       const notEligible = {

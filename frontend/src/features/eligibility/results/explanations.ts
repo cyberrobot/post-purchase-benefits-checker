@@ -1,5 +1,5 @@
 import type { PurchaseRequest } from '@/lib/api/eligibility.contract';
-import { calendarDate, statuses, type Promotion } from './presentation';
+import { statuses, type Promotion } from './presentation';
 type ReasonCode = Promotion['eligibility']['reasons'][number]['code'];
 type Rule = Promotion['eligibility']['rule_evaluations'][number];
 export const reasonLabels = {
@@ -74,7 +74,7 @@ function reasonStatus(code: ReasonCode): Rule['status'] | undefined {
 }
 export function explainPromotion(
   promotion: Promotion,
-  context: { evaluationDate: string; submittedPurchase: PurchaseRequest },
+  context: { submittedPurchase: PurchaseRequest },
 ) {
   const {
     classification,
@@ -120,16 +120,6 @@ export function explainPromotion(
       ),
     ],
   }));
-  const claimTiming =
-    timing === null
-      ? 'Claim period not supplied.'
-      : reasonLabels[
-          {
-            open: 'claim_window_open',
-            not_yet_open: 'claim_window_not_yet_open',
-            expired: 'claim_window_expired',
-          }[timing] as ReasonCode
-        ];
   const guidance: string[] = [];
   if (classification === 'NOT_ELIGIBLE') {
     guidance.push(
@@ -163,8 +153,6 @@ export function explainPromotion(
       guidance.push(
         'Check the official terms, claim requirements and official claim site before making a claim.',
       );
-    if (classification === 'CLAIM_NOT_YET_OPEN' && promotion.claim_window)
-      guidance.push(`Claim period starts on ${calendarDate(promotion.claim_window.opens_on)}.`);
     if (
       classification === 'EXPIRED' ||
       (classification === 'POTENTIALLY_ELIGIBLE' && timing === null)
@@ -179,8 +167,6 @@ export function explainPromotion(
       grouped: reasonStatus(reason.code) !== undefined,
     })),
     groups,
-    claimTiming,
-    evaluatedOn: `As evaluated on ${calendarDate(context.evaluationDate)}.`,
     guidance,
   };
 }

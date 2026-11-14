@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { expectReflow } from './support-layout';
+import { expectReadable, expectReflow } from './support-layout';
 async function check(page: Page, model = 'POPULATED', path = '/check') {
   await page.goto(path);
   await page.getByLabel('Manufacturer / Brand', { exact: true }).fill('Submitted brand');
@@ -47,7 +47,7 @@ for (const path of ['/', '/check']) {
       /Paid amount|ONLINE|Invoice date|Purchase verified/,
     );
     const card = page.getByRole('article');
-    await expect(card.getByRole('heading', { name: '£10.00 cashback' })).toBeVisible();
+    await expect(card.getByText('£10.00 cashback', { exact: true })).toBeVisible();
     await expect(card).toContainText('Submitted brand · Verified 02 Oct 2026');
     const fullDetails = card.getByRole('button', { name: 'View Full Promotion Details' });
     await fullDetails.focus();
@@ -365,48 +365,29 @@ for (const releaseTiming of ['before retry', 'after retry']) {
   });
 }
 
-test('upcoming card has functional guide, navy action hierarchy and responsive visual balance', async ({
-  page,
-}, testInfo) => {
+test('upcoming card shows supplied timing without a disclosure and reflows', async ({ page }) => {
+  await page.route('**/api/eligibility/check', async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.promotions[0].benefits[0].description = `A long recorded benefit description for reflow testing. ${'Keep the original product packaging and proof of purchase, then follow the official claim instructions. '.repeat(8)}`;
+    await route.fulfill({ response, json: body });
+  });
   await check(page, 'MIXED');
   await page.getByRole('button', { name: 'Claim not yet open (1)', exact: true }).click();
   const card = page.getByRole('article');
-  await expect(card.getByText(/Claim not yet open/)).toBeVisible();
-  const guide = card.getByRole('button', { name: 'Claim Window Guide' });
-  await expect(guide).toHaveCSS('background-color', 'rgb(16, 24, 47)');
-  await guide.focus();
-  await page.keyboard.press('Enter');
-  await expect(card.getByRole('region', { name: 'Claim window guide' })).toBeVisible();
-  await expect(card.getByRole('region', { name: 'Claim window guide' })).toContainText(
-    '09 Oct 2026',
-  );
-  await expect(card.getByRole('region', { name: 'Claim window guide' })).toContainText(
-    '30 Nov 2026',
-  );
-  await guide.press('Space');
-  await expect(guide).toHaveAttribute('aria-expanded', 'false');
-  for (const width of [320, 375, 768, 1024, 1440]) {
+  await expect(card.getByText('Claim period had not opened when checked')).toBeVisible();
+  await expect(card.locator('time[datetime="2026-10-09"]')).toHaveText('09 Oct 2026');
+  await expect(card.locator('time[datetime="2026-11-30"]')).toHaveText('30 Nov 2026');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const width of [320, 360, 375, 768, 1024, 1280]) {
     await page.setViewportSize({ width, height: 1000 });
     await expectReflow(page, width);
-    if (width >= 1024) {
-      const title = await card.getByRole('heading', { level: 2 }).boundingBox();
-      const benefit = await card
-        .getByRole('heading', { level: 3 })
-        .first()
-        .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
-      const titleFont = await card
-        .getByRole('heading', { level: 2 })
-        .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
-      const action = await guide.boundingBox();
-      expect(action!.x).toBeGreaterThan(title!.x + title!.width);
-      expect(action!.y).toBeLessThan(title!.y);
-      expect(benefit).toBeGreaterThan(titleFont);
-    }
-    await page.screenshot({
-      path: testInfo.outputPath(`promotion-card-${width}.png`),
-      fullPage: true,
-    });
+    await expectReadable(card, width);
   }
+  await page.setViewportSize({ width: 320, height: 1000 });
+  await page.addStyleTag({ content: 'html { font-size: 200% }' });
+  await expectReflow(page, 320);
+  await expectReadable(card, 320);
   await axe(page);
 });
 
@@ -429,13 +410,17 @@ test('decisive failures stay separate from unknowns and missing timing is explic
   }
   await page.getByRole('button', { name: 'Potentially eligible (1)', exact: true }).click();
   const potential = page.getByRole('article');
+  await expect(potential).toContainText('Claim timing not supplied');
+  await expect(potential).toContainText('Opening and deadline dates not supplied.');
   await expect(potential).toContainText(
     'The claim period could not be determined from the recorded information.',
   );
   await expect(potential).not.toContainText('add the optional purchase price');
   await page.getByRole('button', { name: 'Claim period expired (1)', exact: true }).click();
-  await expect(page.getByRole('article')).toContainText('07 Oct 2026');
-  await expect(page.getByRole('article')).toContainText('As evaluated on 08 Oct 2026.');
+  const expired = page.getByRole('article');
+  await expect(expired).toContainText('Claim period had ended when checked');
+  await expect(expired.locator('time[datetime="2026-10-07"]')).toHaveText('07 Oct 2026');
+  await expect(expired).toContainText('As evaluated on 08 Oct 2026.');
   await axe(page);
 });
 
@@ -451,4 +436,40 @@ test('unknown rule facts offer only supported correction guidance', async ({ pag
     'The checker currently has no field for purchase country.',
   );
   await axe(page);
+});
+
+test('shows each recorded benefit and replaces the amount only after an explicit recheck', async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/')) requests.push(new URL(request.url()).pathname);
+  });
+  await check(page, 'REWARDS');
+  const card = page.getByRole('article');
+  await expect(card.getByText('£10.00 cashback', { exact: true })).toBeVisible();
+  await expect(card.getByText('Cashback amount not available yet')).toBeVisible();
+  await expect(card.getByRole('heading', { name: 'Extended warranty' })).toBeVisible();
+  await expect(card.getByRole('heading', { name: 'Free gift' })).toBeVisible();
+  await expect(card.getByText('Claim period was open when checked')).toBeVisible();
+  await card.getByRole('button', { name: 'View Full Promotion Details' }).press('Enter');
+  await page.getByRole('button', { name: 'Rule Matrix' }).click();
+  await page.getByRole('button', { name: 'Eligible (1)', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'View benefits and claim periods in Cards' })
+    .press('Enter');
+  await expect(page.getByRole('button', { name: 'Cards', exact: true })).toBeFocused();
+  await expect(card.getByText('See the official gift terms.')).toBeVisible();
+  expect(requests).toEqual(['/api/eligibility/check']);
+
+  await card.getByRole('link', { name: 'Edit purchase details' }).click();
+  await expect(page).toHaveURL('/check');
+  await page.getByText('Add optional purchase price', { exact: true }).click();
+  await page.getByLabel(/purchase price/i).fill('799.99');
+  expect(requests).toHaveLength(1);
+  await page.getByRole('button', { name: 'Find My Benefits' }).click();
+  await expect(page).toHaveURL('/results');
+  await expect(card.getByText('£80.00 cashback', { exact: true })).toBeVisible();
+  await expect(card.getByRole('link', { name: 'Edit purchase details' })).toHaveCount(0);
+  expect(requests).toEqual(['/api/eligibility/check', '/api/eligibility/check']);
 });

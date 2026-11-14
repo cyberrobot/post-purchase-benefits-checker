@@ -22,12 +22,17 @@ const purchase = {
   purchase_date: '2024-02-29',
   purchase_price: '999999999999.99',
 };
-function show(response: CheckPurchaseResponse) {
+function show(
+  response: CheckPurchaseResponse,
+  submittedPurchase: Parameters<
+    ReturnType<typeof usePurchaseCheckSession>['publish']
+  >[0] = purchase,
+) {
   function Setup() {
     const session = usePurchaseCheckSession();
     return (
       <>
-        <button onClick={() => session.publish(purchase, response)}>Load</button>
+        <button onClick={() => session.publish(submittedPurchase, response)}>Load</button>
         <ResultsOverview />
       </>
     );
@@ -46,7 +51,7 @@ it('shows the exact purchase, all benefits, source verification and functional s
   ).toBeVisible();
   expect(screen.getByText('£999,999,999,999.99')).toBeVisible();
   expect(screen.getByText('29 Feb 2024')).toBeVisible();
-  expect(screen.getByText('08 Oct 2026')).toBeVisible();
+  expect(screen.getAllByText('08 Oct 2026')).toHaveLength(2);
   const summary = screen.getByRole('region', { name: 'Checked purchase summary' });
   expect(summary).toHaveClass('wrap-anywhere');
   expect(within(summary).getByText('My Shop')).toHaveClass('wrap-anywhere');
@@ -54,8 +59,8 @@ it('shows the exact purchase, all benefits, source verification and functional s
     'text-brand',
   );
   const card = screen.getByRole('article');
-  expect(within(card).getByRole('heading', { name: '£10.00 cashback' })).toBeVisible();
-  expect(within(card).getByRole('heading', { name: 'Percentage cashback' })).toBeVisible();
+  expect(within(card).getByText('£10.00 cashback')).toBeVisible();
+  expect(within(card).getByText('Percentage cashback')).toBeVisible();
   expect(
     within(card).getByText('Provide the purchase price to calculate the cashback reward.'),
   ).toBeVisible();
@@ -64,7 +69,7 @@ it('shows the exact purchase, all benefits, source verification and functional s
   expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
   fireEvent.click(detailsButton);
   expect(within(card).getByText(/not an approved or paid claim/)).toBeVisible();
-  expect(within(card).getByText(/Claim window opens/).parentElement).toHaveTextContent(
+  expect(within(card).getByText(/Claim period opens/).parentElement).toHaveTextContent(
     '01 Oct 2026',
   );
   expect(within(card).getByText('Recorded rules').closest('details')).not.toHaveAttribute('open');
@@ -193,10 +198,10 @@ it('wraps escaped long content and preserves non-cash benefits and unavailable r
     ],
   });
   expect(screen.getByRole('heading', { name: longName })).toBeVisible();
-  expect(screen.getByRole('heading', { name: 'Recorded extended cover' })).toBeVisible();
-  expect(screen.getByRole('heading', { name: 'Recorded gift' })).toBeVisible();
+  expect(screen.getByText('Recorded extended cover')).toBeVisible();
+  expect(screen.getByText('Recorded gift')).toBeVisible();
   expect(screen.queryByText('reward not configured')).not.toBeInTheDocument();
-  expect(screen.queryByText('No monetary reward amount supplied.')).not.toBeInTheDocument();
+  expect(screen.queryByText('Cashback amount not supplied')).not.toBeInTheDocument();
   expect(document.querySelector('img')).toBeNull();
   expect(screen.queryByText(/£150|5-Year|Claim period open/)).not.toBeInTheDocument();
 });
@@ -219,8 +224,8 @@ it('shows unavailable monetary reward wording for cashback without supplied deta
       },
     ],
   });
-  expect(screen.getByText('No monetary reward amount supplied.')).toBeVisible();
-  expect(screen.queryByRole('heading', { name: '£10.00 cashback' })).not.toBeInTheDocument();
+  expect(screen.getByText('Cashback amount not supplied')).toBeVisible();
+  expect(screen.queryByText('£10.00 cashback')).not.toBeInTheDocument();
 });
 
 it('switches between cards and actual recorded rule rows while preserving filters and missing outcomes', () => {
@@ -308,18 +313,11 @@ it('preserves the reported upcoming classification despite contradictory rule ev
   expect(within(card).getAllByText(reasonLabels.retailer_match)[0]).toBeVisible();
   expect(within(card).getAllByText(reasonLabels.purchase_price_unknown)[0]).toBeVisible();
   expect(within(card).getAllByText(reasonLabels.purchase_date_before_start)[0]).toBeVisible();
-  expect(within(card).getByText('A long supplementary benefit description.')).not.toBeVisible();
-  const guide = within(card).getByRole('button', { name: 'Claim Window Guide' });
-  fireEvent.click(guide);
-  expect(guide).toHaveAttribute('aria-expanded', 'true');
-  expect(within(card).getByRole('region', { name: 'Claim window guide' })).toHaveTextContent(
-    '27 Nov 2026',
-  );
-  expect(within(card).getByRole('region', { name: 'Claim window guide' })).toHaveTextContent(
-    '31 Dec 2026',
-  );
-  fireEvent.click(within(card).getByRole('button', { name: 'View Full Promotion Details' }));
   expect(within(card).getByText('A long supplementary benefit description.')).toBeVisible();
+  expect(within(card).getByText('27 Nov 2026')).toHaveAttribute('datetime', '2026-11-27');
+  expect(within(card).getByText('31 Dec 2026')).toHaveAttribute('datetime', '2026-12-31');
+  fireEvent.click(within(card).getByRole('button', { name: 'View Full Promotion Details' }));
+  expect(within(card).getAllByText('27 Nov 2026')).toHaveLength(1);
   expect(within(card).getByRole('link', { name: /Official Portal Terms/ })).toHaveAttribute(
     'href',
     promotion.provenance.official_source_url,
@@ -439,22 +437,25 @@ it.each(statusCases)(
         within(explanation).queryByRole('heading', { name: 'Conditions not met' }),
       ).not.toBeInTheDocument();
     }
+    const card = within(screen.getByRole('article'));
+    expect(
+      card.getByText(
+        {
+          open: 'Claim period was open when checked',
+          not_yet_open: 'Claim period had not opened when checked',
+          expired: 'Claim period had ended when checked',
+          unspecified: 'Claim timing not supplied',
+        }[timing ?? 'unspecified'],
+      ),
+    ).toBeVisible();
     if (dates) {
       for (const value of [dates.opens_on, dates.deadline_on]) {
-        expect(within(explanation).getByText(calendarDate(value))).toHaveAttribute(
-          'dateTime',
-          value,
-        );
+        expect(card.getByText(calendarDate(value))).toHaveAttribute('dateTime', value);
       }
-      expect(
-        within(explanation).queryByText('Opening and deadline dates were not supplied.'),
-      ).not.toBeInTheDocument();
     } else {
-      expect(
-        within(explanation).getByText('Opening and deadline dates were not supplied.'),
-      ).toBeVisible();
-      expect(explanation.querySelector('time')).toBeNull();
+      expect(card.getByText('Opening and deadline dates not supplied.')).toBeVisible();
     }
+    expect(explanation.querySelector('time')).toBeNull();
   },
 );
 it('keeps failed and unknown evidence separate and supplementary HTML escaped', () => {
@@ -595,3 +596,15 @@ it('shows unknown rule reasons before later claim-timing reasons in backend orde
     orderedText.indexOf(reasonLabels.claim_window_unspecified),
   );
 });
+
+it.each([null, '0'] as const)(
+  'offers a reward recheck only when the submitted price is absent (%s)',
+  (purchase_price) => {
+    show(populatedClaim, { ...purchase, purchase_price });
+    const card = within(screen.getByRole('article'));
+    expect(card.getByText('Cashback amount not available yet')).toBeVisible();
+    const link = card.queryByRole('link', { name: 'Edit purchase details' });
+    if (purchase_price === null) expect(link).toHaveAttribute('href', '/check');
+    else expect(link).not.toBeInTheDocument();
+  },
+);

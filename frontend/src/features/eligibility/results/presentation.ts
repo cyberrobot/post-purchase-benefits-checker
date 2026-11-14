@@ -95,3 +95,62 @@ export function gbp(value: string) {
 export function words(value: string) {
   return value.replaceAll('_', ' ');
 }
+
+const benefitCategories = {
+  cashback: 'Cashback',
+  extended_warranty: 'Extended warranty',
+  free_gift: 'Free gift',
+} satisfies Record<Promotion['benefits'][number]['benefit_type'], string>;
+
+export function presentBenefit(benefit: Promotion['benefits'][number], hasPurchasePrice: boolean) {
+  const category = benefitCategories[benefit.benefit_type];
+  const title = benefit.name.trim() || category;
+  const cashback = benefit.benefit_type === 'cashback';
+  const amountLabel =
+    cashback && benefit.cashback_reward_gbp !== null
+      ? `${gbp(benefit.cashback_reward_gbp)} cashback`
+      : null;
+  const reason = benefit.reward_unavailable_reason;
+  const unavailableLabel =
+    !cashback || amountLabel
+      ? null
+      : {
+          purchase_price_required_for_reward: 'Cashback amount not available yet',
+          reward_not_configured: 'Cashback amount not available for this promotion',
+          unspecified: 'Cashback amount not supplied',
+        }[reason ?? 'unspecified'];
+  return {
+    category,
+    title,
+    amountLabel,
+    description: benefit.description,
+    unavailableLabel,
+    unavailableExplanation: unavailableLabel
+      ? benefit.reward_unavailable_explanation ||
+        (reason === 'purchase_price_required_for_reward'
+          ? 'The promotion uses the purchase price to work out the cashback amount.'
+          : reason === 'reward_not_configured'
+            ? 'Check the official terms for cashback details.'
+            : null)
+      : null,
+    canRecheckWithPurchasePrice:
+      Boolean(unavailableLabel) &&
+      reason === 'purchase_price_required_for_reward' &&
+      !hasPurchasePrice,
+  };
+}
+
+const claimTimingLabels = {
+  open: 'Claim period was open when checked',
+  not_yet_open: 'Claim period had not opened when checked',
+  expired: 'Claim period had ended when checked',
+} satisfies Record<NonNullable<Promotion['eligibility']['claim_window_status']>, string>;
+
+export function presentClaimPeriod(promotion: Promotion) {
+  const timing = promotion.eligibility.claim_window_status;
+  return {
+    timingLabel: timing === null ? 'Claim timing not supplied' : claimTimingLabels[timing],
+    opensOn: promotion.claim_window?.opens_on ?? null,
+    deadlineOn: promotion.claim_window?.deadline_on ?? null,
+  };
+}
