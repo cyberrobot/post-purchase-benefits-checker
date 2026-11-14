@@ -292,5 +292,9 @@ result history remain future functionality. Official source and claim links open
 Results explain each promotion variant using the backend's recorded decision reasons. Failed
 conditions, facts that could not be assessed and passed checks are labelled separately. Claim
 periods refer to the response's evaluation date; missing timing or dates are never inferred.
+Each card shows all recorded benefit types and preserves the precision of any returned
+cashback amount. If the response requires a missing purchase price to calculate cashback,
+edit the purchase details and submit a new check. Cards show the recorded claim period
+alongside the benefits, and Rule Matrix provides a way back to those cards.
 Claim requirements describe evidence that may be needed when claiming, without asserting that
 it is missing or complete. Eligibility does not mean a claim has been approved or paid.

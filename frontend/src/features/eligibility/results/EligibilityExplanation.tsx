@@ -1,20 +1,18 @@
 import type { PurchaseRequest } from '@/lib/api/eligibility.contract';
-import { calendarDate, type Promotion } from './presentation';
+import { type Promotion } from './presentation';
 import { explainPromotion } from './explanations';
 export function EligibilityExplanation({
   promotion,
-  evaluationDate,
   submittedPurchase,
   promotionLabelledBy,
   promotionDisambiguator,
 }: {
   promotion: Promotion;
-  evaluationDate: string;
   submittedPurchase: PurchaseRequest;
   promotionLabelledBy: string;
   promotionDisambiguator?: string;
 }) {
-  const view = explainPromotion(promotion, { evaluationDate, submittedPurchase });
+  const view = explainPromotion(promotion, { submittedPurchase });
   const headingId = `eligibility-explanation-${promotion.promotion_variant_id}`;
   const disambiguatorId = `${headingId}-disambiguator`;
   const summaryReasons = view.decisions.filter((item) => !item.grouped);
@@ -80,34 +78,6 @@ export function EligibilityExplanation({
       {!promotion.eligibility.rule_evaluations.length && (
         <p>No individual rule checks were supplied.</p>
       )}
-      <div>
-        <h4 className="font-semibold">Claim period</h4>
-        <p>
-          {view.claimTiming} {view.evaluatedOn}
-        </p>
-        {promotion.claim_window ? (
-          <dl className="mt-2 space-y-1">
-            <div>
-              <dt className="inline font-semibold">Claim window opens: </dt>
-              <dd className="inline">
-                <time dateTime={promotion.claim_window.opens_on}>
-                  {calendarDate(promotion.claim_window.opens_on)}
-                </time>
-              </dd>
-            </div>
-            <div>
-              <dt className="inline font-semibold">Claim deadline: </dt>
-              <dd className="inline">
-                <time dateTime={promotion.claim_window.deadline_on}>
-                  {calendarDate(promotion.claim_window.deadline_on)}
-                </time>
-              </dd>
-            </div>
-          </dl>
-        ) : (
-          <p>Opening and deadline dates were not supplied.</p>
-        )}
-      </div>
       {view.guidance.map((line, index) => (
         <p key={index}>{line}</p>
       ))}
