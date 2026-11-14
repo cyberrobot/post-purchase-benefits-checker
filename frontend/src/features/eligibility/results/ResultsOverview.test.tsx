@@ -500,34 +500,136 @@ it('keeps failed and unknown evidence separate and supplementary HTML escaped', 
   expect(document.querySelector('img')).toBeNull();
 });
 
-it('consolidates backend claim timing explanations into the canonical claim period panel', () => {
+it.each([
+  {
+    name: 'matching opening dates',
+    status: 'not_yet_open',
+    windowStatus: 'not_yet_open',
+    copy: 'Claiming opens on 2026-10-10.',
+    retained: false,
+    timing: 'Claim period had not opened when checked',
+  },
+  {
+    name: 'conflicting opening dates',
+    status: 'not_yet_open',
+    windowStatus: 'not_yet_open',
+    copy: 'Claiming opens on 2026-10-09.',
+    retained: true,
+    timing: 'Claim period had not opened when checked',
+  },
+  {
+    name: 'matching open status',
+    status: 'open',
+    windowStatus: 'open',
+    copy: 'The claim window is open.',
+    retained: false,
+    timing: 'Claim period was open when checked',
+  },
+  {
+    name: 'expired timing with an open explanation',
+    status: 'expired',
+    windowStatus: 'expired',
+    copy: 'The claim window is open.',
+    retained: true,
+    timing: 'Claim period had ended when checked',
+  },
+  {
+    name: 'matching expired status',
+    status: 'expired',
+    windowStatus: 'expired',
+    copy: 'The claim deadline has passed.',
+    retained: false,
+    timing: 'Claim period had ended when checked',
+  },
+  {
+    name: 'unspecified timing',
+    status: null,
+    windowStatus: null,
+    copy: 'The claim period is not available.',
+    retained: false,
+    timing: 'Claim timing not supplied',
+  },
+  {
+    name: 'an opening date without a projected window',
+    status: 'not_yet_open',
+    windowStatus: null,
+    copy: 'Claiming opens on 2026-10-10.',
+    retained: true,
+    timing: 'Claim period had not opened when checked',
+  },
+  {
+    name: 'conflicting structured statuses',
+    status: 'expired',
+    windowStatus: 'open',
+    copy: 'The claim deadline has passed.',
+    retained: true,
+    timing: 'Claim period had ended when checked',
+  },
+] as const)(
+  'preserves recorded evidence for $name',
+  ({ status, windowStatus, copy, retained, timing }) => {
+    if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
+    const before = 'Keep your proof of purchase for the claim.';
+    const after = 'Check the official terms.';
+    show({
+      ...populatedClaim,
+      promotions: [
+        {
+          ...promotion!,
+          explanation: [before, copy, after],
+          claim_window: windowStatus
+            ? { status: windowStatus, opens_on: '2026-10-10', deadline_on: '2026-11-09' }
+            : null,
+          eligibility: { ...promotion!.eligibility, claim_window_status: status },
+        },
+      ],
+    });
+    const card = within(screen.getByRole('article'));
+    expect(card.getByText('Eligible', { exact: true })).toBeVisible();
+    expect(card.getByText('£10.00 cashback', { exact: true })).toBeVisible();
+    expect(card.getByText(timing)).toBeVisible();
+    if (windowStatus) {
+      expect(card.getByText(calendarDate('2026-10-10'))).toHaveAttribute('datetime', '2026-10-10');
+      expect(card.getByText(calendarDate('2026-11-09'))).toHaveAttribute('datetime', '2026-11-09');
+    } else {
+      expect(card.getByText('Opening and deadline dates not supplied.')).toBeVisible();
+      expect(card.queryByText(calendarDate('2026-10-10'))).not.toBeInTheDocument();
+      expect(card.queryByText(calendarDate('2026-11-09'))).not.toBeInTheDocument();
+    }
+    fireEvent.click(card.getByRole('button', { name: 'View Full Promotion Details' }));
+    const details = within(card.getByRole('region', { name: 'Full promotion details' }));
+    const recorded = details.getAllByText((line) => [before, copy, after].includes(line));
+    expect(recorded.map((line) => line.textContent)).toEqual(
+      retained ? [before, copy, after] : [before, after],
+    );
+  },
+);
+
+it('does not claim no explanation was supplied when timing copy is consolidated', () => {
   if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
   show({
     ...populatedClaim,
     promotions: [
       {
         ...promotion!,
-        explanation: [
-          'Claiming opens on 2026-10-09.',
-          'The claim window is open.',
-          'Keep your proof of purchase for the claim.',
-        ],
-        claim_window: { status: 'open', opens_on: '2026-10-09', deadline_on: '2026-11-09' },
-        eligibility: {
-          ...promotion!.eligibility,
-          claim_window_status: 'open',
+        explanation: ['The claim window is open.'],
+        claim_window: {
+          status: 'open',
+          opens_on: '2026-10-01',
+          deadline_on: '2026-10-31',
         },
+        eligibility: { ...promotion!.eligibility, claim_window_status: 'open' },
       },
     ],
   });
+
   const card = within(screen.getByRole('article'));
   expect(card.getByText('Claim period was open when checked')).toBeVisible();
-  expect(card.getByText(calendarDate('2026-10-09'))).toBeVisible();
   fireEvent.click(card.getByRole('button', { name: 'View Full Promotion Details' }));
-  const details = card.getByRole('region', { name: 'Full promotion details' });
-  expect(within(details).queryByText('Claiming opens on 2026-10-09.')).not.toBeInTheDocument();
-  expect(within(details).queryByText('The claim window is open.')).not.toBeInTheDocument();
-  expect(within(details).getByText('Keep your proof of purchase for the claim.')).toBeVisible();
+  const details = within(card.getByRole('region', { name: 'Full promotion details' }));
+  expect(details.getByText('No additional explanation supplied.')).toBeVisible();
+  expect(details.queryByText('No explanation supplied.')).not.toBeInTheDocument();
+  expect(details.queryByText('The claim window is open.')).not.toBeInTheDocument();
 });
 
 it.each([
