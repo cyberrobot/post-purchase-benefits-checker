@@ -500,6 +500,36 @@ it('keeps failed and unknown evidence separate and supplementary HTML escaped', 
   expect(document.querySelector('img')).toBeNull();
 });
 
+it('consolidates backend claim timing explanations into the canonical claim period panel', () => {
+  if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
+  show({
+    ...populatedClaim,
+    promotions: [
+      {
+        ...promotion!,
+        explanation: [
+          'Claiming opens on 2026-10-09.',
+          'The claim window is open.',
+          'Keep your proof of purchase for the claim.',
+        ],
+        claim_window: { status: 'open', opens_on: '2026-10-09', deadline_on: '2026-11-09' },
+        eligibility: {
+          ...promotion!.eligibility,
+          claim_window_status: 'open',
+        },
+      },
+    ],
+  });
+  const card = within(screen.getByRole('article'));
+  expect(card.getByText('Claim period was open when checked')).toBeVisible();
+  expect(card.getByText(calendarDate('2026-10-09'))).toBeVisible();
+  fireEvent.click(card.getByRole('button', { name: 'View Full Promotion Details' }));
+  const details = card.getByRole('region', { name: 'Full promotion details' });
+  expect(within(details).queryByText('Claiming opens on 2026-10-09.')).not.toBeInTheDocument();
+  expect(within(details).queryByText('The claim window is open.')).not.toBeInTheDocument();
+  expect(within(details).getByText('Keep your proof of purchase for the claim.')).toBeVisible();
+});
+
 it.each([
   ['NOT_ELIGIBLE', 'retailer_mismatch', 'retailer', 'Conditions not met'],
   ['POTENTIALLY_ELIGIBLE', 'country_unknown', 'country', "Information we couldn't assess"],
@@ -546,8 +576,10 @@ it.each([null, 'Shared variant'] as const)(
     for (const mode of ['Cards', 'Rule Matrix']) {
       fireEvent.click(screen.getByRole('button', { name: mode }));
       for (const index of [1, 2]) {
+        const name = `Shared promotion ${variantName ? `${variantName} ` : ''}Promotion result ${index}`;
+        if (mode === 'Cards') expect(screen.getByRole('article', { name })).toBeVisible();
         const explanation = screen.getByRole('region', {
-          name: `Shared promotion ${variantName ? `${variantName} ` : ''}Promotion result ${index} Why this result?`,
+          name: `${name} Why this result?`,
         });
         expect(explanation).toBeVisible();
         const heading = within(explanation).getByRole('heading', {
@@ -566,6 +598,30 @@ it.each([null, 'Shared variant'] as const)(
     }
   },
 );
+
+it('disambiguates names that differ only by whitespace in Cards and Rule Matrix', () => {
+  if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');
+  show({
+    ...populatedClaim,
+    promotions: [0, 1].map((index) => ({
+      ...promotion!,
+      promotion_name: index === 0 ? 'Shared promotion' : '  Shared   promotion  ',
+      promotion_variant_id: `00000000-0000-0000-0000-00000000001${index}`,
+      variant_name: null,
+    })),
+  });
+  for (const mode of ['Cards', 'Rule Matrix']) {
+    fireEvent.click(screen.getByRole('button', { name: mode }));
+    const labels = ['Promotion result 1', 'Promotion result 2'];
+    for (const label of labels) {
+      if (mode === 'Cards')
+        expect(screen.getByRole('article', { name: new RegExp(label) })).toBeVisible();
+      expect(
+        screen.getByRole('region', { name: new RegExp(`${label} Why this result\\?`) }),
+      ).toBeVisible();
+    }
+  }
+});
 
 it('shows unknown rule reasons before later claim-timing reasons in backend order', () => {
   if (populatedClaim.outcome !== 'resolved') throw new Error('fixture');

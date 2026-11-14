@@ -10,7 +10,8 @@ export async function expectReadable(locator: Locator, viewportWidth: number) {
   // Text fragments must fit their own element and the viewport, not merely the document.
   const textLayout = await locator.evaluate((element) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    const fragments: { left: number; right: number; top: number; bottom: number }[] = [];
+    const fragments: { left: number; right: number; top: number; bottom: number; text: string }[] =
+      [];
     const seenFragments = new Set<string>();
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (!node.textContent?.trim()) continue;
@@ -23,7 +24,7 @@ export async function expectReadable(locator: Locator, viewportWidth: number) {
         const key = `${left}:${right}:${top}:${bottom}`;
         if (seenFragments.has(key)) continue;
         seenFragments.add(key);
-        fragments.push({ left, right, top, bottom });
+        fragments.push({ left, right, top, bottom, text: node.textContent.trim().slice(0, 160) });
       }
     }
     const clippingAncestors = [];
@@ -46,7 +47,10 @@ export async function expectReadable(locator: Locator, viewportWidth: number) {
   });
   for (const fragment of textLayout.fragments) {
     expect(fragment.left).toBeGreaterThanOrEqual(-1);
-    expect(fragment.right).toBeLessThanOrEqual(viewportWidth + 1);
+    expect(
+      fragment.right,
+      `Text exceeds viewport: ${JSON.stringify(fragment)}`,
+    ).toBeLessThanOrEqual(viewportWidth + 1);
     // Browser text metrics can extend by a pixel beyond a fractional element box after
     // layout rounding, so allow a two-pixel edge tolerance while still catching clipping.
     expect(fragment.top).toBeGreaterThanOrEqual(box!.y - 2);

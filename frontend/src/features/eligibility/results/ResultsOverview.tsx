@@ -66,6 +66,10 @@ function PromotionCard({
   const status = statuses.find((s) => s.value === promotion.eligibility.classification)!;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const id = `promotion-${promotion.promotion_variant_id}`;
+  const promotionName = normalizedPromotionName(promotion);
+  const variantName = normalizedVariantName(promotion);
+  const variantLabel = variantName && variantName !== promotionName;
+  const promotionLabelledBy = `${id}${variantLabel ? ` ${id}-variant` : ''}${promotionDisambiguator ? ` ${id}-disambiguator` : ''}`;
   const failed = promotion.eligibility.classification === 'NOT_ELIGIBLE';
   const actionClass =
     'flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-control px-4 py-3 text-center text-small font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand';
@@ -73,13 +77,12 @@ function PromotionCard({
     <EligibilityExplanation
       promotion={promotion}
       submittedPurchase={submittedPurchase}
-      promotionDisambiguator={promotionDisambiguator}
-      promotionLabelledBy={`${id}${promotion.variant_name && promotion.variant_name !== promotion.promotion_name ? ` ${id}-variant` : ''}`}
+      promotionLabelledBy={promotionLabelledBy}
     />
   );
   return (
     <article
-      aria-labelledby={`${id}${promotion.variant_name && promotion.variant_name !== promotion.promotion_name ? ` ${id}-variant` : ''}`}
+      aria-labelledby={promotionLabelledBy}
       className="min-w-0 rounded-feature border border-border bg-surface p-5 shadow-sm wrap-anywhere md:p-8 lg:p-10"
     >
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] lg:gap-8">
@@ -99,12 +102,17 @@ function PromotionCard({
             </p>
           </div>
           <h2 id={id} className="mt-3 text-xl leading-tight font-bold text-ink">
-            {promotion.promotion_name || 'Promotion name not supplied'}
+            {promotionName}
           </h2>
-          {promotion.variant_name && promotion.variant_name !== promotion.promotion_name && (
+          {variantLabel && (
             <p id={`${id}-variant`} className="mt-1 font-semibold text-ink-muted">
-              {promotion.variant_name}
+              {variantName}
             </p>
+          )}
+          {promotionDisambiguator && (
+            <span id={`${id}-disambiguator`} hidden>
+              {promotionDisambiguator}
+            </span>
           )}
           {failed && explanation}
           <RewardDetails
@@ -128,10 +136,10 @@ function PromotionCard({
             href={promotion.provenance.official_source_url}
             target="_blank"
             rel="noopener noreferrer"
+            aria-label="Official Portal Terms (opens in a new tab)"
             className={`${actionClass} border border-border bg-surface text-ink-muted hover:bg-surface-muted`}
           >
             Official Portal Terms <span aria-hidden="true">↗</span>
-            <span className="sr-only">(opens in a new tab)</span>
           </a>
         </div>
       </div>
@@ -143,8 +151,8 @@ function PromotionCard({
       >
         <h3 className="font-bold">Full promotion details</h3>
         <h4 className="mt-3 font-semibold">Supplemental recorded explanation</h4>
-        {promotion.explanation.length ? (
-          promotion.explanation.map((line, index) => (
+        {supplementalExplanations(promotion).length ? (
+          supplementalExplanations(promotion).map((line, index) => (
             <p key={index} className="mt-2">
               {line}
             </p>
@@ -212,11 +220,23 @@ function PromotionCard({
     </article>
   );
 }
+function normalizedPromotionName(promotion: Promotion) {
+  return promotion.promotion_name.trim().replace(/\s+/g, ' ') || 'Promotion name not supplied';
+}
+function normalizedVariantName(promotion: Promotion) {
+  return promotion.variant_name?.trim().replace(/\s+/g, ' ') || '';
+}
+function supplementalExplanations(promotion: Promotion) {
+  return promotion.explanation.filter(
+    (line) =>
+      !/^Claiming opens on\s+\d{4}-\d{2}-\d{2}\.?$/i.test(line.trim()) &&
+      !/^The claim window is (open|not yet open|expired)\.?$/i.test(line.trim()),
+  );
+}
 function promotionAccessibleLabel(promotion: Promotion) {
-  const name = promotion.promotion_name || 'Promotion name not supplied';
-  return promotion.variant_name && promotion.variant_name !== promotion.promotion_name
-    ? `${name} ${promotion.variant_name}`
-    : name;
+  const name = normalizedPromotionName(promotion);
+  const variant = normalizedVariantName(promotion);
+  return variant && variant !== name ? `${name} ${variant}` : name;
 }
 function promotionDisambiguator(promotions: Promotion[], promotion: Promotion, index: number) {
   const label = promotionAccessibleLabel(promotion);
@@ -274,10 +294,10 @@ function RuleMatrix({
                 className="border-b border-border last:border-0"
               >
                 <th scope="row" className="px-4 py-5 align-top font-semibold wrap-anywhere sm:px-6">
-                  <h2 id={id}>{promotion.promotion_name || 'Promotion name not supplied'}</h2>
-                  {promotion.variant_name && (
+                  <h2 id={id}>{normalizedPromotionName(promotion)}</h2>
+                  {normalizedVariantName(promotion) && (
                     <span id={`${id}-variant`} className="mt-1 block font-normal text-ink-muted">
-                      {promotion.variant_name}
+                      {normalizedVariantName(promotion)}
                     </span>
                   )}
                 </th>
@@ -291,7 +311,7 @@ function RuleMatrix({
                   <EligibilityExplanation
                     promotion={promotion}
                     submittedPurchase={submittedPurchase}
-                    promotionLabelledBy={`${id}${promotion.variant_name ? ` ${id}-variant` : ''}`}
+                    promotionLabelledBy={`${id}${normalizedVariantName(promotion) && normalizedVariantName(promotion) !== normalizedPromotionName(promotion) ? ` ${id}-variant` : ''}`}
                     promotionDisambiguator={promotionDisambiguator(promotions, promotion, index)}
                   />
                 </td>

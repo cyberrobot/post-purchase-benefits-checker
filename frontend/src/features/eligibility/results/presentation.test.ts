@@ -116,7 +116,8 @@ it('keeps evaluated status and projected dates if the projected status disagrees
 it.each([
   ['fixed window opening boundary', 'open', '2026-10-08', '2026-11-30'],
   ['relative window deadline boundary', 'open', '2026-09-08', '2026-10-08'],
-  ['minimum-wait opening boundary', 'not_yet_open', '2026-10-09', '2026-11-30'],
+  ['day before minimum-wait opening', 'not_yet_open', '2026-10-09', '2026-11-30'],
+  ['minimum-wait opening boundary', 'open', '2026-10-08', '2026-11-30'],
 ] as const)(
   'preserves backend %s projection at inclusive dates',
   (_case, status, opensOn, deadlineOn) => {

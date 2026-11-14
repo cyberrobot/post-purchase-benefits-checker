@@ -22,7 +22,7 @@ export function RewardDetails({
                 {view.description && <p className="text-small">{view.description}</p>}
                 {view.amountLabel && (
                   <p className="text-xl font-bold">
-                    {view.amountLabel}{' '}
+                    <span>{view.amountLabel}</span>{' '}
                     <span className="text-small font-normal text-ink-muted">recorded benefit</span>
                   </p>
                 )}

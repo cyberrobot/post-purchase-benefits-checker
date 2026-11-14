@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import type { CheckPurchaseResponse } from '../src/lib/api/eligibility.contract';
 import { expectReadable, expectReflow } from './support-layout';
 async function check(page: Page, model = 'POPULATED', path = '/check') {
   await page.goto(path);
@@ -366,15 +367,26 @@ for (const releaseTiming of ['before retry', 'after retry']) {
 }
 
 test('upcoming card shows supplied timing without a disclosure and reflows', async ({ page }) => {
+  const description =
+    'A long recorded benefit description for reflow testing. ' +
+    'Keep the original product packaging and proof of purchase, then follow the official claim instructions. '
+      .repeat(8)
+      .trimEnd();
   await page.route('**/api/eligibility/check', async (route) => {
     const response = await route.fetch();
-    const body = await response.json();
-    body.promotions[0].benefits[0].description = `A long recorded benefit description for reflow testing. ${'Keep the original product packaging and proof of purchase, then follow the official claim instructions. '.repeat(8)}`;
+    const body: CheckPurchaseResponse = await response.json();
+    if (body.outcome !== 'resolved') throw new Error('MIXED fixture must resolve');
+    const upcoming = body.promotions.find(
+      (promotion) => promotion.eligibility.classification === 'CLAIM_NOT_YET_OPEN',
+    );
+    if (!upcoming?.benefits[0]) throw new Error('Upcoming fixture must include a benefit');
+    upcoming.benefits[0].description = description;
     await route.fulfill({ response, json: body });
   });
   await check(page, 'MIXED');
   await page.getByRole('button', { name: 'Claim not yet open (1)', exact: true }).click();
   const card = page.getByRole('article');
+  await expect(card.getByText(description, { exact: true })).toBeVisible();
   await expect(card.getByText('Claim period had not opened when checked')).toBeVisible();
   await expect(card.locator('time[datetime="2026-10-09"]')).toHaveText('09 Oct 2026');
   await expect(card.locator('time[datetime="2026-11-30"]')).toHaveText('30 Nov 2026');
@@ -384,10 +396,12 @@ test('upcoming card shows supplied timing without a disclosure and reflows', asy
     await expectReflow(page, width);
     await expectReadable(card, width);
   }
-  await page.setViewportSize({ width: 320, height: 1000 });
   await page.addStyleTag({ content: 'html { font-size: 200% }' });
-  await expectReflow(page, 320);
-  await expectReadable(card, 320);
+  for (const width of [320, 360, 375, 768, 1024, 1280]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expectReflow(page, width);
+    await expectReadable(card, width);
+  }
   await axe(page);
 });
 
