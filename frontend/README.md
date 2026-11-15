@@ -5,11 +5,11 @@ The public `/check` route and homepage `/` share a purchase checker with four re
 
 ## Prerequisites and setup
 
-Use Node.js **24.22.0** (Node 24 LTS, also pinned in `.node-version`) and **pnpm 10.34.7**.
+Use Node.js **24.22.0** (Node 24 LTS, also pinned in `.node-version`) and **pnpm 12.16.1**.
 Select that Node version with your version manager, then install the pinned package manager:
 
 ```bash
-npm install --global pnpm@10.34.7
+npm install --global pnpm@12.16.1
 node --version
 pnpm --version
 cd frontend
@@ -298,3 +298,16 @@ edit the purchase details and submit a new check. Cards show the recorded claim 
 alongside the benefits, and Rule Matrix provides a way back to those cards.
 Claim requirements describe evidence that may be needed when claiming, without asserting that
 it is missing or complete. Eligibility does not mean a claim has been approved or paid.
+
+### Published promotion details
+
+Results cards link to `/promotions/<manufacturer-slug>--<promotion-slug>#variant-<uuid>`.
+The public page also works in a fresh tab and after a reload. It reads the recorded
+terms and all variants through a server-side, uncached GET to
+`/api/v1/promotions/{manufacturer_slug}/{promotion_slug}`. Deploy the backend
+endpoint before or alongside the frontend. The route uses the existing
+`BENEFITSCOUT_API_ORIGIN` configuration.
+
+Read the official terms for requirements beyond the published structured data.
+The detail page shows recorded claim definitions and reward amounts. The
+purchase check gives individual eligibility and calculates any applicable reward.

@@ -15,12 +15,14 @@ from app.application.promotions import PromotionPersistenceError, PromotionRecor
 from app.db.models import (
     Benefit,
     BenefitReward,
+    Manufacturer,
     Promotion,
     PromotionSource,
     PromotionVariant,
     PromotionVariantProduct,
     Source,
 )
+from app.domain.promotion_identity import public_slug
 from app.domain.promotion_lifecycle import HISTORICAL_PUBLISHED_STATUSES, PromotionStatus
 from app.domain.promotion_provenance import PromotionSourceRecord
 
@@ -125,6 +127,7 @@ class SqlAlchemyPromotionRepository:
                 selectinload(PromotionVariant.benefits)
                 .selectinload(Benefit.reward)
                 .selectinload(BenefitReward.product_values),
+                selectinload(PromotionVariant.promotion).selectinload(Promotion.manufacturer),
                 selectinload(PromotionVariant.promotion)
                 .selectinload(Promotion.source_links)
                 .selectinload(PromotionSource.source),
@@ -161,6 +164,70 @@ class SqlAlchemyPromotionRepository:
             return None
         details = self.load_check_purchase_candidates((variant_id,))
         return details[0] if details else None
+
+    def load_public_promotion(self, manufacturer_slug, promotion_slug):
+        from app.application.promotion_details import (
+            PublicIdentity,
+            PublicProduct,
+            PublicPromotion,
+            PublicVariant,
+            PublishedPromotionDataError,
+        )
+
+        query = (
+            select(Promotion)
+            .join(Promotion.manufacturer)
+            .where(
+                Manufacturer.slug == manufacturer_slug,
+                Promotion.slug == promotion_slug,
+                Promotion.status.in_([PromotionStatus.ACTIVE, PromotionStatus.EXPIRED]),
+            )
+            .options(
+                selectinload(Promotion.manufacturer),
+                selectinload(Promotion.source_links).selectinload(PromotionSource.source),
+                selectinload(Promotion.variants).selectinload(PromotionVariant.retailer),
+                selectinload(Promotion.variants).selectinload(PromotionVariant.requirements),
+                selectinload(Promotion.variants)
+                .selectinload(PromotionVariant.product_links)
+                .selectinload(PromotionVariantProduct.product),
+                selectinload(Promotion.variants)
+                .selectinload(PromotionVariant.benefits)
+                .selectinload(Benefit.reward)
+                .selectinload(BenefitReward.product_values),
+            )
+        )
+        try:
+            with self.session.no_autoflush:
+                promotion = self.session.scalar(query)
+                if promotion is None:
+                    return None
+                variants = []
+                for row in sorted(promotion.variants, key=lambda value: (value.code, value.id)):
+                    products = []
+                    for link in row.product_links:
+                        product = link.product
+                        if product is None or product.manufacturer_id != promotion.manufacturer_id:
+                            raise PublishedPromotionDataError
+                        products.append(
+                            PublicProduct(product.id, product.name, product.model_number)
+                        )
+                    products.sort(key=lambda value: (value.model_number or value.name, value.id))
+                    retailer = (
+                        PublicIdentity(row.retailer.id, row.retailer.name) if row.retailer else None
+                    )
+                    variants.append(
+                        PublicVariant(_check_details(row), row.code, tuple(products), retailer)
+                    )
+                return PublicPromotion(
+                    PublicIdentity(promotion.manufacturer.id, promotion.manufacturer.name),
+                    promotion.manufacturer.slug,
+                    promotion.slug,
+                    tuple(variants),
+                )
+        except SQLAlchemyError as error:
+            raise PromotionPersistenceError("Public promotion lookup failed") from error
+        except (AttributeError, TypeError, ValueError) as error:
+            raise PublishedPromotionDataError from error
 
     def get_publication_snapshot_for_update(self, promotion_id):
         """Lock parent first; cooperating graph writers must acquire this same lock."""
@@ -498,6 +565,7 @@ def _check_details(variant):
         ),
         sources,
         claim_min_wait_days=promotion.claim_min_wait_days,
+        public_slug=public_slug(promotion.manufacturer.slug, promotion.slug),
     )
 
 

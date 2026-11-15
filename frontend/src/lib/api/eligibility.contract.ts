@@ -1,3 +1,4 @@
+import { publicSlugSchema } from './promotion-slug';
 import { z } from 'zod';
 
 // Wire schemas mirror backend/app/api/schemas/eligibility.py; no eligibility rules.
@@ -43,7 +44,7 @@ export const purchaseRequestSchema = z
   })
   .strict();
 // Validate passive evidence without normalising the received source string.
-const httpSourceUrlSchema = z.string().refine((value) => {
+export const httpSourceUrlSchema = z.string().refine((value) => {
   if (/[\p{White_Space}\x00-\x1f\x7f]/u.test(value) || !/^https?:\/\//i.test(value)) return false;
   // WHATWG URL parsing repairs backslashes and empty authorities; reject those inputs.
   const authority = value.match(/^https?:\/\/([^/?#]*)/i)?.[1];
@@ -55,8 +56,10 @@ const httpSourceUrlSchema = z.string().refine((value) => {
     return false;
   }
 });
-const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-const timestamp = z.string().datetime({ offset: true });
+export const uuid = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+export const timestamp = z.string().datetime({ offset: true });
 const ruleKind = z.enum([
   'manufacturer',
   'product',
@@ -123,6 +126,7 @@ const reasonCode = z.enum([
 const claimStatus = z.enum(['open', 'not_yet_open', 'expired']);
 const sourceType = z.enum(['web_page', 'pdf', 'other']);
 export const promotionSchema = z.object({
+  public_slug: publicSlugSchema.nullish(),
   promotion_id: uuid,
   promotion_variant_id: uuid,
   promotion_name: z.string(),

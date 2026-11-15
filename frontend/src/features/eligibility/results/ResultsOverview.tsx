@@ -124,6 +124,15 @@ function PromotionCard({
           {!failed && explanation}
         </div>
         <div className="min-w-0 space-y-3 lg:pt-2">
+          {promotion.public_slug && (
+            <ButtonLink
+              href={`/promotions/${promotion.public_slug}#variant-${promotion.promotion_variant_id}`}
+              prefetch={false}
+              className="w-full text-center"
+            >
+              View promotion page
+            </ButtonLink>
+          )}
           <button
             type="button"
             aria-expanded={detailsOpen}
@@ -131,7 +140,7 @@ function PromotionCard({
             onClick={() => setDetailsOpen(!detailsOpen)}
             className={`${actionClass} bg-surface-muted text-ink-muted hover:bg-border`}
           >
-            View Full Promotion Details
+            Show quick details
           </button>
           <a
             href={promotion.provenance.official_source_url}

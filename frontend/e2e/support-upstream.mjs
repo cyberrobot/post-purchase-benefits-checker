@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
+import { recordedTerms } from '../src/lib/api/promotion-details.fixture.ts';
 const id = '00000000-0000-0000-0000-000000000009';
 function populatedResponse(unsafe = false) {
   const source = (sourceId, role, url) => ({
@@ -27,6 +28,7 @@ function populatedResponse(unsafe = false) {
         promotion_id: '00000000-0000-0000-0000-000000000004',
         promotion_variant_id: '00000000-0000-0000-0000-000000000005',
         promotion_name: 'Example populated promotion',
+        public_slug: recordedTerms.public_slug,
         variant_name: null,
         promotion_status: 'active',
         eligibility: {
@@ -84,6 +86,53 @@ const server = createServer(
   async (req, res) => {
     if (req.url === '/health') {
       res.end('ready');
+      return;
+    }
+    if (req.method === 'GET' && req.url?.startsWith('/api/v1/promotions/')) {
+      const [, , , , maker, offer] = req.url.split('/');
+      if (req.headers.authorization || req.headers.cookie) {
+        res.writeHead(500);
+        res.end('{}');
+        return;
+      }
+      if (offer === 'unavailable' || offer === 'hidden' || offer === 'missing') {
+        const status = offer === 'unavailable' ? 503 : 404;
+        res.writeHead(status, {
+          'Content-Type': 'application/problem+json',
+          'X-Request-ID': id,
+        });
+        res.end(
+          JSON.stringify({
+            type: 'about:blank',
+            title: 'Unavailable',
+            status,
+            detail: 'Try again later.',
+            code: status === 503 ? 'promotions_unavailable' : 'promotion_not_found',
+            request_id: id,
+          }),
+        );
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Request-ID': id });
+      if (offer === 'malformed') {
+        res.end('{bad json');
+        return;
+      }
+      const promotion = structuredClone(recordedTerms);
+      promotion.public_slug = maker + '--' + offer;
+      promotion.manufacturer.slug = maker;
+      if (maker === 'another-maker') {
+        promotion.manufacturer.name = 'Another Maker';
+        promotion.name = 'Another recorded promotion';
+        promotion.status = 'expired';
+        promotion.claim_window = {
+          kind: 'relative',
+          opens_after_purchase_days: 14,
+          deadline_after_purchase_days: 45,
+        };
+      }
+      if (offer === 'unsafe') promotion.provenance.claim_url = 'https://user:secret@example.com';
+      res.end(JSON.stringify(promotion));
       return;
     }
     let text = '';

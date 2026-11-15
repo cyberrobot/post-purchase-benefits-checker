@@ -125,6 +125,10 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
     expected,
 ):
     request, promotions, _, _ = published_graph
+    expected_slugs = {
+        str(promotion_id): f"maker-{request.model}--offer-{request.model}-{index}"
+        for index, promotion_id in enumerate(promotions)
+    }
     values = {
         "missing": {"claim_start_date": None, "claim_end_date": None},
         "future": {
@@ -190,7 +194,10 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
                 assert first.calls == [("check_purchase", case.expected_arguments)]
                 rest = await http.post(PATH, json=case.expected_arguments)
                 assert rest.status_code == 200
-                assert first.structured_content == rest.json()
+                rest_payload = rest.json()
+                for promotion in rest_payload["promotions"]:
+                    assert promotion.pop("public_slug") == expected_slugs[promotion["promotion_id"]]
+                assert first.structured_content == rest_payload
                 data = first.structured_content
                 assert len(data["promotions"]) == 3
                 primary = [p for p in data["promotions"] if p["promotion_id"] == str(promotions[0])]
@@ -205,7 +212,10 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
                 no_price = scenario(no_price_request)
                 trace = await flow.run(no_price)
                 rest = await http.post(PATH, json=no_price.expected_arguments)
-                assert trace.structured_content == rest.json()
+                rest_payload = rest.json()
+                for promotion in rest_payload["promotions"]:
+                    assert promotion.pop("public_slug") == expected_slugs[promotion["promotion_id"]]
+                assert trace.structured_content == rest_payload
                 assert trace.submitted_arguments.get("purchase_price") is None
                 assert any(
                     b["reward_unavailable_reason"] == "purchase_price_required_for_reward"

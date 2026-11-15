@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.schemas.eligibility import CheckResponse, Problem, PurchaseRequest, map_result
+from app.api.schemas.eligibility import Problem, PurchaseRequest, RestCheckResponse, map_rest_result
 from app.application.identity_matching import IdentityPersistenceError
 from app.application.promotions import PromotionPersistenceError
 from app.application.purchase_check import CheckPurchaseRequest, check_purchase
@@ -185,7 +185,7 @@ router = APIRouter(
 
 @router.post(
     "/check",
-    response_model=CheckResponse,
+    response_model=RestCheckResponse,
     responses={
         200: {
             "content": {
@@ -256,7 +256,7 @@ def eligibility_check(
             identity_resolver=resolver,
             promotion_repository=repository,
         )
-        response = map_result(result, evaluation_date)
+        response = map_rest_result(result, evaluation_date)
     promotions = getattr(response, "promotions", [])
     counts = {}
     for promotion in promotions:

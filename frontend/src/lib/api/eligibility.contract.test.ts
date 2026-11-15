@@ -78,3 +78,16 @@ it.each(sourceLocations)('rejects Unicode whitespace in evidence at %s', (locati
       .success,
   ).toBe(false);
 });
+
+it('preserves an optional canonical public slug while retaining the previous response', () => {
+  const value = structuredClone(populated);
+  const public_slug = 'maker--example-offer';
+  const linked = {
+    ...value,
+    promotions: value.promotions.map((promotion) => ({ ...promotion, public_slug })),
+  };
+  expect(checkPurchaseResponseSchema.parse(linked)).toEqual(linked);
+  expect(checkPurchaseResponseSchema.parse(value)).toEqual(value);
+  linked.promotions[0].public_slug = 'Made up label';
+  expect(checkPurchaseResponseSchema.safeParse(linked).success).toBe(false);
+});

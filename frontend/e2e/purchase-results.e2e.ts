@@ -50,7 +50,11 @@ for (const path of ['/', '/check']) {
     const card = page.getByRole('article');
     await expect(card.getByText('£10.00 cashback', { exact: true })).toBeVisible();
     await expect(card).toContainText('Submitted brand · Verified 02 Oct 2026');
-    const fullDetails = card.getByRole('button', { name: 'View Full Promotion Details' });
+    await expect(card.getByRole('link', { name: 'View promotion page' })).toHaveAttribute(
+      'href',
+      '/promotions/example--populated-promotion#variant-00000000-0000-0000-0000-000000000005',
+    );
+    const fullDetails = card.getByRole('button', { name: 'Show quick details' });
     await fullDetails.focus();
     await page.keyboard.press('Enter');
     await expect(fullDetails).toHaveAttribute('aria-expanded', 'true');
@@ -200,7 +204,7 @@ for (const width of [320, 360, 375, 768, 1024, 1280, 1440]) {
     await page
       .getByRole('article')
       .first()
-      .getByRole('button', { name: 'View Full Promotion Details' })
+      .getByRole('button', { name: 'Show quick details' })
       .click();
     await expectReflow(page, width);
   });
@@ -466,7 +470,7 @@ test('shows each recorded benefit and replaces the amount only after an explicit
   await expect(card.getByRole('heading', { name: 'Extended warranty' })).toBeVisible();
   await expect(card.getByRole('heading', { name: 'Free gift' })).toBeVisible();
   await expect(card.getByText('Claim period was open when checked')).toBeVisible();
-  await card.getByRole('button', { name: 'View Full Promotion Details' }).press('Enter');
+  await card.getByRole('button', { name: 'Show quick details' }).press('Enter');
   await page.getByRole('button', { name: 'Rule Matrix' }).click();
   await page.getByRole('button', { name: 'Eligible (1)', exact: true }).click();
   await page

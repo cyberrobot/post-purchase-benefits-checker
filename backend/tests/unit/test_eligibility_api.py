@@ -439,7 +439,7 @@ def test_serializer_failure_closes_snapshot(harness, monkeypatch):
     def fail(*args):
         raise RuntimeError("private serializer")
 
-    monkeypatch.setattr(api, "map_result", fail)
+    monkeypatch.setattr(api, "map_rest_result", fail)
     assert client.post(PATH, json=BODY).json()["code"] == "internal_server_error"
     assert state["closed"] == 1
 
@@ -462,13 +462,13 @@ def test_openapi_contract(harness):
     assert set(endpoint["responses"]) == {"200", "413", "415", "422", "429", "500", "503"}
     result = endpoint["responses"]["200"]["content"]["application/json"]["schema"]
     assert result["discriminator"]["propertyName"] == "outcome" and len(result["oneOf"]) == 2
-    for response_model in ("ResolvedResponse", "UnresolvedResponse"):
+    for response_model in ("RestResolvedResponse", "UnresolvedResponse"):
         assert "outcome" in schema["components"]["schemas"][response_model]["required"]
     assert schema["components"]["schemas"]["PurchaseRequest"]["additionalProperties"] is False
     assert schema["components"]["schemas"]["EligibilityClassification"]["enum"] == [
         x.value for x in EligibilityClassification
     ]
-    promotion = schema["components"]["schemas"]["Promotion"]
+    promotion = schema["components"]["schemas"]["RestPromotion"]
     assert "last_verified_at" in promotion["required"]
     assert promotion["properties"]["last_verified_at"]["type"] == "string"
     assert promotion["properties"]["last_verified_at"]["format"] == "date-time"
@@ -502,7 +502,7 @@ def test_openapi_response_examples_validate(harness):
     ]["application/json"]["examples"]
     for example in examples.values():
         TypeAdapter(CheckResponse).validate_python(example["value"])
-    matched = client.get("/openapi.json").json()["components"]["schemas"]["ResolvedResponse"][
+    matched = client.get("/openapi.json").json()["components"]["schemas"]["RestResolvedResponse"][
         "example"
     ]
     TypeAdapter(CheckResponse).validate_python(matched)

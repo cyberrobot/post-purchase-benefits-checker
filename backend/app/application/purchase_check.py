@@ -290,6 +290,7 @@ def _evaluate_candidate(request, evaluation_date, identity, candidate, detail):
         provenance,
         sources,
         _explanations(eligibility, window),
+        detail.public_slug,
     )
 
 

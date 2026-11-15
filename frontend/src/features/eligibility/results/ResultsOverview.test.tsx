@@ -65,7 +65,7 @@ it('shows the exact purchase, all benefits, source verification and functional s
     within(card).getByText('Provide the purchase price to calculate the cashback reward.'),
   ).toBeVisible();
   expect(within(card).getByText('02 Oct 2026').parentElement).toHaveTextContent('My Brand');
-  const detailsButton = within(card).getByRole('button', { name: 'View Full Promotion Details' });
+  const detailsButton = within(card).getByRole('button', { name: 'Show quick details' });
   expect(detailsButton).toHaveAttribute('aria-expanded', 'false');
   fireEvent.click(detailsButton);
   expect(within(card).getByText(/not an approved or paid claim/)).toBeVisible();
@@ -129,7 +129,7 @@ it('renders null and empty details honestly and zero filtered state can reset', 
   expect(screen.getByText('No benefit details supplied.')).toBeVisible();
   expect(screen.getByText('Detailed reasons were not supplied.')).toBeVisible();
   expect(screen.getByText('No individual rule checks were supplied.')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'View Full Promotion Details' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show quick details' }));
   expect(screen.getByText(/The response lists no requirements/)).toBeVisible();
   expect(screen.queryByText(/Claim opens/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Not eligible (0)' }));
@@ -316,7 +316,7 @@ it('preserves the reported upcoming classification despite contradictory rule ev
   expect(within(card).getByText('A long supplementary benefit description.')).toBeVisible();
   expect(within(card).getByText('27 Nov 2026')).toHaveAttribute('datetime', '2026-11-27');
   expect(within(card).getByText('31 Dec 2026')).toHaveAttribute('datetime', '2026-12-31');
-  fireEvent.click(within(card).getByRole('button', { name: 'View Full Promotion Details' }));
+  fireEvent.click(within(card).getByRole('button', { name: 'Show quick details' }));
   expect(within(card).getAllByText('27 Nov 2026')).toHaveLength(1);
   expect(within(card).getByRole('link', { name: /Official Portal Terms/ })).toHaveAttribute(
     'href',
@@ -494,7 +494,7 @@ it('keeps failed and unknown evidence separate and supplementary HTML escaped', 
   expect(
     within(explanation).getByText('These unknown facts are not the reason for this decision.'),
   ).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'View Full Promotion Details' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show quick details' }));
   expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeVisible();
   expect(screen.getByRole('heading', { name: 'Claim requirements' })).toBeVisible();
   expect(document.querySelector('img')).toBeNull();
@@ -596,7 +596,7 @@ it.each([
       expect(card.queryByText(calendarDate('2026-10-10'))).not.toBeInTheDocument();
       expect(card.queryByText(calendarDate('2026-11-09'))).not.toBeInTheDocument();
     }
-    fireEvent.click(card.getByRole('button', { name: 'View Full Promotion Details' }));
+    fireEvent.click(card.getByRole('button', { name: 'Show quick details' }));
     const details = within(card.getByRole('region', { name: 'Full promotion details' }));
     const recorded = details.getAllByText((line) => [before, copy, after].includes(line));
     expect(recorded.map((line) => line.textContent)).toEqual(
@@ -625,7 +625,7 @@ it('does not claim no explanation was supplied when timing copy is consolidated'
 
   const card = within(screen.getByRole('article'));
   expect(card.getByText('Claim period was open when checked')).toBeVisible();
-  fireEvent.click(card.getByRole('button', { name: 'View Full Promotion Details' }));
+  fireEvent.click(card.getByRole('button', { name: 'Show quick details' }));
   const details = within(card.getByRole('region', { name: 'Full promotion details' }));
   expect(details.getByText('No additional explanation supplied.')).toBeVisible();
   expect(details.queryByText('No explanation supplied.')).not.toBeInTheDocument();
@@ -766,3 +766,30 @@ it.each([null, '0'] as const)(
     else expect(link).not.toBeInTheDocument();
   },
 );
+
+it('links each variant to its canonical page and keeps the quick disclosure separate', () => {
+  if (populatedClaim.outcome !== 'resolved' || !promotion) throw new Error('fixture');
+  const public_slug = 'example--offer';
+  show({
+    ...populatedClaim,
+    promotions: [
+      { ...promotion, public_slug },
+      { ...promotion, public_slug, promotion_variant_id: '00000000-0000-0000-0000-000000000099' },
+    ],
+  });
+  const cards = screen.getAllByRole('article');
+  for (const [index, variantId] of [
+    promotion.promotion_variant_id,
+    '00000000-0000-0000-0000-000000000099',
+  ].entries()) {
+    const card = within(cards[index]);
+    expect(card.getByRole('link', { name: 'View promotion page' })).toHaveAttribute(
+      'href',
+      `/promotions/${public_slug}#variant-${variantId}`,
+    );
+    expect(card.getByRole('button', { name: 'Show quick details' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  }
+});

@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.eligibility import router as eligibility_router
 from app.api.health import router as health_router
-from app.api.schemas.eligibility import ResolvedResponse
+from app.api.promotions import router as promotions_router
+from app.api.schemas.eligibility import RestResolvedResponse
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.sentry import initialise_sentry
@@ -57,6 +58,7 @@ def create_app(
     app.state.session_factory = session_factory
     app.include_router(health_router)
     app.include_router(eligibility_router)
+    app.include_router(promotions_router)
 
     original_openapi = app.openapi
 
@@ -64,9 +66,18 @@ def create_app(
         schema = original_openapi()
         # FastAPI drops explicit nulls in examples. Restore the complete wire example
         # after generation so required nullable fields remain documented accurately.
-        schema["components"]["schemas"]["ResolvedResponse"]["example"] = (
-            ResolvedResponse.model_json_schema()["example"]
+        schema["components"]["schemas"]["RestResolvedResponse"]["example"] = (
+            RestResolvedResponse.model_json_schema()["example"]
         )
+        promotion_read = schema["paths"]["/api/v1/promotions/{manufacturer_slug}/{promotion_slug}"][
+            "get"
+        ]
+        for parameter in promotion_read["parameters"]:
+            if parameter["name"] in {"manufacturer_slug", "promotion_slug"}:
+                parameter["schema"].update(
+                    {"pattern": r"^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 255}
+                )
+        promotion_read["responses"].pop("422", None)
         return schema
 
     app.openapi = openapi_with_complete_examples
