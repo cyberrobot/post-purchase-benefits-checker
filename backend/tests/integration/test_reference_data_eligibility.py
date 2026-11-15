@@ -62,7 +62,10 @@ def test_seeded_rest_mcp_publication_journey(postgres_engine, migrated_test_data
                     mcp = await client.call_tool("check_purchase", arguments)
                     assert not mcp.is_error
                     rest_payload = response.json()
-                    rest_payload.pop("public_slug", None)
+                    for promotion in rest_payload.get("promotions", []):
+                        assert promotion.pop("public_slug") == (
+                            "hisense--hisense-autumn-cashback-2026-wf7i1248bbr-currys-reference"
+                        )
                     assert mcp.structured_content == rest_payload
                     return response.json()
 

@@ -124,6 +124,17 @@ def catalogue(postgres_engine, migrated_test_database):
         yield value
 
 
+def shared_eligibility_payload(rest_data, case):
+    shared_data = dict(rest_data)
+    if "promotions" in rest_data:
+        shared_data["promotions"] = [dict(promotion) for promotion in rest_data["promotions"]]
+        for promotion in shared_data["promotions"]:
+            assert promotion.pop("public_slug") == (
+                f"{case.brand.lower()}--{case.manifest['promotion_slug']}"
+            )
+    return shared_data
+
+
 @pytest.fixture
 def journey(catalogue, postgres_engine, monkeypatch):
     clock = [date(2000, 1, 1)]
@@ -182,9 +193,9 @@ def journey(catalogue, postgres_engine, monkeypatch):
                 validate(args, tool.input_schema)
                 validate(result.structured_content, tool.output_schema)
                 data = response.json()
-                shared_data = dict(data)
-                shared_data.pop("public_slug", None)
-                assert result.structured_content == shared_data, f"{case.brand}/REST-MCP parity"
+                assert result.structured_content == shared_eligibility_payload(data, case), (
+                    f"{case.brand}/REST-MCP parity"
+                )
                 assert data["evaluation_date"] == clock[0].isoformat()
                 await inspect(data, client, tools, http)
                 assert postgres_engine.pool.checkedout() == 0
@@ -350,7 +361,8 @@ class TestMVPAcceptance:
                     case.arguments(),
                 )
             )
-            assert trace.structured_content == data and trace.failure is None
+            assert trace.failure is None
+            assert trace.structured_content == shared_eligibility_payload(data, case)
             assert trace.calls == [("check_purchase", case.arguments())]
 
         journey[1](case, inspect)
@@ -361,7 +373,8 @@ class TestMVPAcceptance:
             offer(data, case, catalogue[1])
             await followups(data, client, tools, http)
             repeated = await client.call_tool("check_purchase", case.arguments())
-            assert not repeated.is_error and repeated.structured_content == data
+            assert not repeated.is_error
+            assert repeated.structured_content == shared_eligibility_payload(data, case)
 
         journey[1](case, inspect)
 
@@ -669,9 +682,8 @@ def test_mvp_unpublished_and_invalid_publication_never_surface(
                         result = await client.call_tool("check_purchase", case.arguments())
                         assert rest.status_code == 200 and not result.is_error
                         rest_payload = rest.json()
-                        rest_payload.pop("public_slug", None)
                         assert result.structured_content == rest_payload
-                        await no_match(rest.json())
+                        await no_match(rest_payload)
 
         asyncio.run(check_all())
         for case in CASES:

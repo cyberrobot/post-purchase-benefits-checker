@@ -125,6 +125,10 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
     expected,
 ):
     request, promotions, _, _ = published_graph
+    expected_slugs = {
+        str(promotion_id): f"maker-{request.model}--offer-{request.model}-{index}"
+        for index, promotion_id in enumerate(promotions)
+    }
     values = {
         "missing": {"claim_start_date": None, "claim_end_date": None},
         "future": {
@@ -191,7 +195,8 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
                 rest = await http.post(PATH, json=case.expected_arguments)
                 assert rest.status_code == 200
                 rest_payload = rest.json()
-                rest_payload.pop("public_slug", None)
+                for promotion in rest_payload["promotions"]:
+                    assert promotion.pop("public_slug") == expected_slugs[promotion["promotion_id"]]
                 assert first.structured_content == rest_payload
                 data = first.structured_content
                 assert len(data["promotions"]) == 3
@@ -208,7 +213,8 @@ def test_scripted_question_protocol_parity_grounding_cleanup(
                 trace = await flow.run(no_price)
                 rest = await http.post(PATH, json=no_price.expected_arguments)
                 rest_payload = rest.json()
-                rest_payload.pop("public_slug", None)
+                for promotion in rest_payload["promotions"]:
+                    assert promotion.pop("public_slug") == expected_slugs[promotion["promotion_id"]]
                 assert trace.structured_content == rest_payload
                 assert trace.submitted_arguments.get("purchase_price") is None
                 assert any(
@@ -243,9 +249,7 @@ def test_no_match_unresolved_distinct(mcp_app, published_graph, postgres_engine)
                     case = scenario(request, **changes)
                     trace = await flow.run(case)
                     rest = await http.post(PATH, json=case.expected_arguments)
-                    rest_payload = rest.json()
-                    rest_payload.pop("public_slug", None)
-                    assert trace.structured_content == rest_payload
+                    assert trace.structured_content == rest.json()
                     assert trace.structured_content["outcome"] == outcome
                     if outcome == "resolved":
                         assert trace.structured_content["promotions"] == []
