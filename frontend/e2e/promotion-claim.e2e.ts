@@ -32,6 +32,7 @@ test('selects, marks and resets a published checklist without a purchase session
   await page.goto(path);
   await expect(page.getByText('Choose a promotion variant to see its requirements.')).toBeVisible();
   await expect(page.getByRole('checkbox')).toHaveCount(0);
+  await expect(page.getByRole('link', claimLink)).toBeInViewport();
   await axe(page);
   await page.getByRole('link', { name: /Base offer.*Example Retailer.*TV-100/ }).click();
   await expect(page).toHaveURL(selectedPath);
@@ -144,6 +145,35 @@ for (const slug of ['unavailable', 'malformed', 'unsafe']) {
     if (slug === 'unavailable') await axe(page);
   });
 }
+
+test('shows a single keyboard-accessible official claim link above a long mobile checklist', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/promotions/example--long-claim/claim?variant=' + first);
+
+  const nextSteps = page.getByRole('region', { name: 'Official next steps' });
+  const officialSite = nextSteps.getByRole('link', claimLink);
+  await expect(page.getByRole('link', claimLink)).toHaveCount(1);
+  await expect(officialSite).toBeInViewport();
+  await expect(page.getByRole('checkbox')).toHaveCount(21);
+  const [claimBox, checklistBox] = await Promise.all([
+    officialSite.boundingBox(),
+    page.getByRole('heading', { name: 'Evidence and actions' }).boundingBox(),
+  ]);
+  expect(claimBox!.y + claimBox!.height).toBeLessThan(checklistBox!.y);
+
+  await page.getByRole('link', { name: 'Back to promotion details' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(officialSite).toBeFocused();
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const [panelBox, desktopChecklistBox] = await Promise.all([
+    nextSteps.boundingBox(),
+    page.getByRole('heading', { name: 'Evidence and actions' }).boundingBox(),
+  ]);
+  expect(panelBox!.x).toBeGreaterThan(desktopChecklistBox!.x + desktopChecklistBox!.width);
+});
 
 test('supports keyboard skip navigation and wide and narrow reflow', async ({ page }) => {
   await page.goto(selectedPath);

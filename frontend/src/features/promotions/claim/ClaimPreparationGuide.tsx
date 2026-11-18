@@ -19,14 +19,11 @@ function variantChoiceLabels(variants: Variant[]) {
       .filter(Boolean)
       .join(' · ');
   });
-  const counts = new Map<string, number>();
-  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
-
-  return labels.map((label, index) =>
-    (counts.get(label) ?? 0) > 1
-      ? `${label} · Variant ID ${variants[index].promotion_variant_id}`
-      : label,
-  );
+  const distinct = new Set(labels.map((label) => label.replace(/\s+/g, ' ').trim()));
+  // Prefix every choice when names collide so a recorded label cannot imitate a suffix.
+  return distinct.size === labels.length
+    ? labels
+    : labels.map((label, index) => `Variant ${index + 1}: ${label}`);
 }
 
 export function ClaimPreparationGuide({
@@ -60,66 +57,17 @@ export function ClaimPreparationGuide({
             {promotion.manufacturer.name} ·{' '}
             {promotion.status === 'active' ? 'Recorded as active' : 'Recorded as expired'}
           </p>
-          <p>
-            Use this checklist to prepare the requirements recorded for this promotion. The official
-            provider confirms eligibility and handles your claim.
-          </p>
+          <p>Use this checklist to prepare the requirements recorded for this promotion.</p>
         </header>
-        {promotion.variants.length > 1 && (
-          <Card className="space-y-3">
-            <nav aria-label="Promotion variants" className="space-y-3">
-              <h2 className="text-card font-bold">Promotion variants</h2>
-              <ul className="flex flex-wrap gap-x-6 gap-y-2">
-                {promotion.variants.map((variant, index) => {
-                  const current = variant.promotion_variant_id === selectedId;
-                  return (
-                    <li key={variant.promotion_variant_id} className="min-w-0">
-                      <Link
-                        aria-current={current ? 'page' : undefined}
-                        href={claimGuidePath(promotion.public_slug, variant.promotion_variant_id)}
-                        prefetch={false}
-                        className="inline-block py-2 font-semibold text-brand underline"
-                      >
-                        {choiceLabels[index]}
-                        {current && ' — selected'}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
-            {!selected && <p>Choose a promotion variant to see its requirements.</p>}
-          </Card>
-        )}
-        <div
-          className={
-            selected ? 'grid min-w-0 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]' : undefined
-          }
-        >
-          {selected && (
-            <Card className="min-w-0 space-y-4">
-              <h2 className="text-card font-bold">Evidence and actions</h2>
-              <div className="space-y-2">
-                <p className="font-semibold">{variantLabel(selected)}</p>
-                <p>
-                  {selected.retailer
-                    ? `Qualifying retailer: ${selected.retailer.name}`
-                    : 'No retailer restriction recorded.'}
-                </p>
-                <ul aria-label="Recorded products and models" className="list-disc pl-6">
-                  {selected.products.map((product) => (
-                    <li key={product.id}>
-                      {product.name}
-                      {product.model_number && <> · Model {product.model_number}</>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <ClaimChecklist key={selectedId} requirements={selected.requirements} />
-            </Card>
-          )}
-          <Card className="min-w-0 space-y-4 self-start">
-            <h2 className="text-card font-bold">Official next steps</h2>
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <Card
+            role="region"
+            aria-labelledby="official-next-steps"
+            className="min-w-0 space-y-4 self-start lg:col-start-2 lg:row-start-1"
+          >
+            <h2 id="official-next-steps" className="text-card font-bold">
+              Official next steps
+            </h2>
             <OfficialLink href={promotion.provenance.claim_url}>
               Open official claim site
             </OfficialLink>
@@ -137,6 +85,59 @@ export function ClaimPreparationGuide({
               <ClaimPeriod window={promotion.claim_window} />
             </section>
           </Card>
+          <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">
+            {promotion.variants.length > 1 && (
+              <Card className="space-y-3">
+                <nav aria-label="Promotion variants" className="space-y-3">
+                  <h2 className="text-card font-bold">Promotion variants</h2>
+                  <ul className="flex flex-wrap gap-x-6 gap-y-2">
+                    {promotion.variants.map((variant, index) => {
+                      const current = variant.promotion_variant_id === selectedId;
+                      return (
+                        <li key={variant.promotion_variant_id} className="min-w-0">
+                          <Link
+                            aria-current={current ? 'page' : undefined}
+                            href={claimGuidePath(
+                              promotion.public_slug,
+                              variant.promotion_variant_id,
+                            )}
+                            prefetch={false}
+                            className="inline-block py-2 font-semibold text-brand underline"
+                          >
+                            {choiceLabels[index]}
+                            {current && <span aria-hidden="true"> — selected</span>}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </nav>
+                {!selected && <p>Choose a promotion variant to see its requirements.</p>}
+              </Card>
+            )}
+            {selected && (
+              <Card className="min-w-0 space-y-4">
+                <h2 className="text-card font-bold">Evidence and actions</h2>
+                <div className="space-y-2">
+                  <p className="font-semibold">{variantLabel(selected)}</p>
+                  <p>
+                    {selected.retailer
+                      ? `Qualifying retailer: ${selected.retailer.name}`
+                      : 'No retailer restriction recorded.'}
+                  </p>
+                  <ul aria-label="Recorded products and models" className="list-disc pl-6">
+                    {selected.products.map((product) => (
+                      <li key={product.id}>
+                        {product.name}
+                        {product.model_number && <> · Model {product.model_number}</>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <ClaimChecklist key={selectedId} requirements={selected.requirements} />
+              </Card>
+            )}
+          </div>
         </div>
       </Container>
     </main>

@@ -146,6 +146,15 @@ const server = createServer(
           },
         );
       }
+      if (offer === 'long-claim') {
+        for (let item = 1; item <= 20; item++) {
+          promotion.variants[0].requirements.push({
+            requirement_id: fixtureId(100 + item),
+            requirement_type: 'invoice',
+            description: 'Prepare invoice copy ' + item + '.',
+          });
+        }
+      }
       if (offer === 'unsafe') promotion.provenance.claim_url = 'https://user:secret@example.com';
       res.end(JSON.stringify(promotion));
       return;

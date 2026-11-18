@@ -52,6 +52,9 @@ it('shows an explicit chooser without an applicable checklist', async () => {
   read.mockResolvedValueOnce(recordedTerms);
   render(await page());
   expect(screen.getByText('Choose a promotion variant to see its requirements.')).toBeVisible();
+  expect(
+    screen.getByRole('link', { name: 'Open official claim site (opens in a new tab)' }),
+  ).toHaveAttribute('href', recordedTerms.provenance.claim_url);
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   expect(
     screen.getByRole('link', { name: /Base offer.*Example Retailer.*TV-100/ }),
@@ -61,27 +64,57 @@ it('shows an explicit chooser without an applicable checklist', async () => {
   );
 });
 
-it('disambiguates variants whose rendered names, retailer and model otherwise collide', async () => {
+it.each([
+  ['Base', 'retail', 'Base (variant code: retail)'],
+  [null, 'Retail offer', 'Retail  offer'],
+])('disambiguates equivalent accessible names (%s, %s, %s)', async (name, code, otherCode) => {
+  read.mockResolvedValueOnce({
+    ...recordedTerms,
+    variants: [
+      { ...first, name, code },
+      { ...second, name: null, code: otherCode, retailer: first.retailer },
+    ],
+  });
+  render(await page());
+  for (const [index, variant] of [first, second].entries()) {
+    expect(
+      screen.getByRole('link', { name: new RegExp(`^Variant ${index + 1}: .*TV-100$`) }),
+    ).toHaveAttribute(
+      'href',
+      '/promotions/' + recordedTerms.public_slug + '/claim?variant=' + variant.promotion_variant_id,
+    );
+  }
+});
+
+it('keeps selected-state variant links accessible names distinct', async () => {
   const collidingVariants = [
-    { ...first, name: 'Base', code: 'retail' },
+    {
+      ...first,
+      name: 'Base',
+      code: 'retail',
+    },
     {
       ...second,
       name: null,
       code: 'Base (variant code: retail)',
       retailer: first.retailer,
+      products: [{ ...second.products[0], model_number: 'TV-100 — selected' }],
     },
   ];
   read.mockResolvedValueOnce({ ...recordedTerms, variants: collidingVariants });
-  render(await page());
+  render(await page(first.promotion_variant_id));
 
-  const links = screen
+  const choices = screen
     .getAllByRole('link')
     .filter((link) => link.getAttribute('href')?.includes('/claim?variant='));
-  expect(links).toHaveLength(2);
-  const names = links.map((link) => link.getAttribute('aria-label') ?? link.textContent);
-  expect(new Set(names).size).toBe(2);
-  expect(names[0]).toContain(first.promotion_variant_id);
-  expect(names[1]).toContain(second.promotion_variant_id);
+  expect(choices).toHaveLength(2);
+  expect(choices[0]).toHaveAttribute('aria-current', 'page');
+  expect(choices[0]).toHaveAccessibleName(
+    'Base (variant code: retail) · Example Retailer · TV-100',
+  );
+  expect(choices[1]).toHaveAccessibleName(
+    'Base (variant code: retail) · Example Retailer · TV-100 — selected',
+  );
 });
 
 it('isolates the selected variant and shows no progress for an empty checklist', async () => {
@@ -92,10 +125,7 @@ it('isolates the selected variant and shows no progress for an empty checklist',
   expect(screen.getByText(/No claim requirements are recorded for this variant/)).toBeVisible();
   expect(screen.getByText(/Recorded as expired/)).toBeVisible();
   expect(screen.getByText(/Claim timing not recorded/)).toBeVisible();
-  expect(screen.getByRole('link', { name: /special.*selected/ })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
+  expect(screen.getByRole('link', { name: /^special/ })).toHaveAttribute('aria-current', 'page');
   expect(screen.getByRole('link', { name: 'Back to promotion details' })).toHaveAttribute(
     'href',
     '/promotions/' + recordedTerms.public_slug + '#variant-' + second.promotion_variant_id,
