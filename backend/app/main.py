@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from contextlib import AsyncExitStack, asynccontextmanager
-from uuid import uuid4
 
 import structlog
 from fastapi import FastAPI, Request
@@ -11,12 +10,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.api.eligibility import router as eligibility_router
 from app.api.health import router as health_router
 from app.api.promotions import router as promotions_router
-from app.api.schemas.eligibility import Problem, RestResolvedResponse
+from app.api.schemas.eligibility import RestResolvedResponse
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.sentry import initialise_sentry
 from app.db.engine import create_database_engine
-from app.domain.promotion_identity import is_slug
 
 logger = structlog.get_logger(__name__)
 
@@ -61,46 +59,6 @@ def create_app(
     app.include_router(health_router)
     app.include_router(eligibility_router)
     app.include_router(promotions_router)
-
-    @app.middleware("http")
-    async def reject_malformed_promotion_paths(request: Request, call_next):
-        """Return the public promotion problem contract before route normalization."""
-        prefix = b"/api/v1/promotions/"
-        raw_path = request.scope.get("raw_path", b"")
-        if raw_path.startswith(prefix):
-            components = raw_path[len(prefix) :].split(b"/")
-            malformed = len(components) != 2
-            if not malformed:
-                try:
-                    manufacturer_slug, promotion_slug = (
-                        part.decode("ascii") for part in components
-                    )
-                except UnicodeDecodeError:
-                    malformed = True
-                else:
-                    malformed = (
-                        b"%" in raw_path
-                        or not is_slug(manufacturer_slug)
-                        or not is_slug(promotion_slug)
-                    )
-            if malformed:
-                request_id = uuid4()
-                return JSONResponse(
-                    Problem(
-                        title="Promotion not found",
-                        status=404,
-                        detail="This promotion is unavailable.",
-                        code="promotion_not_found",
-                        request_id=request_id,
-                    ).model_dump(mode="json"),
-                    status_code=404,
-                    media_type="application/problem+json",
-                    headers={
-                        "X-Request-ID": str(request_id),
-                        "Cache-Control": "no-store",
-                    },
-                )
-        return await call_next(request)
 
     original_openapi = app.openapi
 

@@ -57,6 +57,15 @@ test('links from results, supports browser back and loads without a purchase ses
     await expect(link).toHaveAttribute('href', href);
     await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   }
+  await page
+    .locator('#' + firstVariant)
+    .getByRole('link', { name: 'Prepare claim checklist' })
+    .click();
+  await expect(page).toHaveURL(route + '/claim?variant=' + firstVariant.slice('variant-'.length));
+  await expect(page.getByRole('heading', { name: 'Prepare your claim' })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Receipt' })).not.toBeChecked();
+  await page.goBack();
+  await expect(page).toHaveURL(route + '#' + firstVariant);
   await page.goBack();
   await expect(page.getByRole('link', { name: 'View promotion page' })).toBeVisible();
   const fresh = await context.newPage();

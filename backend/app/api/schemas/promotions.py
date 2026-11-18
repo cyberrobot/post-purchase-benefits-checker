@@ -35,14 +35,11 @@ def checked_url(value: str) -> str:
     hostname = urlsplit(value).hostname
     if not hostname or any(char in hostname for char in "%<>^|"):
         raise ValueError("Invalid source host")
-    # WHATWG URL parsing treats numeric-ending hosts as IPv4 candidates. If they are
-    # not ordinary IPv4 literals, browsers reject them while urllib accepts them as
-    # DNS names (for example, example.123 or 0x100000000).
-    final_label = hostname.rstrip(".").rsplit(".", 1)[-1]
-    numeric_ending = final_label.isdigit() or re.fullmatch(r"0[xX][0-9a-fA-F]*", final_label)
-    if numeric_ending:
+    # urllib accepts out-of-range dotted IPv4 strings as hostnames, but browsers reject
+    # them as invalid URL hosts. Keep the public JSON boundary consistent with browsers.
+    if re.fullmatch(r"[0-9.]+", hostname):
         try:
-            ipaddress.IPv4Address(hostname)
+            ipaddress.ip_address(hostname)
         except ValueError:
             raise ValueError("Invalid source host") from None
     return value

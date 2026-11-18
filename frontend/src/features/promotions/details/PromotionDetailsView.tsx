@@ -1,24 +1,17 @@
-import type { ReactNode } from 'react';
 import { ButtonLink } from '@/components/ui/ButtonLink';
 import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
-import { calendarDate, gbp, timestamp, words } from '@/features/eligibility/results/presentation';
+import { gbp, words } from '@/features/eligibility/results/presentation';
 import type { PromotionDetails } from '@/lib/api/promotion-details.contract';
+import { ClaimPeriod, DateValue, OfficialLink, Timestamp } from '../recordedTerms';
+import { claimGuidePath } from '../claim/claimGuidePath';
+import { requirementLabels } from '../claim/requirements';
 import { VariantHashFocus } from './VariantHashFocus';
 
 const categories = {
   cashback: 'Cashback',
   extended_warranty: 'Extended warranty',
   free_gift: 'Free gift',
-};
-const requirements = {
-  receipt: 'Receipt',
-  serial_number: 'Serial number',
-  registration: 'Registration',
-  invoice: 'Invoice',
-  barcode: 'Barcode',
-  imei: 'IMEI',
-  installation_evidence: 'Installation evidence',
 };
 const sourceRoles = {
   primary: 'Official promotion source',
@@ -27,58 +20,6 @@ const sourceRoles = {
   supporting: 'Supporting source',
 };
 type Variant = PromotionDetails['variants'][number];
-
-function DateValue({ value }: { value: string | null }) {
-  return value ? <time dateTime={value}>{calendarDate(value)}</time> : 'Not specified';
-}
-
-function Timestamp({ value }: { value: string }) {
-  return <time dateTime={value}>{timestamp(value)}</time>;
-}
-
-function OfficialLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="font-semibold text-brand underline"
-    >
-      {children} <span className="text-small">(opens in a new tab)</span>
-    </a>
-  );
-}
-
-function ClaimPeriod({ window }: { window: PromotionDetails['claim_window'] }) {
-  if (!window) return <p>Claim timing not recorded. Check the official terms.</p>;
-  if (window.kind === 'relative') {
-    return (
-      <>
-        <ul className="list-disc pl-6">
-          <li>Opens {window.opens_after_purchase_days} calendar days after purchase.</li>
-          <li>Deadline {window.deadline_after_purchase_days} calendar days after purchase.</li>
-        </ul>
-        <p>
-          Individual dates depend on the purchase date. The opening and deadline days are included.
-        </p>
-      </>
-    );
-  }
-  return (
-    <>
-      <p>
-        Recorded claim period: <DateValue value={window.opens_on} /> to{' '}
-        <DateValue value={window.deadline_on} />, inclusive.
-      </p>
-      {window.minimum_days_after_purchase !== null && (
-        <p>
-          At least {window.minimum_days_after_purchase} days after purchase. The earliest claim date
-          for a purchase may be later than the recorded start.
-        </p>
-      )}
-    </>
-  );
-}
 
 function Reward({
   benefit,
@@ -119,7 +60,7 @@ function ProductName({ product }: { product: Variant['products'][number] }) {
   );
 }
 
-function VariantDetails({ variant }: { variant: Variant }) {
+function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
   const id = 'variant-' + variant.promotion_variant_id;
   return (
     <Card
@@ -172,7 +113,7 @@ function VariantDetails({ variant }: { variant: Variant }) {
           <ul className="list-disc space-y-2 pl-6">
             {variant.requirements.map((item) => (
               <li key={item.requirement_id}>
-                <strong>{requirements[item.requirement_type]}</strong>
+                <strong>{requirementLabels[item.requirement_type]}</strong>
                 {item.description && <p>{item.description}</p>}
               </li>
             ))}
@@ -180,6 +121,9 @@ function VariantDetails({ variant }: { variant: Variant }) {
         ) : (
           <p>No claim requirements recorded here; check the official terms.</p>
         )}
+        <ButtonLink href={claimGuidePath(slug, variant.promotion_variant_id)} prefetch={false}>
+          Prepare claim checklist
+        </ButtonLink>
       </section>
     </Card>
   );
@@ -246,7 +190,11 @@ export function PromotionDetailsView({ promotion }: { promotion: PromotionDetail
               </p>
             </Card>
             {promotion.variants.map((variant) => (
-              <VariantDetails key={variant.promotion_variant_id} variant={variant} />
+              <VariantDetails
+                key={variant.promotion_variant_id}
+                variant={variant}
+                slug={promotion.public_slug}
+              />
             ))}
           </div>
           <div className="min-w-0 space-y-6">

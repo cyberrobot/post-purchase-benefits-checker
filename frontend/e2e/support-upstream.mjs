@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
-import { recordedTerms } from '../src/lib/api/promotion-details.fixture.ts';
+import { id as fixtureId, recordedTerms } from '../src/lib/api/promotion-details.fixture.ts';
 const id = '00000000-0000-0000-0000-000000000009';
 function populatedResponse(unsafe = false) {
   const source = (sourceId, role, url) => ({
@@ -130,6 +130,21 @@ const server = createServer(
           opens_after_purchase_days: 14,
           deadline_after_purchase_days: 45,
         };
+      }
+      if (offer === 'single-claim') promotion.variants = promotion.variants.slice(0, 1);
+      if (offer === 'claim-checklist') {
+        promotion.variants[0].requirements.push(
+          {
+            requirement_id: fixtureId(50),
+            requirement_type: 'receipt',
+            description: 'Keep a duplicate receipt.',
+          },
+          {
+            requirement_id: fixtureId(51),
+            requirement_type: 'registration',
+            description: 'Register the product.',
+          },
+        );
       }
       if (offer === 'unsafe') promotion.provenance.claim_url = 'https://user:secret@example.com';
       res.end(JSON.stringify(promotion));

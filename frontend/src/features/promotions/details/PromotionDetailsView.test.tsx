@@ -6,6 +6,15 @@ it('presents benefit definitions, model amounts, static dates and claim requirem
   render(<PromotionDetailsView promotion={recordedTerms} />);
   const variants = screen.getAllByRole('region');
   expect(variants).toHaveLength(2);
+  variants.forEach((variant, index) => {
+    expect(within(variant).getByRole('link', { name: 'Prepare claim checklist' })).toHaveAttribute(
+      'href',
+      '/promotions/' +
+        recordedTerms.public_slug +
+        '/claim?variant=' +
+        recordedTerms.variants[index].promotion_variant_id,
+    );
+  });
   expect(variants[0]).toHaveAttribute(
     'id',
     'variant-' + recordedTerms.variants[0].promotion_variant_id,

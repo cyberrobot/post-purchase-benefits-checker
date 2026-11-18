@@ -311,3 +311,16 @@ endpoint before or alongside the frontend. The route uses the existing
 Read the official terms for requirements beyond the published structured data.
 The detail page shows recorded claim definitions and reward amounts. The
 purchase check gives individual eligibility and calculates any applicable reward.
+
+### Claim preparation guide
+
+Each published variant links to
+`/promotions/<manufacturer-slug>--<promotion-slug>/claim?variant=<uuid>`. The guide
+also works directly: a single variant opens automatically, while promotions with
+multiple variants offer a chooser. It uses the same server-side published details
+read and shows only the selected variant’s recorded evidence and actions.
+
+Checklist marks are temporary and reset when switching variants or reloading.
+Visitors can open the verified official claim site at any time. The provider
+handles eligibility, deadlines, claim submission and acceptance; BenefitScout
+does not collect evidence or save checklist progress.
