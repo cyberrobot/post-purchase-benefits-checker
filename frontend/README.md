@@ -71,7 +71,7 @@ Future integration must deliberately consume the existing backend
 published promotion data. The shared purchase form explicitly calls the existing same-origin bridge; the backend remains the eligibility authority. No auth or persistence is introduced. Any future `NEXT_PUBLIC_*` values are included in browser bundles
 and must never contain secrets.
 
-Detailed results, broader homepage content, authentication and hosting belong to later frontend changes.
+Broader homepage content and authentication are outside the purchase checker. See the sections below for results, published promotions and claim preparation.
 
 ## Interface foundation (FE-02)
 
@@ -207,7 +207,7 @@ no retries or persistence. `useCheckPurchaseMutation` runs only on explicit
 mutation. Mutation data is transient (zero cache retention after it becomes
 inactive); components should call `reset` when done. TanStack does not automatically
 cancel mutations. Standalone `checkPurchase` accepts a caller AbortSignal.
-Both `/` and `/check` provide the shared purchase checker with accessible validation and safe outcome/error feedback; detailed results are future work. Backend REST/MCP and database contracts are unchanged.
+Both `/` and `/check` provide the shared purchase checker with accessible validation and safe outcome/error feedback; successful checks open the results view described below. Backend REST/MCP and database contracts are unchanged.
 
 `pnpm test:e2e` manages a deterministic upstream fixture on loopback port 3102 and
 the production Next.js server on 3101, supplying the origin only at runtime.
@@ -237,7 +237,7 @@ for every reported classification: eligible under recorded rules, potentially el
 claim period not yet open and expired. Counts include unfavourable records. An eligibility summary
 does not approve or pay a claim, calculate claim windows or promise cashback. Safe opaque request
 IDs are shown as support references on failures. Editing clears old responses/errors; unmounting
-invalidates late responses. Values and responses remain ephemeral. Detailed result cards, claims, source evidence presentation and autocomplete remain follow-up work.
+invalidates late responses. Values and responses remain ephemeral. See below for detailed results, published source evidence and the claim preparation guide. Autocomplete remains outside the current workflow.
 
 `pnpm test` includes focused form validation, calendar boundaries, exact request shape, pending
 protection, each outcome/error and correction/retry tests. `pnpm test:e2e` fills the rendered controls
@@ -264,8 +264,8 @@ checks `/` and `/check` without API configuration. Live checks still require the
 server-only `BENEFITSCOUT_API_ORIGIN`; lack of a backend produces a recoverable service error.
 
 Native Safari date input behaviour, native 200% browser zoom and VoiceOver/NVDA announcements
-remain manual follow-up. Trusted lookup dropdowns, backend-supported channel/condition, full result
-cards/claim workflows/source panels, saved history and accounts are outside FE-05.
+remain manual follow-up. Trusted lookup dropdowns, purchase channel and condition, saved history and
+accounts remain outside the current workflow.
 
 ### Eligibility results
 
@@ -286,8 +286,9 @@ checks, but the empty results page renders without it.
 Cards are the default results presentation. Rule Matrix is an alternative view of
 existing backend-provided `rule_evaluations`; missing evaluations display **Not supplied**.
 Filters work consistently in both views, and switching views makes no additional
-API requests. Dedicated promotion detail pages, claim preparation workflows and saved
-result history remain future functionality. Official source and claim links open external sites.
+API requests. Results cards link to public promotion details, where each variant links to its claim
+preparation guide. The public pages work without a purchase-check session. Official source and claim
+links open external sites.
 
 Results explain each promotion variant using the backend's recorded decision reasons. Failed
 conditions, facts that could not be assessed and passed checks are labelled separately. Claim
@@ -311,3 +312,17 @@ endpoint before or alongside the frontend. The route uses the existing
 Read the official terms for requirements beyond the published structured data.
 The detail page shows recorded claim definitions and reward amounts. The
 purchase check gives individual eligibility and calculates any applicable reward.
+
+### Claim preparation guide
+
+Each published variant links to
+`/promotions/<manufacturer-slug>--<promotion-slug>/claim?variant=<uuid>`. The guide
+also works directly: a single variant opens automatically, while promotions with
+multiple variants offer a chooser. It uses the same server-side published details
+read and shows only the selected variant’s recorded evidence and actions.
+
+Checklist marks are temporary and reset when switching variants or reloading.
+The verified official claim link appears near the top of the guide, even before a variant is
+selected or any item is marked ready. The guide also links to the official terms. The provider
+handles eligibility, deadlines, claim submission and acceptance; BenefitScout
+does not collect evidence or save checklist progress.
