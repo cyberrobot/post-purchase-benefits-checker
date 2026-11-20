@@ -34,12 +34,13 @@ test('selects, marks and resets a published checklist without a purchase session
   await expect(page.getByRole('checkbox')).toHaveCount(0);
   await expect(page.getByRole('link', claimLink)).toBeInViewport();
   await axe(page);
-  await page.getByRole('link', { name: /Base offer.*Example Retailer.*TV-100/ }).click();
+  const variantNavigation = page.getByRole('navigation', { name: 'Promotion variants' });
+  const selectedVariant = variantNavigation.getByRole('link', {
+    name: /Base offer.*Example Retailer.*TV-100/,
+  });
+  await selectedVariant.click();
   await expect(page).toHaveURL(selectedPath);
-  await expect(page.getByRole('link', { name: /Base offer.*selected/ })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
+  await expect(selectedVariant).toHaveAttribute('aria-current', 'page');
   const [original, duplicate, registration] = await page.getByRole('checkbox').all();
   expect(await page.getByRole('checkbox').count()).toBe(3);
   await expect(original).toHaveAccessibleDescription('Keep your receipt.');
