@@ -1,5 +1,5 @@
 import { PurchaseCheckSessionProvider } from '@/features/eligibility/session/PurchaseCheckSession';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import Home from '@/app/page';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 
@@ -25,4 +25,26 @@ it('introduces purchase checking with the actual four-field entry form', () => {
   );
   expect(main).toHaveAttribute('id', 'main-content');
   expect(main).toHaveAttribute('tabindex', '-1');
+});
+
+it('lets visitors select an educational benefit guide', () => {
+  render(
+    <QueryProvider>
+      <PurchaseCheckSessionProvider>
+        <Home />
+      </PurchaseCheckSessionProvider>
+    </QueryProvider>,
+  );
+
+  const guide = screen.getByRole('region', { name: 'Types of benefits' });
+  const cashback = within(guide).getByRole('button', { name: /cashback/i });
+  const warranty = within(guide).getByRole('button', { name: /extended warranty/i });
+  expect(cashback).toHaveAttribute('aria-expanded', 'true');
+  expect(within(guide).getAllByText(/official terms are authoritative/i)[0]).toBeVisible();
+  fireEvent.click(warranty);
+  expect(warranty).toHaveAttribute('aria-expanded', 'true');
+  expect(cashback).toHaveAttribute('aria-expanded', 'false');
+  expect(within(guide).getByText(/cover beyond the original warranty/i)).toBeVisible();
+  fireEvent.click(warranty);
+  expect(warranty).toHaveAttribute('aria-expanded', 'false');
 });
