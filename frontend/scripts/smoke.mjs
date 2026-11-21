@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
+import { assertHomepageHeading } from './smoke-heading.mjs';
 
 const port = 3100;
 const server = spawn(
@@ -41,7 +42,7 @@ try {
   assert.match(html, /<title>BenefitScout<\/title>/);
   assert.match(html, /<meta name="description" content="Check your purchase details/);
   assert.match(html, /<main[\s>]/);
-  assert.match(html, /<h1[^>]*>Find benefits from a /);
+  assertHomepageHeading(html);
   assert.match(html, /Find My Benefits/);
   const check = await fetch(`http://127.0.0.1:${port}/check`, {
     signal: AbortSignal.timeout(2000),
