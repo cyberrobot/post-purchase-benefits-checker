@@ -26,3 +26,31 @@ it('introduces purchase checking with the actual four-field entry form', () => {
   expect(main).toHaveAttribute('id', 'main-content');
   expect(main).toHaveAttribute('tabindex', '-1');
 });
+
+it('explains the journey after the embedded checker without linking away', () => {
+  render(
+    <QueryProvider>
+      <PurchaseCheckSessionProvider>
+        <Home />
+      </PurchaseCheckSessionProvider>
+    </QueryProvider>,
+  );
+  const main = screen.getByRole('main');
+  expect(
+    within(main).queryByRole('link', { name: /dedicated purchase checker/i }),
+  ).not.toBeInTheDocument();
+  const steps = within(main).getByRole('list');
+  expect(
+    within(steps)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual([
+    expect.stringContaining('Enter purchase details'),
+    expect.stringContaining('Review matching published promotions'),
+    expect.stringContaining('Follow official claim instructions'),
+  ]);
+  expect(
+    screen.getByRole('form', { name: 'Check a purchase' }).compareDocumentPosition(steps) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
 import { PurchaseInputForm } from '@/features/eligibility/components/PurchaseInputForm';
@@ -12,21 +11,30 @@ export default function Home() {
       <Container width="narrow">
         <div className="mb-8 text-center">
           <h1 className="text-display leading-[1.15] font-bold tracking-tight">
-            Find benefits from a <span className="text-brand">purchase</span>
+            Find <span className="text-brand">benefits</span> from a purchase
           </h1>
           <p className="mt-4 text-body text-ink-muted">
-            Enter the manufacturer, exact model, retailer and purchase date to check for published
-            promotions.
+            Check whether cashback, extended warranties or free gifts may be available for a
+            purchase you have already made.
           </p>
         </div>
-        <p className="mb-6 text-center text-small">
-          <Link href="/check" className="font-semibold text-brand underline underline-offset-4">
-            Open the dedicated purchase checker
-          </Link>
-        </p>
         <Card className="p-6 md:p-8">
           <PurchaseInputForm />
         </Card>
+        <ol className="mt-10 grid list-decimal gap-6 border-t border-border pt-8 pl-6 text-ink-muted md:grid-cols-3 md:gap-10">
+          <li>
+            <strong className="block text-ink">Enter purchase details</strong>
+            Provide the manufacturer, model, retailer and purchase date.
+          </li>
+          <li>
+            <strong className="block text-ink">Review matching published promotions</strong>
+            Check any matching promotions and their recorded conditions.
+          </li>
+          <li>
+            <strong className="block text-ink">Follow official claim instructions</strong>
+            If you decide to claim, follow the promotion&apos;s official instructions.
+          </li>
+        </ol>
       </Container>
     </main>
   );

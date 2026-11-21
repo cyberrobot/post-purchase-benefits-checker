@@ -348,7 +348,6 @@ test('pending controls and announcements prevent duplicate clicks and Enter, and
   await expect(page.getByRole('status')).toContainText('Checking');
   await page.getByRole('banner').getByRole('link', { name: 'BenefitScout', exact: true }).click();
   await expect(page.getByRole('status')).toHaveCount(0);
-  await page.getByRole('link', { name: 'Open the dedicated purchase checker' }).click();
   await expect(page.getByLabel(labels[0], { exact: true })).toHaveValue('Any Brand');
   await expect(page.getByRole('status')).toHaveCount(0);
   expect(sent).toHaveLength(2);
