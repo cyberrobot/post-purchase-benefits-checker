@@ -119,9 +119,6 @@ export function PurchaseInputForm() {
     `min-h-12 w-full min-w-0 rounded-control border bg-surface px-4 py-3 text-ink focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-brand disabled:cursor-not-allowed disabled:bg-surface-muted ${errors[field] ? 'border-red-700 border-2' : 'border-ink-muted'}`;
   return (
     <form id="purchase-checker" aria-label="Check a purchase" noValidate onSubmit={submit}>
-      <p className="mb-6 text-small text-ink-muted">
-        All four fields marked * are required. Enter names as free text.
-      </p>
       <div className="grid min-w-0 gap-x-6 gap-y-4 md:grid-cols-2">
         {fields.map((field) => (
           <div key={field.name} className="min-w-0">
@@ -141,20 +138,20 @@ export function PurchaseInputForm() {
               disabled={pending}
               value={draft[field.name]}
               aria-invalid={errors[field.name] ? true : undefined}
-              aria-describedby={`${id}-${field.name}-help${errors[field.name] ? ` ${id}-${field.name}-error` : ''}`}
+              aria-describedby={
+                errors[field.name] ? `${id}-${field.name}-error` : `${id}-${field.name}-help`
+              }
               onChange={(event) => edit(field.name, event.target.value)}
               className={inputClass(field.name)}
             />
-            <div className="mt-2 min-h-14">
-              <p id={`${id}-${field.name}-help`} className="text-small text-ink-muted">
-                {field.help}
-              </p>
-              {errors[field.name] && (
-                <p
-                  id={`${id}-${field.name}-error`}
-                  className="mt-1 text-small font-semibold text-red-800"
-                >
+            <div className="mt-2 min-h-10">
+              {errors[field.name] ? (
+                <p id={`${id}-${field.name}-error`} className="text-small text-red-800">
                   {errors[field.name]}
+                </p>
+              ) : (
+                <p id={`${id}-${field.name}-help`} className="text-small text-ink-muted">
+                  {field.help}
                 </p>
               )}
             </div>
@@ -164,12 +161,12 @@ export function PurchaseInputForm() {
       <details
         open={priceOpen}
         onToggle={(event) => setPriceOpen(event.currentTarget.open)}
-        className="mt-4 border-t border-border pt-5"
+        className="mt-3 border-t border-border pt-1"
       >
         <summary className="w-fit max-w-full cursor-pointer rounded-control py-2 font-semibold text-brand">
           Add optional purchase price
         </summary>
-        <div className="mt-4 min-w-0 md:max-w-[calc(50%-0.75rem)]">
+        <div className="mt-2 min-w-0 md:max-w-[calc(50%-0.75rem)]">
           <label htmlFor={`${id}-purchase_price`} className="mb-2 block font-semibold">
             Purchase price (GBP)
           </label>
@@ -199,29 +196,15 @@ export function PurchaseInputForm() {
           )}
         </div>
       </details>
-      <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <p className="text-small text-ink-muted">
-          No account required.
-          <br />
-          Checked against published promotion data.
-        </p>
+      <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <p className="text-small text-ink-muted">No account required.</p>
         <div className="flex flex-col gap-3 md:flex-row">
-          <Button
-            type="submit"
-            disabled={pending}
-            aria-busy={pending}
-            className="min-h-12 w-full enabled:hover:bg-brand md:w-auto"
-          >
+          <Button variant="primary" type="submit" disabled={pending} aria-busy={pending}>
             {pending ? 'Checking…' : 'Find My Benefits'}
           </Button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={clear}
-            className="min-h-12 rounded-control border border-brand px-4 py-2 font-semibold text-brand focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-brand disabled:cursor-not-allowed disabled:border-border disabled:text-ink-muted"
-          >
+          <Button variant="ghost" type="button" disabled={pending} onClick={clear}>
             Clear Form
-          </button>
+          </Button>
         </div>
       </div>
       {pending && (

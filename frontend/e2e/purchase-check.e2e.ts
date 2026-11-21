@@ -192,12 +192,12 @@ test('missing SKU has a contrasting described error, committed focus and no POST
   );
   expect(sent).toEqual([]);
 });
-test('CTA defaults to navy, hovers violet and shows visible keyboard focus', async ({ page }) => {
+test('CTA defaults to violet, hovers navy and shows visible keyboard focus', async ({ page }) => {
   await page.goto('/check');
   const button = submit(page);
-  await expect(button).toHaveCSS('background-color', 'rgb(16, 24, 47)');
-  await button.hover();
   await expect(button).toHaveCSS('background-color', 'rgb(80, 70, 230)');
+  await button.hover();
+  await expect(button).toHaveCSS('background-color', 'rgb(16, 24, 47)');
   await page.mouse.move(0, 0);
   await page.locator('summary').focus();
   await page.keyboard.press('Tab');
@@ -401,9 +401,9 @@ test('pending controls and announcements prevent duplicate clicks and Enter, and
   await submit(page).dblclick();
   await expect(page.getByRole('status')).toHaveText('Checking your purchase…');
   await expect(page.getByRole('button', { name: 'Checking…' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Checking…' })).not.toHaveCSS(
+  await expect(page.getByRole('button', { name: 'Checking…' })).toHaveCSS(
     'background-color',
-    'rgb(80, 70, 230)',
+    'rgb(247, 248, 250)',
   );
   for (const label of labels) await expect(page.getByLabel(label, { exact: true })).toBeDisabled();
   await page.keyboard.press('Enter');
