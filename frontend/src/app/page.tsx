@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
 import { PurchaseInputForm } from '@/features/eligibility/components/PurchaseInputForm';
+import { BenefitGuide } from '@/features/benefits/BenefitGuide';
 export default function Home() {
   return (
     <main
@@ -36,6 +37,7 @@ export default function Home() {
           </li>
         </ol>
       </Container>
+      <BenefitGuide />
     </main>
   );
 }

@@ -27,6 +27,38 @@ function requests(page: Page) {
   });
   return sent;
 }
+for (const path of ['/', '/check']) {
+  test(`clear form resets validation and feedback without requests on ${path}`, async ({
+    page,
+  }) => {
+    const sent = requests(page);
+    await page.goto(path);
+    await fill(page, 'OFFLINE');
+    await page.locator('summary', { hasText: 'Add optional purchase price' }).click();
+    const price = page.getByLabel('Purchase price (GBP)');
+    await price.fill('invalid');
+    await submit(page).click();
+    await expect(price).toHaveAttribute('aria-invalid', 'true');
+    await page.getByRole('button', { name: 'Clear Form' }).click();
+    for (const label of [...labels, 'Purchase price (GBP)']) {
+      await expect(page.getByLabel(label, { exact: true })).toHaveValue('');
+      await expect(page.getByLabel(label, { exact: true })).not.toHaveAttribute('aria-invalid');
+    }
+    expect(sent).toHaveLength(0);
+    await fill(page, 'OFFLINE');
+    await submit(page).click();
+    const alert = page.getByRole('form', { name: 'Check a purchase' }).getByRole('alert');
+    await expect(alert).toBeVisible();
+    await page.getByRole('button', { name: 'Clear Form' }).click();
+    await expect(alert).toHaveCount(0);
+    expect(sent).toHaveLength(1);
+    await fill(page, 'SLOW');
+    await submit(page).click();
+    await expect(page.getByRole('button', { name: 'Clear Form' })).toBeDisabled();
+    await expect(page).toHaveURL('/results');
+    expect(sent).toHaveLength(2);
+  });
+}
 test('canonical page has server landmarks, honest empty controls, keyboard disclosure and one explicit exact request', async ({
   page,
 }) => {

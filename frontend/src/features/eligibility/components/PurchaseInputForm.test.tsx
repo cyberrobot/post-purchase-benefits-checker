@@ -27,6 +27,21 @@ const draft = {
   purchase_date: '2024-02-29',
 };
 const labels = ['Manufacturer / Brand', 'Product model or SKU', 'Retailer', 'Purchase date'];
+it('clears all fields and validation without making a request', () => {
+  render(<PurchaseInputForm />);
+  fill();
+  fireEvent.click(screen.getByText('Add optional purchase price'));
+  const price = screen.getByLabelText('Purchase price (GBP)');
+  fireEvent.change(price, { target: { value: 'invalid' } });
+  submit();
+  expect(price).toHaveAttribute('aria-invalid', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Clear Form' }));
+  [...labels, 'Purchase price (GBP)'].forEach((label) => {
+    expect(screen.getByLabelText(label)).toHaveValue('');
+    expect(screen.getByLabelText(label)).not.toHaveAttribute('aria-invalid');
+  });
+  expect(mutateAsync).not.toHaveBeenCalled();
+});
 function fill() {
   labels.forEach((label, index) =>
     fireEvent.change(screen.getByLabelText(label), {
@@ -63,7 +78,10 @@ it('starts empty with four labelled required controls in order and no automatic 
     expect(input).toHaveAccessibleDescription();
     expect(input).not.toHaveAttribute('aria-invalid');
   });
-  expect(screen.getByRole('button')).toHaveAttribute('type', 'submit');
+  expect(screen.getByRole('button', { name: 'Find My Benefits' })).toHaveAttribute(
+    'type',
+    'submit',
+  );
   rerender(<PurchaseInputForm />);
   fill();
   fireEvent.focus(screen.getByLabelText('Retailer'));
@@ -97,7 +115,7 @@ it('commits error descriptions before focusing on every invalid submission', asy
       });
     });
   });
-  const button = screen.getByRole('button');
+  const button = screen.getByRole('button', { name: 'Find My Benefits' });
   const expectInvalidFocus = (label: string, error: string) => {
     button.focus();
     submit();
@@ -179,7 +197,8 @@ it('submits exact raw keys once, locks fields while pending, clears stale result
   expect(mutateAsync).toHaveBeenCalledWith(draft);
   labels.forEach((label) => expect(screen.getByLabelText(label)).toBeDisabled());
   expect(screen.getByRole('status')).toHaveTextContent('Checking your purchase');
-  expect(screen.getByRole('button')).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Clear Form' })).toBeDisabled();
   await act(async () => complete(resolved));
   expect(screen.getByRole('status')).toHaveTextContent('No matching published promotion');
   expect(push).toHaveBeenCalledWith('/results');
@@ -195,6 +214,17 @@ it('submits exact raw keys once, locks fields while pending, clears stale result
   expect(mutateAsync).toHaveBeenCalledTimes(1);
   submit();
   await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
+});
+it('clears response feedback without submitting again', async () => {
+  mutateAsync.mockRejectedValueOnce(new ApiError('timeout'));
+  render(<PurchaseInputForm />);
+  fill();
+  submit();
+  expect(await screen.findByRole('alert')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear Form' }));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  labels.forEach((label) => expect(screen.getByLabelText(label)).toHaveValue(''));
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
 });
 it.each(['not_found', 'ambiguous'])(
   'guides unresolved %s correction without UUIDs',
@@ -384,6 +414,40 @@ it('publishes the exact matching submitted snapshot and invalidates it on an edi
   fireEvent.change(screen.getByLabelText('Retailer'), { target: { value: 'Another shop' } });
   expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
   expect(mutateAsync).toHaveBeenCalledTimes(1);
+});
+
+it('clearing invalidates a prior result and leaves an empty draft on remount', () => {
+  function Seed() {
+    const session = usePurchaseCheckSession();
+    return (
+      <>
+        <button onClick={() => session.publish(draft, checkPurchaseResponseSchema.parse(resolved))}>
+          Seed earlier result
+        </button>
+        <output data-testid="snapshot">{JSON.stringify(session.snapshot)}</output>
+      </>
+    );
+  }
+  const { rerender } = render(
+    <>
+      <PurchaseInputForm />
+      <Seed />
+    </>,
+  );
+  fill();
+  fireEvent.click(screen.getByRole('button', { name: 'Seed earlier result' }));
+  expect(screen.getByTestId('snapshot')).not.toHaveTextContent('null');
+  fireEvent.click(screen.getByRole('button', { name: 'Clear Form' }));
+  expect(screen.getByTestId('snapshot')).toHaveTextContent('null');
+  rerender(<Seed />);
+  rerender(
+    <>
+      <PurchaseInputForm />
+      <Seed />
+    </>,
+  );
+  labels.forEach((label) => expect(screen.getByLabelText(label)).toHaveValue(''));
+  expect(mutateAsync).not.toHaveBeenCalled();
 });
 
 it('supersedes pending navigation, invalidates its snapshot and publishes only an explicit retry', async () => {
