@@ -1,5 +1,15 @@
 # Backend Engineering Rules
 
+## Agent skills
+
+### Issue tracker
+
+Specs and tickets are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Use a single-context glossary and ADR layout. See `docs/agents/domain.md`.
+
 ## Scope
 
 This file applies to the backend service: REST, MCP, application/domain logic, persistence, migrations, ingestion, source retrieval, tests, and backend documentation.
