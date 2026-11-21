@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - '.agents/**'
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'skills-lock.json'
       - '.github/workflows/frontend.yml'
       - '.prettierrc'
       - '.prettierignore'
@@ -12,6 +16,10 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - '.agents/**'
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'skills-lock.json'
       - '.github/workflows/frontend.yml'
       - '.prettierrc'
       - '.prettierignore'

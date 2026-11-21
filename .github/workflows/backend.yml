@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - 'backend/**'
+      - '.agents/**'
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'skills-lock.json'
       - '.github/workflows/backend.yml'
 
   pull_request:
@@ -13,6 +17,10 @@ on:
       - main
     paths:
       - 'backend/**'
+      - '.agents/**'
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'skills-lock.json'
       - '.github/workflows/backend.yml'
 
 jobs:
