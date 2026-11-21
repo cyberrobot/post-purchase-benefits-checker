@@ -56,6 +56,7 @@ it('explains the journey after the embedded checker without linking away', () =>
 });
 
 it('lets visitors select an educational benefit guide', () => {
+  window.innerWidth = 320;
   render(
     <QueryProvider>
       <PurchaseCheckSessionProvider>
@@ -75,4 +76,36 @@ it('lets visitors select an educational benefit guide', () => {
   expect(within(guide).getByText(/cover beyond the original warranty/i)).toBeVisible();
   fireEvent.click(warranty);
   expect(warranty).toHaveAttribute('aria-expanded', 'false');
+  window.innerWidth = 1024;
+});
+
+it('keeps a guide selected on desktop, including after resizing from a closed mobile guide', () => {
+  window.innerWidth = 1024;
+  render(
+    <QueryProvider>
+      <PurchaseCheckSessionProvider>
+        <Home />
+      </PurchaseCheckSessionProvider>
+    </QueryProvider>,
+  );
+  const guide = screen.getByRole('region', { name: 'Types of benefits' });
+  const cashback = within(guide).getByRole('button', { name: /cashback/i });
+  const warranty = within(guide).getByRole('button', { name: /extended warranty/i });
+  fireEvent.click(cashback);
+  expect(cashback).toHaveAttribute('aria-expanded', 'true');
+  expect(within(guide).getByText(/money returned after purchase/i)).toBeVisible();
+
+  window.innerWidth = 320;
+  fireEvent(window, new Event('resize'));
+  fireEvent.click(warranty);
+  fireEvent.click(warranty);
+  expect(warranty).toHaveAttribute('aria-expanded', 'false');
+  expect(within(guide).getByText(/cover beyond the original warranty/i)).not.toBeVisible();
+
+  window.innerWidth = 1024;
+  fireEvent(window, new Event('resize'));
+  expect(warranty).toHaveAttribute('aria-expanded', 'true');
+  expect(within(guide).getByText(/cover beyond the original warranty/i)).toBeVisible();
+  fireEvent.click(warranty);
+  expect(warranty).toHaveAttribute('aria-expanded', 'true');
 });

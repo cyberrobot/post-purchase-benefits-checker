@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useId, useState } from 'react';
+import { Fragment, useEffect, useId, useState } from 'react';
 import { Container } from '@/components/ui/Container';
 
 const benefits = [
@@ -35,7 +35,17 @@ const benefits = [
 
 export function BenefitGuide() {
   const [open, setOpen] = useState<number | null>(0);
+  const [lastSelected, setLastSelected] = useState(0);
   const id = useId();
+
+  useEffect(() => {
+    function restoreDesktopSelection() {
+      if (window.innerWidth >= 768) setOpen((current) => current ?? lastSelected);
+    }
+    window.addEventListener('resize', restoreDesktopSelection);
+    restoreDesktopSelection();
+    return () => window.removeEventListener('resize', restoreDesktopSelection);
+  }, [lastSelected]);
 
   return (
     <section aria-label="Types of benefits" className="mt-20">
@@ -56,7 +66,10 @@ export function BenefitGuide() {
                 type="button"
                 aria-expanded={open === index}
                 aria-controls={`${id}-panel-${index}`}
-                onClick={() => setOpen(open === index ? null : index)}
+                onClick={() => {
+                  setLastSelected(index);
+                  setOpen(open === index && window.innerWidth < 768 ? null : index);
+                }}
                 className={`min-w-0 cursor-pointer rounded-card p-5 text-left md:col-start-1 ${
                   open === index ? 'bg-brand' : 'bg-navy-panel'
                 }`}

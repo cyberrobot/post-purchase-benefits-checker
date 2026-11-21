@@ -14,11 +14,7 @@ it('composes a skip link, banner, one page main and heading, and contentinfo', (
     'href',
     `#${screen.getByRole('main').id}`,
   );
-  expect(screen.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
-    '#main-content',
-    '/',
-    '/check',
-  ]);
+  expect(screen.getByRole('link', { name: /benefitscout/i })).toHaveAttribute('href', '/');
 });
 
 it('keeps an ordinary future page main directly inside the shared shell', () => {

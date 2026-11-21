@@ -35,6 +35,12 @@ for (const width of [320, 1280]) {
       await page.keyboard.press('Space');
       await expect(gift).toHaveAttribute('aria-expanded', 'false');
       await expect(guide.getByText(/extra item that may be offered/i)).toBeHidden();
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await expect(gift).toHaveAttribute('aria-expanded', 'true');
+      await expect(guide.getByText(/extra item that may be offered/i)).toBeVisible();
     }
+    await page.keyboard.press('Space');
+    await expect(gift).toHaveAttribute('aria-expanded', 'true');
+    await expect(guide.getByText(/extra item that may be offered/i)).toBeVisible();
   });
 }
