@@ -61,6 +61,17 @@ export function PurchaseInputForm() {
     setFeedback(undefined);
     mutation.reset();
   }
+  function clear() {
+    if (inFlight.current) return;
+    const empty: Draft = { brand: '', model: '', retailer: '', purchase_date: '' };
+    revision.current++;
+    setDraft(empty);
+    session.edit(empty);
+    setAttempted(false);
+    setFocusRequest(undefined);
+    setFeedback(undefined);
+    mutation.reset();
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (inFlight.current) return;
@@ -194,14 +205,24 @@ export function PurchaseInputForm() {
           <br />
           Checked against published promotion data.
         </p>
-        <Button
-          type="submit"
-          disabled={pending}
-          aria-busy={pending}
-          className="min-h-12 w-full enabled:hover:bg-brand md:w-auto"
-        >
-          {pending ? 'Checking…' : 'Find My Benefits'}
-        </Button>
+        <div className="flex flex-col gap-3 md:flex-row">
+          <Button
+            type="submit"
+            disabled={pending}
+            aria-busy={pending}
+            className="min-h-12 w-full enabled:hover:bg-brand md:w-auto"
+          >
+            {pending ? 'Checking…' : 'Find My Benefits'}
+          </Button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={clear}
+            className="min-h-12 rounded-control border border-brand px-4 py-2 font-semibold text-brand focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-brand disabled:cursor-not-allowed disabled:border-border disabled:text-ink-muted"
+          >
+            Clear Form
+          </button>
+        </div>
       </div>
       {pending && (
         <div
