@@ -48,7 +48,7 @@ export function BenefitGuide() {
   }, [lastSelected]);
 
   return (
-    <section aria-label="Types of benefits" className="mt-20">
+    <section aria-label="Types of benefits" className="mt-20 md:mt-40">
       <Container>
         <div className="mx-auto mb-10 max-w-3xl text-center">
           <p className="font-bold tracking-widest text-brand uppercase">Types of benefits</p>

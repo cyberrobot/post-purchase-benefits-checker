@@ -7,21 +7,21 @@ export default function Home() {
     <main
       id="main-content"
       tabIndex={-1}
-      className="bg-linear-to-b from-brand/5 to-page py-10 md:py-14"
+      className="bg-linear-to-b from-brand/5 to-page py-10 md:py-20"
     >
-      <Container width="narrow">
+      <Container>
         <div className="mb-8 text-center">
           <h1 className="text-display leading-[1.15] font-bold tracking-tight">
             Find <span className="text-brand">benefits</span> from a purchase
           </h1>
-          <p className="mt-4 text-body text-ink-muted">
-            Check whether cashback, extended warranties or free gifts may be available for a
-            purchase you have already made.
-          </p>
         </div>
+      </Container>
+      <Container width="narrow">
         <Card className="p-6 md:p-8">
           <PurchaseInputForm />
         </Card>
+      </Container>
+      <Container>
         <ol className="mt-10 grid list-decimal gap-6 border-t border-border pt-8 pl-6 text-ink-muted md:grid-cols-3 md:gap-10">
           <li>
             <strong className="block text-ink">Enter purchase details</strong>
