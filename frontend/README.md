@@ -55,7 +55,7 @@ and no horizontal overflow. Component tests cover the accessible heading and pur
 ## Layout and boundaries
 
 - `src/app/layout.tsx`: server root layout, English language, metadata and global CSS.
-- `src/app/page.tsx` and `src/app/check/page.tsx`: Server Components for `/` and `/check`, with colocated page tests and the same client form.
+- `src/app/page.tsx` and `src/app/check/page.tsx`: Server Components for `/` and `/check`, with colocated page tests and the same client form. The homepage also includes an educational benefit guide.
 - `src/app/globals.css`: Tailwind v4 import and system font foundation.
 - `scripts/smoke.mjs`: production HTTP verification used locally and by frontend CI.
 - Configuration files at this directory's root: TypeScript, ESLint, Jest and PostCSS.
@@ -71,12 +71,12 @@ Future integration must deliberately consume the existing backend
 published promotion data. The shared purchase form explicitly calls the existing same-origin bridge; the backend remains the eligibility authority. No auth or persistence is introduced. Any future `NEXT_PUBLIC_*` values are included in browser bundles
 and must never contain secrets.
 
-Broader homepage content and authentication are outside the purchase checker. See the sections below for results, published promotions and claim preparation.
+Authentication is outside the purchase checker. See the sections below for results, published promotions and claim preparation.
 
 ## Interface foundation (FE-02)
 
 `RootLayout` owns the header, footer and skip link. Each public page must own exactly one
-`<main id="main-content" tabIndex={-1}>` and one `h1`. The header publishes the home wordmark; the homepage links to the dedicated `/check` route. `SiteHeader` accepts a typed `navigation` list; supply only implemented
+`<main id="main-content" tabIndex={-1}>` and one `h1`. The header publishes the home wordmark; the homepage embeds the checker without linking to `/check`. `SiteHeader` accepts a typed `navigation` list; supply only implemented
 paths or existing anchors. With items configured, desktop links and a native mobile `details`
 disclosure are provided. Its small client boundary adds Escape/focus restoration and closes on
 selection; native disclosure and links remain usable without JavaScript.
@@ -127,8 +127,10 @@ Import primitives directly from `src/components/ui/`:
   Native Enter/Space behaviour is preserved, with a decorative chevron that indicates open state.
 
 For example, future sections can compose `SectionHeading`, a `grid gap-6 md:grid-cols-2 lg:grid-cols-3` div, and three `Card`
-children inside a `Container`. Full homepage content, FAQ, benefit selector, detailed eligibility
-mapping, manufacturer data and additional navigation destinations remain separate feature work.
+children inside a `Container`. The homepage benefit selector explains cashback, extended warranty
+and free gifts. Desktop always shows one guide; on mobile the selected guide can be closed, and
+resizing to desktop restores the last selection. FAQ, manufacturer data and additional navigation
+destinations remain separate feature work.
 
 Contrast calculations for the shipped foreground/background pairs (WCAG relative luminance):
 muted/page 5.62:1, muted/subtle 5.57:1, violet/subtle 5.88:1, white/violet 6.25:1,

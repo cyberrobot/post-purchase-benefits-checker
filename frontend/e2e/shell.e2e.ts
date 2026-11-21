@@ -19,6 +19,7 @@ test('public shell has truthful content, landmarks and working home navigation',
   await expect(page.getByRole('contentinfo')).toHaveCount(1);
   await expect(page.getByRole('main')).toContainText(heading);
   await expect(page.getByRole('form', { name: 'Check a purchase' })).toBeVisible();
+  await expect(page.getByRole('main').locator('a[href="/check"]')).toHaveCount(0);
   await expect(page.locator('main input[required]')).toHaveCount(4);
   await expect(page.getByRole('button', { name: 'Find My Benefits' })).toBeVisible();
   await expect(page.getByRole('navigation')).toHaveCount(0);
@@ -30,6 +31,23 @@ test('public shell has truthful content, landmarks and working home navigation',
   await expect(page).toHaveURL('http://127.0.0.1:3101/');
   await expect(page.getByRole('main')).toContainText(heading);
 });
+
+for (const viewport of [
+  { width: 375, height: 667 },
+  { width: 1280, height: 800 },
+]) {
+  test(`checker starts in the initial ${viewport.width}x${viewport.height} viewport`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    const form = page.getByRole('form', { name: 'Check a purchase' });
+    const box = await form.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeLessThan(viewport.height);
+    await expect(page.getByLabel('Manufacturer / Brand', { exact: true })).toBeInViewport();
+  });
+}
 
 for (const width of [320, 360, 375, 768, 1024, 1280, 1440]) {
   test(`shell reflows without clipped text or overlap at ${width}px`, async ({ page }) => {
