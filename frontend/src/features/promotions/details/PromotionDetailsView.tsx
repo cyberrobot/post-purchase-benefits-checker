@@ -121,9 +121,15 @@ function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
         ) : (
           <p>No claim requirements recorded here; check the official terms.</p>
         )}
-        <ButtonLink href={claimGuidePath(slug, variant.promotion_variant_id)} prefetch={false}>
-          Prepare claim checklist
-        </ButtonLink>
+        <div className="flex justify-end">
+          <ButtonLink
+            href={claimGuidePath(slug, variant.promotion_variant_id)}
+            prefetch={false}
+            className="mt-2"
+          >
+            Prepare claim checklist
+          </ButtonLink>
+        </div>
       </section>
     </Card>
   );
@@ -159,13 +165,6 @@ export function PromotionDetailsView({ promotion }: { promotion: PromotionDetail
               </li>
             ))}
           </ul>
-          <p>
-            These are recorded promotion terms. Check your purchase for an individual eligibility
-            result.
-          </p>
-          <OfficialLink href={promotion.provenance.official_source_url}>
-            Read official terms
-          </OfficialLink>
         </header>
         <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="min-w-0 space-y-6">
@@ -231,7 +230,9 @@ export function PromotionDetailsView({ promotion }: { promotion: PromotionDetail
                 ))}
               </ul>
             </Card>
-            <ButtonLink href="/check">Check my purchase</ButtonLink>
+            <ButtonLink variant="ghost" href="/check">
+              Check my purchase
+            </ButtonLink>
           </div>
         </div>
       </Container>

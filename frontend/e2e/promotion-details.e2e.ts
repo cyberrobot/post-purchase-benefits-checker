@@ -48,8 +48,8 @@ test('links from results, supports browser back and loads without a purchase ses
   await expect(page.getByRole('region')).toHaveCount(2);
   await expect(page.getByText(/At least 14 days after purchase/)).toBeVisible();
   await expect(page.getByText('2024-02-29')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Read official terms/ })).toHaveCount(0);
   for (const [name, href] of [
-    [/Read official terms/, 'https://example.com/offer'],
     [/Visit official claim site/, 'https://example.com/claim'],
     [/^Terms /, 'https://example.com/terms.pdf'],
   ] as const) {
