@@ -123,6 +123,9 @@ function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
         ) : (
           <p>No claim requirements recorded here; check the official terms.</p>
         )}
+        <ButtonLink href={claimGuidePath(slug, variant.promotion_variant_id)} prefetch={false}>
+          Prepare claim checklist
+        </ButtonLink>
       </section>
     </Card>
   );
@@ -166,7 +169,7 @@ export function PromotionDetailsView({ promotion }: { promotion: PromotionDetail
           </header>
           <div className="grid gap-6 border-t border-border pt-6 md:grid-cols-2">
             <section>
-              <h2 className="text-slate-400">Purchase window</h2>
+              <h2 className="text-ink-muted">Purchase window</h2>
               <span className="font-bold">
                 <DateValue value={promotion.purchase_window.starts_on} />
               </span>{' '}
@@ -176,29 +179,13 @@ export function PromotionDetailsView({ promotion }: { promotion: PromotionDetail
               </span>
             </section>
             <section>
-              <h2 className="text-slate-400">Claim period</h2>
+              <h2 className="text-ink-muted">Claim period</h2>
               <ClaimPeriod window={promotion.claim_window} />
             </section>
           </div>
           <div className="flex flex-wrap gap-3">
-            <ButtonLink
-              href={
-                promotion.variants.length === 1
-                  ? claimGuidePath(
-                      promotion.public_slug,
-                      promotion.variants[0].promotion_variant_id,
-                    )
-                  : '#promotion-variants'
-              }
-              prefetch={false}
-            >
-              Prepare claim checklist
-            </ButtonLink>
             <ButtonLink variant="secondary" href="/check">
               Check my purchase
-            </ButtonLink>
-            <ButtonLink variant="ghost" href={promotion.provenance.claim_url} target="_blank">
-              Visit official claim site (opens in a new tab)
             </ButtonLink>
           </div>
         </Card>

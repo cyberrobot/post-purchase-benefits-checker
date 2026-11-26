@@ -65,14 +65,11 @@ it('moves keyboard focus to the variant selected by the URL fragment', async () 
   await waitFor(() => expect(document.getElementById(id)).toHaveFocus());
 });
 
-it('shows the key actions and keeps multi-variant checklist selection explicit', () => {
+it('shows the purchase and official claim actions without duplicating checklist links', () => {
   const { rerender } = render(<PromotionDetailsView promotion={recordedTerms} />);
-  expect(screen.getAllByRole('link', { name: 'Prepare claim checklist' })[0]).toHaveAttribute(
-    'href',
-    '#promotion-variants',
-  );
+  expect(screen.getAllByRole('link', { name: 'Prepare claim checklist' })).toHaveLength(2);
   expect(screen.getByRole('link', { name: 'Check my purchase' })).toHaveAttribute('href', '/check');
-  expect(screen.getByRole('link', { name: /Visit official claim site/ })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: /^Claim site/ })).toHaveAttribute(
     'href',
     recordedTerms.provenance.claim_url,
   );
@@ -86,7 +83,7 @@ it('shows the key actions and keeps multi-variant checklist selection explicit',
       promotion={{ ...recordedTerms, variants: [recordedTerms.variants[0]] }}
     />,
   );
-  expect(screen.getAllByRole('link', { name: 'Prepare claim checklist' })[0]).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'Prepare claim checklist' })).toHaveAttribute(
     'href',
     `/promotions/${recordedTerms.public_slug}/claim?variant=${recordedTerms.variants[0].promotion_variant_id}`,
   );
