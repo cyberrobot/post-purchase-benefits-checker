@@ -20,8 +20,8 @@
   --radius-card: 1.5rem;
   --radius-feature: 2rem;
   --shadow-card: 0 0.25rem 1.5rem rgb(16 24 47 / 4%);
-  --text-display: clamp(2rem, 4vw, 3.5rem);
-  --text-section: clamp(2rem, 3vw, 3rem);
+  --text-display: clamp(2rem, 4vw, 2.75rem);
+  --text-section: clamp(2rem, 3vw, 2.5rem);
   --text-card: 1.5rem;
   --text-body: 1.125rem;
   --text-small: 0.875rem;

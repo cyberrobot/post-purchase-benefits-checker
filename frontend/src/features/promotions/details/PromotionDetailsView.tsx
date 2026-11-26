@@ -68,7 +68,7 @@ function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
       tabIndex={-1}
       role="region"
       aria-labelledby={id + '-title'}
-      className="min-w-0 scroll-mt-6 space-y-6 wrap-anywhere"
+      className="min-w-0 scroll-mt-6 space-y-8 wrap-anywhere md:p-10"
     >
       <div>
         <h2 id={id + '-title'} className="text-card font-bold">
@@ -76,8 +76,18 @@ function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
         </h2>
         {variant.name && <p className="text-small text-ink-muted">Variant code: {variant.code}</p>}
       </div>
-      <section className="space-y-2">
-        <h3 className="text-lg font-bold">Who qualifies</h3>
+      <section className="space-y-4">
+        <h3 className="text-lg font-bold">Qualifying products and models</h3>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {variant.products.map((product) => (
+            <li key={product.id} className="rounded-control bg-surface-muted p-4 font-semibold">
+              <ProductName product={product} />
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="space-y-3">
+        <h3 className="text-lg font-bold">Participating retailers</h3>
         <p>
           {variant.retailer ? (
             <>Qualifying retailer: {variant.retailer.name}</>
@@ -85,20 +95,12 @@ function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
             'No retailer restriction recorded.'
           )}
         </p>
-        <p className="font-semibold">Qualifying products and models</p>
-        <ul className="list-disc pl-6">
-          {variant.products.map((product) => (
-            <li key={product.id}>
-              <ProductName product={product} />
-            </li>
-          ))}
-        </ul>
       </section>
-      <section className="space-y-2">
+      <section className="space-y-4">
         <h3 className="text-lg font-bold">Benefits</h3>
-        <ul className="space-y-4">
+        <ul className="flex flex-col gap-3">
           {variant.benefits.map((benefit) => (
-            <li key={benefit.benefit_id}>
+            <li key={benefit.benefit_id} className="space-y-1 rounded-control bg-surface-muted p-4">
               <p className="text-small text-ink-muted">{categories[benefit.benefit_type]}</p>
               <h4 className="font-semibold">{benefit.name}</h4>
               <p>{benefit.description ?? 'Description not recorded.'}</p>
@@ -107,12 +109,12 @@ function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
           ))}
         </ul>
       </section>
-      <section className="space-y-2">
+      <section className="space-y-4">
         <h3 className="text-lg font-bold">What you need to claim</h3>
         {variant.requirements.length ? (
-          <ul className="list-disc space-y-2 pl-6">
+          <ul className="space-y-3">
             {variant.requirements.map((item) => (
-              <li key={item.requirement_id}>
+              <li key={item.requirement_id} className="rounded-control bg-surface-muted p-4">
                 <strong>{requirementLabels[item.requirement_type]}</strong>
                 {item.description && <p>{item.description}</p>}
               </li>
@@ -121,15 +123,6 @@ function VariantDetails({ variant, slug }: { variant: Variant; slug: string }) {
         ) : (
           <p>No claim requirements recorded here; check the official terms.</p>
         )}
-        <div className="flex justify-end">
-          <ButtonLink
-            href={claimGuidePath(slug, variant.promotion_variant_id)}
-            prefetch={false}
-            className="mt-2"
-          >
-            Prepare claim checklist
-          </ButtonLink>
-        </div>
       </section>
     </Card>
   );
@@ -148,93 +141,106 @@ export function PromotionDetailsView({ promotion }: { promotion: PromotionDetail
       className="bg-linear-to-b from-brand/5 to-page py-10 md:py-14"
     >
       <VariantHashFocus />
-      <Container className="wrap-anywhere">
-        <header className="mb-8 space-y-3">
-          <p className="font-semibold text-ink-muted">
-            {promotion.manufacturer.name} ·{' '}
-            {promotion.status === 'active' ? 'Recorded as active' : 'Recorded as expired'}
+      <Container className="space-y-6 wrap-anywhere">
+        <Card className="space-y-8 md:p-10">
+          <header className="space-y-4">
+            <ul className="flex flex-wrap gap-2" aria-label="Benefit categories">
+              {Array.from(benefitTypes, (type) => (
+                <li
+                  key={type}
+                  className="rounded-control border border-border px-3 py-1 text-small font-semibold text-brand"
+                >
+                  {categories[type]}
+                </li>
+              ))}
+            </ul>
+            <p className="font-semibold text-ink-muted">
+              {promotion.manufacturer.name} ·{' '}
+              {promotion.status === 'active' ? 'Recorded as active' : 'Recorded as expired'}
+            </p>
+            <p className="text-small text-ink-muted">
+              Last official source verified{' '}
+              <Timestamp value={promotion.provenance.last_verified_at} />.
+            </p>
+            <h1 className="text-display leading-tight font-bold">{promotion.name}</h1>
+          </header>
+          <div className="grid gap-6 border-t border-border pt-6 md:grid-cols-2">
+            <section>
+              <h2 className="text-slate-400">Purchase window</h2>
+              <span className="font-bold">
+                <DateValue value={promotion.purchase_window.starts_on} />
+              </span>{' '}
+              -{' '}
+              <span className="font-bold">
+                <DateValue value={promotion.purchase_window.ends_on} />
+              </span>
+            </section>
+            <section>
+              <h2 className="text-slate-400">Claim period</h2>
+              <ClaimPeriod window={promotion.claim_window} />
+            </section>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <ButtonLink
+              href={
+                promotion.variants.length === 1
+                  ? claimGuidePath(
+                      promotion.public_slug,
+                      promotion.variants[0].promotion_variant_id,
+                    )
+                  : '#promotion-variants'
+              }
+              prefetch={false}
+            >
+              Prepare claim checklist
+            </ButtonLink>
+            <ButtonLink variant="secondary" href="/check">
+              Check my purchase
+            </ButtonLink>
+            <ButtonLink variant="ghost" href={promotion.provenance.claim_url} target="_blank">
+              Visit official claim site (opens in a new tab)
+            </ButtonLink>
+          </div>
+        </Card>
+        <div id="promotion-variants" className="space-y-6 scroll-mt-6">
+          {promotion.variants.map((variant) => (
+            <VariantDetails
+              key={variant.promotion_variant_id}
+              variant={variant}
+              slug={promotion.public_slug}
+            />
+          ))}
+        </div>
+        <Card className="space-y-4 md:p-10">
+          <h2 className="text-card font-bold">Official sources and terms</h2>
+          <p>
+            Last official source verified{' '}
+            <Timestamp value={promotion.provenance.last_verified_at} />.
           </p>
-          <h1 className="text-display leading-tight font-bold">{promotion.name}</h1>
-          <ul className="flex flex-wrap gap-2" aria-label="Benefit categories">
-            {Array.from(benefitTypes, (type) => (
-              <li
-                key={type}
-                className="rounded-control border border-border px-3 py-1 text-small font-semibold"
-              >
-                {categories[type]}
+          <p>The official provider controls eligibility, dates and claim acceptance.</p>
+          <ul className="space-y-4">
+            {promotion.sources.map((source) => (
+              <li key={source.source_id}>
+                <OfficialLink href={source.url}>{sourceRoles[source.role]}</OfficialLink>
+                <p className="capitalize">
+                  {source.source_type === 'pdf' ? 'PDF' : words(source.source_type)}
+                </p>
+                <p>
+                  Retrieved <Timestamp value={source.retrieved_at} />
+                </p>
+                <p>
+                  {source.verified_at ? (
+                    <>
+                      Verified <Timestamp value={source.verified_at} />
+                    </>
+                  ) : (
+                    'Verification not recorded'
+                  )}
+                </p>
               </li>
             ))}
           </ul>
-        </header>
-        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          <div className="min-w-0 space-y-6">
-            <Card className="space-y-4">
-              <section className="space-y-2">
-                <h2 className="text-card font-bold">Qualifying purchase dates</h2>
-                <p>
-                  Start: <DateValue value={promotion.purchase_window.starts_on} />
-                </p>
-                <p>
-                  End: <DateValue value={promotion.purchase_window.ends_on} />
-                </p>
-                <p>Recorded start and end days are included.</p>
-              </section>
-              <section className="space-y-2">
-                <h2 className="text-card font-bold">Claim period</h2>
-                <ClaimPeriod window={promotion.claim_window} />
-              </section>
-              <p>
-                Only recorded conditions are shown here. Check the official terms for the full
-                requirements.
-              </p>
-            </Card>
-            {promotion.variants.map((variant) => (
-              <VariantDetails
-                key={variant.promotion_variant_id}
-                variant={variant}
-                slug={promotion.public_slug}
-              />
-            ))}
-          </div>
-          <div className="min-w-0 space-y-6">
-            <Card className="space-y-4">
-              <h2 className="text-card font-bold">Official sources and terms</h2>
-              <p>
-                Last official source verified{' '}
-                <Timestamp value={promotion.provenance.last_verified_at} />.
-              </p>
-              <OfficialLink href={promotion.provenance.claim_url}>
-                Visit official claim site
-              </OfficialLink>
-              <p>The official provider controls eligibility, dates and claim acceptance.</p>
-              <ul className="space-y-4">
-                {promotion.sources.map((source) => (
-                  <li key={source.source_id}>
-                    <OfficialLink href={source.url}>{sourceRoles[source.role]}</OfficialLink>
-                    <p className="capitalize">
-                      {source.source_type === 'pdf' ? 'PDF' : words(source.source_type)}
-                    </p>
-                    <p>
-                      Retrieved <Timestamp value={source.retrieved_at} />
-                    </p>
-                    <p>
-                      {source.verified_at ? (
-                        <>
-                          Verified <Timestamp value={source.verified_at} />
-                        </>
-                      ) : (
-                        'Verification not recorded'
-                      )}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-            <ButtonLink variant="ghost" href="/check">
-              Check my purchase
-            </ButtonLink>
-          </div>
-        </div>
+        </Card>
       </Container>
     </main>
   );

@@ -40,10 +40,13 @@ export function ClaimPeriod({ window }: { window: PromotionDetails['claim_window
   }
   return (
     <>
-      <p>
-        Recorded claim period: <DateValue value={window.opens_on} /> to{' '}
-        <DateValue value={window.deadline_on} />, inclusive.
-      </p>
+      <span className="font-bold">
+        <DateValue value={window.opens_on} />
+      </span>{' '}
+      -{' '}
+      <span className="font-bold">
+        <DateValue value={window.deadline_on} />
+      </span>
       {window.minimum_days_after_purchase !== null && (
         <p>
           At least {window.minimum_days_after_purchase} days after purchase. The earliest claim date
