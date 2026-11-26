@@ -46,11 +46,25 @@ test('links from results, supports browser back and loads without a purchase ses
     page.getByRole('heading', { name: 'Example populated promotion', level: 1 }),
   ).toBeVisible();
   await expect(page.getByRole('region')).toHaveCount(2);
+  await expect(page.getByRole('heading', { name: 'Purchase window' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Claim period' })).toBeVisible();
+  await expect(
+    page
+      .locator('#' + firstVariant)
+      .getByRole('heading', { name: 'Qualifying products and models' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('#' + firstVariant).getByRole('heading', { name: 'Participating retailers' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('#' + firstVariant).getByRole('link', { name: 'Prepare claim checklist' }),
+  ).toHaveAttribute('href', route + '/claim?variant=' + firstVariant.slice('variant-'.length));
+  await expect(page.getByRole('heading', { name: /frequently asked questions/i })).toHaveCount(0);
   await expect(page.getByText(/At least 14 days after purchase/)).toBeVisible();
   await expect(page.getByText('2024-02-29')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Read official terms/ })).toHaveCount(0);
   for (const [name, href] of [
-    [/Read official terms/, 'https://example.com/offer'],
-    [/Visit official claim site/, 'https://example.com/claim'],
+    [/^Claim site /, 'https://example.com/claim'],
     [/^Terms /, 'https://example.com/terms.pdf'],
   ] as const) {
     const link = page.getByRole('link', { name });

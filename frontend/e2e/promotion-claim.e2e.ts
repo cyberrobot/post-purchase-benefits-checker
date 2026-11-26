@@ -114,7 +114,10 @@ test('auto-selects the only variant and connects back to the matching details se
   await expect(page.getByRole('navigation', { name: 'Promotion variants' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Back to promotion details' }).click();
   await expect(page.locator('#variant-' + first)).toBeFocused();
-  await page.getByRole('link', { name: 'Prepare claim checklist' }).click();
+  await page
+    .locator('#variant-' + first)
+    .getByRole('link', { name: 'Prepare claim checklist' })
+    .click();
   await expect(page).toHaveURL('/promotions/example--single-claim/claim?variant=' + first);
   await expect(page.getByRole('checkbox', { name: 'Receipt' })).toBeVisible();
 });
