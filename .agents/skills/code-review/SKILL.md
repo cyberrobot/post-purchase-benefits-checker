@@ -18,9 +18,9 @@ The issue tracker should have been provided to you. If not, tell the user to run
 
 Whatever the user said is the fixed point (a commit SHA, branch name, tag, `main`, `HEAD~5`, etc.). If they didn't specify one, ask for it.
 
-Capture the diff command once: `git diff <fixed-point>...HEAD` (three-dot, so the comparison is against the merge-base). Also note the list of commits via `git log <fixed-point>..HEAD --oneline`.
+Capture the diff command once: `git diff <fixed-point>...HEAD` (three-dot, so the comparison is against the merge-base). Also note the list of commits via `git log <fixed-point>..HEAD --oneline`. When the requested review includes uncommitted work, also include staged and unstaged changes in the review, and identify any untracked files explicitly; do not rely on the committed diff alone.
 
-Before going further, confirm the fixed point resolves (`git rev-parse <fixed-point>`) and the diff is non-empty. A bad ref or empty diff should fail here, not inside two parallel sub-agents.
+Before going further, confirm the fixed point resolves (`git rev-parse <fixed-point>`) and the requested review scope is non-empty, including uncommitted changes when requested. A bad ref or empty scope should fail here, not inside two parallel sub-agents.
 
 ### 2. Identify the spec source
 
@@ -57,7 +57,7 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 
 ### 4. Spawn both sub-agents in parallel
 
-Issue both sub-agent calls together, in the foreground, and aggregate the reports they return.
+Start fresh **`matt-standards-reviewer`** and **`matt-spec-reviewer`** subagents in parallel and aggregate their reports when they complete. These named profiles select the respective models. Give both the complete review scope, including uncommitted and untracked files when applicable. Do not nest this skill inside another review subagent.
 
 **Standards sub-agent prompt** should include:
 
