@@ -7,8 +7,10 @@ reviewer uses GPT-6.1 Terra, high. The merger uses GPT-6 Luna, low.
 
 For a single ticket, start a session with the orchestrator and invoke
 `@implement` with the issue reference and review base. For a ticket graph,
-invoke `@implement-spec` with the parent spec. Both run `@code-review` in the
-orchestrator, which launches the two independent reviewers directly.
+invoke `@implement-spec` with the parent spec. The orchestrator is instructed
+to run `@code-review` itself and launch the two independent reviewers directly.
+The original skill files are unchanged; role selection is guided by the
+orchestrator's instructions rather than enforced by the skills.
 
 OpenCode keeps a session's selected model separately from the agent profile.
 For an existing session, select `openai/gpt-6-luna#low` via `/models` as well
