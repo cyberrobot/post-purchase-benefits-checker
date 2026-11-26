@@ -1,7 +1,7 @@
 # Matt skill model routing
 
 OpenCode discovers the project agent profiles under `.opencode/agents/`. The
-project's default primary agent is `matt-orchestrator` (GPT-6 Luna, low).
+project's default primary agent is `orchestrator` (GPT-6 Luna, low).
 The implementer and spec reviewer use GPT-6.2 Sol, medium; the standards
 reviewer uses GPT-6.1 Terra, high. The merger uses GPT-6 Luna, low.
 
